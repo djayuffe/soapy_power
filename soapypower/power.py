@@ -18,12 +18,14 @@ def _shutdown_handler(sig, frame):
     _shutdown = True
 
 
-# Register signals with _shutdown_handler
-signal.signal(signal.SIGTERM, _shutdown_handler)
-signal.signal(signal.SIGINT, _shutdown_handler)
-
-if sys.platform == 'win32':
-    signal.signal(signal.SIGBREAK, _shutdown_handler)
+def install_signal_handlers():
+    """Install CLI handlers explicitly, leaving library users' handlers intact."""
+    global _shutdown
+    _shutdown = False
+    signal.signal(signal.SIGTERM, _shutdown_handler)
+    signal.signal(signal.SIGINT, _shutdown_handler)
+    if sys.platform == 'win32':
+        signal.signal(signal.SIGBREAK, _shutdown_handler)
 
 
 class SoapyPower:
@@ -58,10 +60,12 @@ class SoapyPower:
 
     def nearest_bins(self, bins, even=False, pow2=False):
         """Return nearest number of FFT bins (even or power of two)"""
+        if not isinstance(bins, int) or bins < 2:
+            raise ValueError('bins must be an integer >= 2')
         if pow2:
-            bins_log2 = math.log(bins, 2)
-            if bins_log2 % 1 != 0:
-                bins = 2**math.ceil(bins_log2)
+            bins_log2 = (bins - 1).bit_length()
+            if bins & (bins - 1):
+                bins = 1 << bins_log2
                 logger.warning('number of FFT bins should be power of two, changing to {}'.format(bins))
         elif even:
             if bins % 2 != 0:
@@ -72,17 +76,23 @@ class SoapyPower:
 
     def nearest_overlap(self, overlap, bins):
         """Return nearest overlap/crop factor based on number of bins"""
+        if not 0 <= overlap < 1:
+            raise ValueError('overlap must be in [0, 1)')
         bins_overlap = overlap * bins
         if bins_overlap % 2 != 0:
             bins_overlap = math.ceil(bins_overlap / 2) * 2
             overlap = bins_overlap / bins
             logger.warning('number of overlapping FFT bins should be even, '
                            'changing overlap/crop factor to {:.5f}'.format(overlap))
+        if bins - round(overlap * bins) < 2:
+            raise ValueError('overlap/crop must retain at least two bins')
         return overlap
 
     def bin_size_to_bins(self, bin_size):
         """Convert bin size [Hz] to number of FFT bins"""
-        return math.ceil(self.device.sample_rate / bin_size)
+        if not math.isfinite(bin_size) or bin_size <= 0:
+            raise ValueError('bin_size must be finite and positive')
+        return max(2, math.ceil(self.device.sample_rate / bin_size))
 
     def bins_to_bin_size(self, bins):
         """Convert number of FFT bins to bin size [Hz]"""
@@ -90,6 +100,9 @@ class SoapyPower:
 
     def time_to_repeats(self, bins, integration_time):
         """Convert integration time to number of repeats"""
+        if not math.isfinite(integration_time) or integration_time <= 0:
+            raise ValueError('integration_time must be finite and positive')
+        self.nearest_bins(bins)
         return math.ceil((self.device.sample_rate * integration_time) / bins)
 
     def repeats_to_time(self, bins, repeats):
@@ -98,6 +111,10 @@ class SoapyPower:
 
     def freq_plan(self, min_freq, max_freq, bins, overlap=0, quiet=False):
         """Returns list of frequencies for frequency hopping"""
+        if not all(math.isfinite(f) for f in (min_freq, max_freq)) or max_freq < min_freq:
+            raise ValueError('frequency range must be finite and ascending')
+        self.nearest_bins(bins)
+        overlap = self.nearest_overlap(overlap, bins)
         bin_size = self.bins_to_bin_size(bins)
         bins_crop = round((1 - overlap) * bins)
         sample_rate_crop = (1 - overlap) * self.device.sample_rate
@@ -106,7 +123,8 @@ class SoapyPower:
         hopping = True if freq_range >= sample_rate_crop else False
         hop_size = self.nearest_freq(sample_rate_crop, bin_size)
         hops = math.ceil(freq_range / hop_size) if hopping else 1
-        min_center_freq = min_freq + (hop_size / 2) if hopping else min_freq + (freq_range / 2)
+        min_center_freq = (min_freq + (bins // 2 - round(overlap * bins / 2)) * bin_size
+                           if hopping else min_freq + freq_range / 2)
         max_center_freq = min_center_freq + ((hops - 1) * hop_size)
 
         freq_list = [min_center_freq + (i * hop_size) for i in range(hops)]
@@ -140,22 +158,30 @@ class SoapyPower:
 
     def create_buffer(self, bins, repeats, base_buffer_size, max_buffer_size=0):
         """Create buffer for reading samples"""
+        if bins < 2 or repeats < 1 or base_buffer_size < 1 or max_buffer_size < -1:
+            raise ValueError('invalid sample buffer parameters')
         samples = bins * repeats
         buffer_repeats = 1
-        buffer_size = math.ceil(samples / base_buffer_size) * base_buffer_size
+        buffer_size = ((samples + base_buffer_size - 1) // base_buffer_size) * base_buffer_size
 
         if not max_buffer_size:
             # Max buffer size about 100 MB
-            max_buffer_size = (100 * 1024**2) / 8
+            max_buffer_size = (100 * 1024**2) // 8
 
         if max_buffer_size > 0:
-            max_buffer_size = math.ceil(max_buffer_size / base_buffer_size) * base_buffer_size
+            max_buffer_size = (max_buffer_size // base_buffer_size) * base_buffer_size
+            if max_buffer_size < max(bins, base_buffer_size):
+                raise ValueError('maximum buffer must fit one FFT and one device block')
             if buffer_size > max_buffer_size:
                 logger.warning('Required buffer size ({}) will be shrinked to max_buffer_size ({})!'.format(
                     buffer_size, max_buffer_size
                 ))
-                buffer_repeats = math.ceil(buffer_size / max_buffer_size)
-                buffer_size = max_buffer_size
+                buffer_repeats = (buffer_size + max_buffer_size - 1) // max_buffer_size
+                buffer_size = max(
+                    ((samples + buffer_repeats * base_buffer_size - 1) //
+                     (buffer_repeats * base_buffer_size)) * base_buffer_size,
+                    ((bins + base_buffer_size - 1) // base_buffer_size) * base_buffer_size
+                )
 
         logger.info('repeats: {}'.format(repeats))
         logger.info('samples: {} (time: {:.5f} s)'.format(samples, samples / self.device.sample_rate))
@@ -176,32 +202,38 @@ class SoapyPower:
               fft_overlap=0.5, crop_factor=0, log_scale=True, remove_dc=False, detrend=None,
               lnb_lo=0, tune_delay=0, reset_stream=False, max_threads=0, max_queue_size=0):
         """Prepare samples buffer and start streaming samples from device"""
-        if self.device.is_streaming:
-            self.device.stop_stream()
+        self.nearest_bins(bins)
+        if not isinstance(repeats, int) or repeats < 1:
+            raise ValueError('repeats must be a positive integer')
+        if not math.isfinite(tune_delay) or tune_delay < 0:
+            raise ValueError('tune_delay must be finite and nonnegative')
+        if not 0 <= fft_overlap < 1 or not 0 <= crop_factor < 1:
+            raise ValueError('overlap and crop must be in [0, 1)')
+        if self._psd is not None or self.device.is_streaming:
+            self.stop()
 
-        base_buffer = self.device.start_stream(buffer_size=base_buffer_size)
-        self._bins = bins
-        self._repeats = repeats
-        self._base_buffer_size = len(base_buffer)
-        self._max_buffer_size = max_buffer_size
-        self._buffer_repeats, self._buffer = self.create_buffer(
-            bins, repeats, self._base_buffer_size, self._max_buffer_size
-        )
-        self._tune_delay = tune_delay
-        self._reset_stream = reset_stream
-        self._psd = psd.PSD(bins, self.device.sample_rate, fft_window=fft_window, fft_overlap=fft_overlap,
-                            crop_factor=crop_factor, log_scale=log_scale, remove_dc=remove_dc, detrend=detrend,
-                            lnb_lo=lnb_lo, max_threads=max_threads, max_queue_size=max_queue_size)
-        self._writer = writer.formats[self._output_format](self._output)
+        try:
+            base_buffer = self.device.start_stream(buffer_size=base_buffer_size)
+            self._bins = bins
+            self._repeats = repeats
+            self._base_buffer_size = len(base_buffer)
+            self._max_buffer_size = max_buffer_size
+            self._buffer_repeats, self._buffer = self.create_buffer(
+                bins, repeats, self._base_buffer_size, self._max_buffer_size
+            )
+            self._tune_delay = tune_delay
+            self._reset_stream = reset_stream
+            self._psd = psd.PSD(bins, self.device.sample_rate, fft_window=fft_window, fft_overlap=fft_overlap,
+                                crop_factor=crop_factor, log_scale=log_scale, remove_dc=remove_dc, detrend=detrend,
+                                lnb_lo=lnb_lo, max_threads=max_threads, max_queue_size=max_queue_size)
+            self._writer = writer.formats[self._output_format](self._output)
+        except BaseException:
+            self.stop()
+            raise
 
     def stop(self):
         """Stop streaming samples from device and delete samples buffer"""
-        if not self.device.is_streaming:
-            return
-
-        self.device.stop_stream()
-        self._writer.close()
-
+        psd_worker, output_writer = self._psd, self._writer
         self._bins = None
         self._repeats = None
         self._base_buffer_size = None
@@ -212,6 +244,16 @@ class SoapyPower:
         self._reset_stream = None
         self._psd = None
         self._writer = None
+        try:
+            if self.device.is_streaming:
+                self.device.stop_stream()
+        finally:
+            try:
+                if psd_worker is not None:
+                    psd_worker.close()
+            finally:
+                if output_writer is not None:
+                    output_writer.close()
 
     def psd(self, freq):
         """Tune to specified center frequency and compute Power Spectral Density"""
@@ -220,7 +262,7 @@ class SoapyPower:
 
         # Tune to new frequency in main thread
         logger.debug('  Frequency hop: {:.2f} Hz'.format(freq))
-        t_freq = time.time()
+        t_freq = time.monotonic()
         if self.device.freq != freq:
             # Deactivate streaming before tuning
             if self._reset_stream:
@@ -235,33 +277,37 @@ class SoapyPower:
 
             # Delay reading samples after tuning
             if self._tune_delay:
-                t_delay = time.time()
+                t_delay = time.monotonic()
                 while True:
                     self.device.read_stream()
-                    t_delay_end = time.time()
+                    t_delay_end = time.monotonic()
                     if t_delay_end - t_delay >= self._tune_delay:
                         break
                 logger.debug('    Tune delay: {:.3f} s'.format(t_delay_end - t_delay))
         else:
             logger.debug('    Same frequency as before, tuning skipped')
         psd_state = self._psd.set_center_freq(freq)
-        t_freq_end = time.time()
+        t_freq_end = time.monotonic()
         logger.debug('    Tune time: {:.3f} s'.format(t_freq_end - t_freq))
 
+        acq_time_start = None
+        self._acquired_samples = 0
         for repeat in range(self._buffer_repeats):
             logger.debug('    Repeat: {}'.format(repeat + 1))
             # Read samples from SDR in main thread
-            t_acq = time.time()
-            acq_time_start = datetime.datetime.utcnow()
+            t_acq = time.monotonic()
+            if acq_time_start is None:
+                acq_time_start = datetime.datetime.now(datetime.timezone.utc)
             self.device.read_stream_into_buffer(self._buffer)
-            acq_time_stop = datetime.datetime.utcnow()
-            t_acq_end = time.time()
+            acq_time_stop = datetime.datetime.now(datetime.timezone.utc)
+            self._acquired_samples += len(self._buffer)
+            t_acq_end = time.monotonic()
             logger.debug('      Acquisition time: {:.3f} s'.format(t_acq_end - t_acq))
 
             # Start FFT computation in another thread
             self._psd.update_async(psd_state, numpy.copy(self._buffer))
 
-            t_final = time.time()
+            t_final = time.monotonic()
 
             if _shutdown:
                 break
@@ -275,20 +321,25 @@ class SoapyPower:
               fft_window='hann', fft_overlap=0.5, crop=False, log_scale=True, remove_dc=False, detrend=None, lnb_lo=0,
               tune_delay=0, reset_stream=False, base_buffer_size=0, max_buffer_size=0, max_threads=0, max_queue_size=0):
         """Sweep spectrum using frequency hopping"""
-        self.setup(
-            bins, repeats, base_buffer_size, max_buffer_size,
-            fft_window=fft_window, fft_overlap=fft_overlap, crop_factor=overlap if crop else 0,
-            log_scale=log_scale, remove_dc=remove_dc, detrend=detrend, lnb_lo=lnb_lo, tune_delay=tune_delay,
-            reset_stream=reset_stream, max_threads=max_threads, max_queue_size=max_queue_size
-        )
-
+        if runs < 0 or (time_limit is not None and (not math.isfinite(time_limit) or time_limit < 0)):
+            raise ValueError('runs and time_limit must be nonnegative')
+        overlap = self.nearest_overlap(overlap, bins)
+        self.freq_plan(min_freq - lnb_lo, max_freq - lnb_lo, bins, overlap, quiet=True)
+        t_start = time.monotonic()
         try:
+            self.setup(
+                bins, repeats, base_buffer_size, max_buffer_size,
+                fft_window=fft_window, fft_overlap=fft_overlap, crop_factor=overlap if crop else 0,
+                log_scale=log_scale, remove_dc=remove_dc, detrend=detrend, lnb_lo=lnb_lo,
+                tune_delay=tune_delay, reset_stream=reset_stream,
+                max_threads=max_threads, max_queue_size=max_queue_size
+            )
             freq_list = self.freq_plan(min_freq - lnb_lo, max_freq - lnb_lo, bins, overlap)
-            t_start = time.time()
             run = 0
+            write_next_future = None
             while not _shutdown and (runs == 0 or run < runs):
                 run += 1
-                t_run_start = time.time()
+                t_run_start = time.monotonic()
                 logger.debug('Run: {}'.format(run))
 
                 for freq in freq_list:
@@ -297,23 +348,24 @@ class SoapyPower:
 
                     # Write PSD to stdout (in another thread)
                     self._writer.write_async(psd_future, acq_time_start, acq_time_stop,
-                                             len(self._buffer) * self._buffer_repeats)
+                                             self._acquired_samples)
 
                     if _shutdown:
                         break
 
                 # Write end of measurement marker (in another thread)
                 write_next_future = self._writer.write_next_async()
-                t_run = time.time()
+                t_run = time.monotonic()
                 logger.debug('  Total run time: {:.3f} s'.format(t_run - t_run_start))
 
                 # End measurement if time limit is exceeded
-                if time_limit and (time.time() - t_start) >= time_limit:
+                if time_limit and (time.monotonic() - t_start) >= time_limit:
                     logger.info('Time limit of {} s exceeded, completed {} runs'.format(time_limit, run))
                     break
 
             # Wait for last write to be finished
-            write_next_future.result()
+            if write_next_future is not None:
+                write_next_future.result()
 
             # Debug thread pool queues
             logging.debug('Number of USB buffer overflow errors: {}'.format(self.device.buffer_overflow_count))
@@ -326,5 +378,5 @@ class SoapyPower:
         finally:
             # Shutdown SDR
             self.stop()
-            t_stop = time.time()
+            t_stop = time.monotonic()
             logger.info('Total time: {:.3f} s'.format(t_stop - t_start))

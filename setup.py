@@ -18,6 +18,8 @@ setup(
             'soapy_power=soapypower.__main__:main'
         ],
     },
+    python_requires='>=3.6',
+    extras_require={'fft': ['scipy'], 'fftw': ['pyfftw']},
     install_requires=[
         'numpy',
         'simplesoapy>=1.5.0',

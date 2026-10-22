@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-import os, sys, logging, argparse, re, shutil, textwrap
+import os, sys, logging, argparse, re, shutil, textwrap, math
 
-import simplesoapy
 from soapypower import writer
 from soapypower.version import __version__
 
@@ -14,7 +13,7 @@ multipliers = {'k': 1e3, 'M': 1e6, 'G': 1e9, 'T': 1e12}
 
 def float_with_multiplier(string):
     """Convert string with optional k, M, G, T multiplier to float"""
-    match = re_float_with_multiplier.search(string)
+    match = re_float_with_multiplier.fullmatch(string.strip())
     if not match or not match.group('num'):
         raise ValueError('String "{}" is not numeric!'.format(string))
 
@@ -25,12 +24,17 @@ def float_with_multiplier(string):
             num *= multipliers[multi]
         except KeyError:
             raise ValueError('Unknown multiplier: {}'.format(multi))
+    if not math.isfinite(num):
+        raise ValueError('number must be finite')
     return num
 
 
 def freq_or_freq_range(string):
     """Convert string with freq. or freq. range to list of floats"""
-    return [float_with_multiplier(f) for f in string.split(':')]
+    freqs = [float_with_multiplier(f) for f in string.split(':')]
+    if len(freqs) not in (1, 2) or (len(freqs) == 2 and freqs[1] < freqs[0]):
+        raise ValueError('expected frequency or ascending start:stop range')
+    return freqs
 
 
 def specific_gains(string):
@@ -52,7 +56,7 @@ def device_settings(string):
 
     settings = {}
     for setting in string.split(','):
-        setting_name, value = setting.split('=')
+        setting_name, value = setting.split('=', 1)
         settings[setting_name.strip()] = value.strip()
     return settings
 
@@ -69,6 +73,7 @@ def wrap(text, indent='    '):
 
 def detect_devices(soapy_args=''):
     """Returns detected SoapySDR devices"""
+    import simplesoapy
     devices = simplesoapy.detect_devices(soapy_args, as_string=True)
     text = []
     text.append('Detected SoapySDR devices:')
@@ -82,6 +87,7 @@ def detect_devices(soapy_args=''):
 
 def device_info(soapy_args=''):
     """Returns info about selected SoapySDR device"""
+    import simplesoapy
     text = []
     try:
         device = simplesoapy.SoapyDevice(soapy_args)
@@ -153,7 +159,7 @@ def setup_argument_parser():
                             'can be followed by a k, M or G multiplier (default: %(default)s)')
 
     output_group = main_title.add_mutually_exclusive_group()
-    output_group.add_argument('-O', '--output', metavar='FILE', type=argparse.FileType('w'), default=sys.stdout,
+    output_group.add_argument('-O', '--output', metavar='FILE', type=argparse.FileType('wb'), default=sys.stdout,
                               help='output to file (incompatible with --output-fd, default is stdout)')
     output_group.add_argument('--output-fd', metavar='NUM', type=int, default=None,
                               help='output to existing file descriptor (incompatible with -O)')
@@ -255,6 +261,8 @@ def setup_argument_parser():
                             help='maximum number of PSD threads (0 = auto, default: %(default)s)')
     perf_title.add_argument('--max-queue-size', metavar='NUM', type=int, default=0,
                             help='maximum size of PSD work queue (-1 = unlimited, 0 = auto, default: %(default)s)')
+    perf_title.add_argument('--fft-threads', type=int, default=1,
+                            help='threads per pyFFTW transform (default: 1; PSD workers run in parallel)')
     perf_title.add_argument('--no-pyfftw', action='store_true',
                             help='don\'t use pyfftw library even if it is available (use scipy.fftpack or numpy.fft)')
 
@@ -275,10 +283,42 @@ def setup_argument_parser():
     return parser
 
 
+def validate_arguments(parser, args):
+    """Reject invalid numerical options before opening an SDR stream."""
+    for name in ('rate', 'bin_size', 'time', 'total_time', 'elapsed'):
+        value = getattr(args, name)
+        if value is not None and (not math.isfinite(value) or value <= 0):
+            parser.error('--{} must be finite and positive'.format(name.replace('_', '-')))
+    for name in ('bandwidth', 'tune_delay'):
+        value = getattr(args, name)
+        if not math.isfinite(value) or value < 0:
+            parser.error('--{} must be finite and nonnegative'.format(name.replace('_', '-')))
+    for name, minimum in (('bins', 2), ('repeats', 1), ('runs', 0), ('channel', 0),
+                          ('buffer_size', 0), ('max_buffer_size', -1), ('max_threads', 0),
+                          ('max_queue_size', -1), ('fft_threads', 1)):
+        if getattr(args, name) < minimum:
+            parser.error('--{} must be >= {}'.format(name.replace('_', '-'), minimum))
+    for name in ('overlap', 'crop', 'fft_overlap'):
+        if not 0 <= getattr(args, name) < 100:
+            parser.error('--{} must be in [0, 100)'.format(name.replace('_', '-')))
+    for name in ('gain', 'fft_window_param'):
+        value = getattr(args, name)
+        if value is not None and not math.isfinite(value):
+            parser.error('--{} must be finite'.format(name.replace('_', '-')))
+    if args.fft_window in ('kaiser', 'tukey') and args.fft_window_param is None:
+        parser.error('--fft-window-param is required for kaiser and tukey')
+    if args.fft_window == 'kaiser' and args.fft_window_param < 0:
+        parser.error('kaiser parameter must be nonnegative')
+    if args.fft_window == 'tukey' and not 0 <= args.fft_window_param <= 1:
+        parser.error('tukey parameter must be in [0, 1]')
+
+
 def main():
     # Parse command line arguments
     parser = setup_argument_parser()
     args = parser.parse_args()
+
+    validate_arguments(parser, args)
 
     # Setup logging
     if args.quiet:
@@ -307,6 +347,8 @@ def main():
         device, device_text = device_info(args.device)
         print(device_text)
         sys.exit(0 if device else 1)
+
+    power.psd.simplespectral.fft_threads = args.fft_threads
 
     # Prepare arguments for SoapyPower
     if args.no_pyfftw:
@@ -349,7 +391,10 @@ def main():
 
     if args.overlap:
         args.overlap /= 100
-        args.overlap = sdr.nearest_overlap(args.overlap, args.bins)
+        try:
+            args.overlap = sdr.nearest_overlap(args.overlap, args.bins)
+        except ValueError as error:
+            parser.error(str(error))
 
     if args.total_time:
         args.time = args.total_time / len(sdr.freq_plan(args.freq[0], args.freq[1], args.bins, args.overlap, quiet=True))
@@ -361,6 +406,8 @@ def main():
         if args.fft_window_param is None:
             parser.error('argument --fft-window: --fft-window-param is required when using kaiser or tukey windows')
         args.fft_window = (args.fft_window, args.fft_window_param)
+
+    power.install_signal_handlers()
 
     # Start frequency sweep
     sdr.sweep(

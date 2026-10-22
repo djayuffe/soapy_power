@@ -13,8 +13,8 @@ Requirements
 - Optional: `pyFFTW <https://github.com/pyFFTW/pyFFTW>`_ (for fastest FFT calculations with FFTW library)
 - Optional: `SciPy <https://www.scipy.org>`_ (for faster FFT calculations with scipy.fftpack library)
 
-You should always install SciPy or pyFFTW, because numpy.fft has horrible
-memory usage and is also much slower.
+SciPy and pyFFTW provide optional accelerated FFT backends. Performance and
+memory use depend on FFT size, backend, thread count and the host system.
 
 Usage
 -----
@@ -192,3 +192,51 @@ Output::
     2017-03-17, 13:18:25, 90560000.0, 93120000.0, 426666.666667, 647168, -95.7163, -96.2564, -97.01, -98.1281, -90.701, -88.0872
     2017-03-17, 13:18:25, 93120000.0, 95680000.0, 426666.666667, 647168, -99.0242, -91.3061, -91.9134, -85.4561, -86.0053, -97.8411
     2017-03-17, 13:18:26, 95680000.0, 98240000.0, 426666.666667, 647168, -94.2324, -83.7932, -78.3108, -82.033, -89.1212, -97.4499
+
+Numerical accuracy and tuning
+----------------------------
+
+PSD values use a two-sided Welch density for complex IQ samples. Linear values
+have units of input power per Hz; logarithmic values are 10*log10(density).
+They are not calibrated dBm without device-specific calibration. Integration of
+linear density over frequency gives signal power. Zero power is represented as
+negative infinity in logarithmic output.
+
+Averages are weighted by the number of complete Welch segments in each input
+buffer and accumulated in float64. Log conversion happens after averaging.
+Segments restart at each acquisition buffer; overlap does not span buffer
+boundaries. The requested integration time is a minimum: acquisition rounds to
+whole device blocks and each buffer must fit an FFT. Output sample counts and
+UTC timestamps describe the data actually acquired, including partial shutdown.
+
+A Hann window with 50 percent segment overlap is a useful general default.
+Boxcar gives narrow bins for coherent tones but has more leakage. Other windows
+trade frequency resolution for leakage suppression; there is no universal best
+window. Constant detrending removes each segment's mean. DC interpolation only
+replaces the central bin and is mainly useful with boxcar.
+
+Install an accelerated backend with ``pip install '.[fft]'`` (SciPy) or
+``pip install '.[fftw]'`` (pyFFTW). ``--no-pyfftw`` selects the available fallback.
+``--pow2`` rounds FFT lengths upward and therefore changes frequency resolution.
+Choose thread and queue limits for available RAM: ``--max-buffer-size`` limits
+one acquisition buffer, not the whole process, and FFT workspaces and queued
+copies also consume memory. ``--max-threads 1 --max-queue-size 1`` minimizes
+concurrent PSD jobs. An unlimited queue can consume unbounded RAM.
+
+Binary format version 2 always writes little-endian float32 payloads. Readers
+reject truncated records, unsupported versions and invalid payload alignment.
+Writers drain on shutdown and report background failures. Supplied output file
+descriptors and streams remain owned by the caller.
+
+Run hardware-free regression tests with::
+
+    python -m unittest discover -s tests -v
+
+SciPy enables an additional reference comparison. Real device tuning, gain
+calibration, driver behavior and sustained acquisition require hardware testing.
+
+Welch transforms run in batches with approximately 8 MiB of windowed input per
+worker, plus FFT workspaces. Windows are DFT-periodic for both odd and even FFT
+lengths; Tukey alpha=0 is boxcar and alpha=1 is Hann. ``--fft-threads`` controls
+threads per pyFFTW transform (default 1) independently of ``--max-threads`` PSD
+workers, avoiding nested CPU oversubscription by default.
