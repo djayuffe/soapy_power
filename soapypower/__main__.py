@@ -45,7 +45,11 @@ def specific_gains(string):
     gains = {}
     for gain in string.split(','):
         amp_name, value = gain.split('=')
-        gains[amp_name.strip()] = float(value.strip())
+        amp_name = amp_name.strip()
+        value = float(value.strip())
+        if not amp_name or amp_name in gains or not math.isfinite(value):
+            raise ValueError('gain names must be unique/nonempty and values finite')
+        gains[amp_name] = value
     return gains
 
 
@@ -57,7 +61,10 @@ def device_settings(string):
     settings = {}
     for setting in string.split(','):
         setting_name, value = setting.split('=', 1)
-        settings[setting_name.strip()] = value.strip()
+        setting_name = setting_name.strip()
+        if not setting_name or setting_name in settings:
+            raise ValueError('setting names must be unique and nonempty')
+        settings[setting_name] = value.strip()
     return settings
 
 
@@ -85,12 +92,12 @@ def detect_devices(soapy_args=''):
     return (devices, '\n'.join(text))
 
 
-def device_info(soapy_args=''):
+def device_info(soapy_args='', channel=0):
     """Returns info about selected SoapySDR device"""
     import simplesoapy
     text = []
     try:
-        device = simplesoapy.SoapyDevice(soapy_args)
+        device = simplesoapy.SoapyDevice(soapy_args, channel=channel)
         text.append('Selected device: {}'.format(device.hardware))
         text.append('  Available RX channels:')
         text.append('    {}'.format(', '.join(str(x) for x in device.list_channels())))
@@ -159,7 +166,7 @@ def setup_argument_parser():
                             'can be followed by a k, M or G multiplier (default: %(default)s)')
 
     output_group = main_title.add_mutually_exclusive_group()
-    output_group.add_argument('-O', '--output', metavar='FILE', type=argparse.FileType('wb'), default=sys.stdout,
+    output_group.add_argument('-O', '--output', metavar='FILE', default=sys.stdout,
                               help='output to file (incompatible with --output-fd, default is stdout)')
     output_group.add_argument('--output-fd', metavar='NUM', type=int, default=None,
                               help='output to existing file descriptor (incompatible with -O)')
@@ -187,7 +194,7 @@ def setup_argument_parser():
     spectra_title = parser.add_argument_group('Averaging')
     spectra_group = spectra_title.add_mutually_exclusive_group()
     spectra_group.add_argument('-n', '--repeats', type=int, default=1600,
-                               help='number of spectra to average (incompatible with -t and -T, default: %(default)s)')
+                               help='integration length in FFT-sized sample blocks (incompatible with -t and -T, default: %(default)s)')
     spectra_group.add_argument('-t', '--time', metavar='SECONDS', type=float,
                                help='integration time (incompatible with -T and -n)')
     spectra_group.add_argument('-T', '--total-time', metavar='SECONDS', type=float,
@@ -227,6 +234,8 @@ def setup_argument_parser():
 
     device_title.add_argument('--lnb-lo', metavar='Hz', type=float_with_multiplier, default=0,
                               help='LNB LO frequency, negative for upconverters (default: %(default)s)')
+    device_title.add_argument('--lnb-high-side', action='store_true',
+                              help='use RF = LNB LO - IF and mirror the IQ frequency axis')
     device_title.add_argument('--device-settings', metavar='STRING', type=device_settings, default='',
                               help='SoapySDR device settings (example: biastee=true)')
     device_title.add_argument('--force-rate', action='store_true',
@@ -267,6 +276,10 @@ def setup_argument_parser():
                             help='don\'t use pyfftw library even if it is available (use scipy.fftpack or numpy.fft)')
 
     other_title = parser.add_argument_group('Other options')
+    other_title.add_argument('--precision', choices=['single', 'double'], default='double',
+                             help='FFT computation precision (default: double)')
+    other_title.add_argument('--iq-conjugate', action='store_true',
+                             help='conjugate IQ to reverse baseband spectral orientation')
     other_title.add_argument('-l', '--linear', action='store_true',
                              help='linear power values instead of logarithmic')
     other_title.add_argument('-R', '--remove-dc', action='store_true',
@@ -301,6 +314,10 @@ def validate_arguments(parser, args):
     for name in ('overlap', 'crop', 'fft_overlap'):
         if not 0 <= getattr(args, name) < 100:
             parser.error('--{} must be in [0, 100)'.format(name.replace('_', '-')))
+    if args.output_fd is not None and args.output_fd < 0:
+        parser.error('--output-fd must be nonnegative')
+    if args.fft_window_param is not None and args.fft_window not in ('kaiser', 'tukey'):
+        parser.error('--fft-window-param is only valid with kaiser or tukey')
     for name in ('gain', 'fft_window_param'):
         value = getattr(args, name)
         if value is not None and not math.isfinite(value):
@@ -334,7 +351,10 @@ def main():
     )
 
     # Import soapypower.power module only after setting log level
-    from soapypower import power
+    try:
+        from soapypower import power
+    except ModuleNotFoundError as error:
+        parser.error('Missing SDR dependency: {}'.format(error.name))
 
     # Detect SoapySDR devices
     if args.detect:
@@ -344,7 +364,7 @@ def main():
 
     # Show info about selected SoapySDR device
     if args.info:
-        device, device_text = device_info(args.device)
+        device, device_text = device_info(args.device, args.channel)
         print(device_text)
         sys.exit(0 if device else 1)
 
@@ -365,8 +385,8 @@ def main():
             output_format=args.format
         )
         logger.info('Using device: {}'.format(sdr.device.hardware))
-    except RuntimeError:
-        parser.error('No devices found!')
+    except RuntimeError as error:
+        parser.error('Unable to initialize SDR: {}'.format(error))
 
     # Prepare arguments for SoapyPower.sweep()
     if len(args.freq) < 2:
@@ -417,7 +437,8 @@ def main():
         remove_dc=args.remove_dc, detrend=args.detrend if args.detrend != 'none' else None,
         lnb_lo=args.lnb_lo, tune_delay=args.tune_delay, reset_stream=args.reset_stream,
         base_buffer_size=args.buffer_size, max_buffer_size=args.max_buffer_size,
-        max_threads=args.max_threads, max_queue_size=args.max_queue_size
+        max_threads=args.max_threads, max_queue_size=args.max_queue_size,
+        precision=args.precision, iq_conjugate=args.iq_conjugate, lnb_high_side=args.lnb_high_side
     )
 
 

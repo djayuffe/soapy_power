@@ -1,37 +1,34 @@
-# Maintainer: Michal Krenek (Mikos) <m.krenek@gmail.com>
-pkgname=soapy_power
-pkgver=1.6.1
+# Development package for the audited fork. Original project: Michal Krenek.
+pkgname=soapy_power-git
+pkgver=1.6.1.r0
 pkgrel=1
-pkgdesc="Obtain power spectrum from SoapySDR devices (RTL-SDR, Airspy, SDRplay, HackRF, bladeRF, USRP, LimeSDR, etc.)"
+pkgdesc="Power spectrum measurement from SoapySDR devices (audited development fork)"
 arch=('any')
-url="https://github.com/xmikos/soapy_power"
+url="https://github.com/djayuffe/soapy_power"
 license=('MIT')
 depends=('python' 'python-numpy' 'simplesoapy>=1.5.0' 'simplespectral')
-makedepends=('python-setuptools')
+makedepends=('git' 'python-setuptools')
+provides=('soapy_power')
+conflicts=('soapy_power')
 optdepends=(
-  'soapyrtlsdr-git: support for RTL-SDR (RTL2832U) dongles'
-  'soapyairspy-git: support for Airspy R2 and Airspy Mini'
-  'soapysdrplay-git: support for SDRplay RSP'
-  'soapyhackrf-git: support for HackRF'
-  'soapybladerf-git: support for Nuand bladeRF'
-  'soapyuhd-git: support for Ettus USRP'
-  'soapylms7-git: support for LimeSDR and other LMS7002M based Myriad RF boards'
-  'soapyredpitaya-git: support for Red Pitaya'
-  'soapyosmo-git: support for MiriSDR and RFSpace'
-  'soapyremote-git: use any SoapySDR device remotely over network'
-  'python-pyfftw: fastest FFT calculations with FFTW library'
-  'python-scipy: faster FFT calculations with scipy.fftpack library'
+  'python-pyfftw: optional FFTW backend'
+  'python-scipy: optional SciPy FFT backend'
 )
-source=(https://github.com/xmikos/soapy_power/archive/v$pkgver.tar.gz)
+source=('soapy_power::git+https://github.com/djayuffe/soapy_power.git#branch=master')
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/soapy_power"
+  printf '1.6.1.r%s.g%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
 
 build() {
-  cd "$srcdir/${pkgname}-$pkgver"
+  cd "$srcdir/soapy_power"
   python setup.py build
 }
 
 package() {
-  cd "$srcdir/${pkgname}-$pkgver"
+  cd "$srcdir/soapy_power"
   python setup.py install --root="$pkgdir"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
-
-# vim:set ts=2 sw=2 et:

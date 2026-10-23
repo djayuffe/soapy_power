@@ -74,9 +74,9 @@ class SpectrumTests(unittest.TestCase):
             psd = self.make_psd(bins=bins, log_scale=False, fft_window=window, detrend='constant')
             state = psd.set_center_freq(0)
             psd.update(state, x)
-            _, expected = welch(x, fs=1024, nperseg=bins, noverlap=bins // 2, window=window,
+            _, expected = welch(x.astype(np.complex128), fs=1024, nperseg=bins, noverlap=bins // 2, window=window,
                                 detrend='constant', return_onesided=False)
-            np.testing.assert_allclose(psd.result(state)[1], np.fft.fftshift(expected), rtol=3e-6)
+            np.testing.assert_allclose(psd.result(state)[1], np.fft.fftshift(expected), rtol=3e-12, atol=1e-25)
 
     def test_small_crop_and_zero_power(self):
         psd = self.make_psd(crop_factor=0.001)
@@ -106,10 +106,18 @@ class SpectrumTests(unittest.TestCase):
     def test_worker_failures_propagate_for_multiple_updates(self):
         psd = self.make_psd()
         state = psd.set_center_freq(0)
-        psd.update_async(state, np.zeros(4))
-        psd.update_async(state, np.zeros(128))
-        with self.assertRaises(ValueError):
-            psd.result_async(state).result(timeout=5)
+        release = threading.Event()
+        self.addCleanup(release.set)
+        def failed_fft(*args, **kwargs):
+            release.wait(5)
+            raise RuntimeError('FFT backend failed')
+        with mock.patch('soapypower.psd.simplespectral.fft', side_effect=failed_fft):
+            psd.update_async(state, np.zeros(128))
+            psd.update_async(state, np.zeros(128))
+            future = psd.result_async(state)
+            release.set()
+            with self.assertRaisesRegex(RuntimeError, 'FFT backend failed'):
+                future.result(timeout=5)
 
     def test_invalid_configuration_and_empty_state(self):
         for kwargs in ({'bins': 1}, {'fft_overlap': 1}, {'crop_factor': 0.999}):
@@ -240,15 +248,18 @@ class AcquisitionTests(unittest.TestCase):
                 pass
             def start_stream(self, buffer_size=0):
                 self.is_streaming = True
-                return np.zeros(buffer_size or 64, dtype=np.complex64)
+                self.buffer = np.zeros(buffer_size or 64, dtype=np.complex64)
+                return self.buffer
             def stop_stream(self):
                 self.is_streaming = False
-            def read_stream_into_buffer(self, buffer):
+            def read_stream(self):
                 self.reads += 1
                 if self.fail_read:
                     raise RuntimeError('device disconnected')
-                buffer[:] = 1
-        self.modules = mock.patch.dict(sys.modules, {'simplesoapy': types.SimpleNamespace(SoapyDevice=FakeDevice)})
+                self.buffer[:] = 1
+                return types.SimpleNamespace(ret=len(self.buffer), flags=0, timeNs=0)
+        self.modules = mock.patch.dict(sys.modules, {'simplesoapy': types.SimpleNamespace(SoapyDevice=FakeDevice, SoapySDR=types.SimpleNamespace(
+            SOAPY_SDR_OVERFLOW=-4, SOAPY_SDR_END_ABRUPT=8, SOAPY_SDR_HAS_TIME=4))})
         self.modules.start()
         self.addCleanup(self.modules.stop)
         import importlib
@@ -276,15 +287,16 @@ class AcquisitionTests(unittest.TestCase):
         self.assertIsNone(formatter.read(self.output))
 
     def test_interrupted_acquisition_reports_actual_samples(self):
-        original_read = self.sdr.device.read_stream_into_buffer
-        def interrupt(buffer):
-            original_read(buffer)
+        original_read = self.sdr.device.read_stream
+        def interrupt():
+            result = original_read()
             self.power._shutdown = True
-        self.sdr.device.read_stream_into_buffer = interrupt
+            return result
+        self.sdr.device.read_stream = interrupt
         self.sdr.sweep(10000, 10000, 64, 4, runs=1, max_threads=1, max_buffer_size=128)
         self.output.seek(0)
         header, _ = writer.SoapyPowerBinFormat().read(self.output)
-        self.assertEqual(header.samples, 128)
+        self.assertEqual(header.samples, 64)
 
     def test_startup_and_acquisition_errors_cleanup(self):
         with self.assertRaises(ValueError):
@@ -319,11 +331,14 @@ class AcquisitionTests(unittest.TestCase):
             finally:
                 psd.close()
 
-    def test_buffer_cap_and_small_integration_overshoot(self):
+    def test_buffer_cap_and_exact_integration_length(self):
         repeats, buffer = self.sdr.create_buffer(64, 17, 64, 1024)
-        self.assertLessEqual(len(buffer), 1024)
-        self.assertGreaterEqual(repeats * len(buffer), 64 * 17)
-        self.assertLess(repeats * len(buffer) - 64 * 17, repeats * 64)
+        self.assertEqual(len(buffer), 1024)
+        self.assertEqual(repeats, 2)
+        self.sdr.sweep(10000, 10000, 64, 17, runs=1, max_buffer_size=1024)
+        self.output.seek(0)
+        header, _ = writer.SoapyPowerBinFormat().read(self.output)
+        self.assertEqual(header.samples, 64 * 17)
 
     def test_import_does_not_replace_signal_handlers(self):
         import importlib

@@ -8,10 +8,11 @@ Requirements
 
 - `Python 3 <https://www.python.org>`_
 - `NumPy <http://www.numpy.org>`_
+- SoapySDR Python bindings and the driver for your SDR (installed separately)
 - `SimpleSoapy <https://github.com/xmikos/simplesoapy>`_
 - `SimpleSpectral <https://github.com/xmikos/simplespectral>`_
-- Optional: `pyFFTW <https://github.com/pyFFTW/pyFFTW>`_ (for fastest FFT calculations with FFTW library)
-- Optional: `SciPy <https://www.scipy.org>`_ (for faster FFT calculations with scipy.fftpack library)
+- Optional: `pyFFTW <https://github.com/pyFFTW/pyFFTW>`_ (optional FFTW backend)
+- Optional: `SciPy <https://www.scipy.org>`_ (optional SciPy FFT backend)
 
 SciPy and pyFFTW provide optional accelerated FFT backends. Performance and
 memory use depend on FFT size, backend, thread count and the host system.
@@ -20,13 +21,21 @@ Usage
 -----
 ::
 
-    usage: soapy_power [-h] [-f Hz|Hz:Hz] [-O FILE | --output-fd NUM] [-F {rtl_power,rtl_power_fftw,soapy_power_bin}] [-q]
-                       [--debug] [--detect] [--info] [--version] [-b BINS | -B Hz] [-n REPEATS | -t SECONDS | -T SECONDS]
-                       [-c | -u RUNS | -e SECONDS] [-d DEVICE] [-C CHANNEL] [-A ANTENNA] [-r Hz] [-w Hz] [-p PPM]
-                       [-g dB | -G STRING | -a] [--lnb-lo Hz] [--device-settings STRING] [--force-rate] [--force-bandwidth]
-                       [--tune-delay SECONDS] [--reset-stream] [-o PERCENT | -k PERCENT] [-s BUFFER_SIZE] [-S MAX_BUFFER_SIZE]
-                       [--even | --pow2] [--max-threads NUM] [--max-queue-size NUM] [--no-pyfftw] [-l] [-R]
-                       [-D {none,constant}] [--fft-window {boxcar,hann,hamming,blackman,bartlett,kaiser,tukey}]
+    usage: soapy_power [-h] [-f Hz|Hz:Hz] [-O FILE | --output-fd NUM]
+                       [-F {rtl_power,rtl_power_fftw,soapy_power_bin}] [-q]
+                       [--debug] [--detect] [--info] [--version] [-b BINS | -B Hz]
+                       [-n REPEATS | -t SECONDS | -T SECONDS]
+                       [-c | -u RUNS | -e SECONDS] [-d DEVICE] [-C CHANNEL]
+                       [-A ANTENNA] [-r Hz] [-w Hz] [-p PPM]
+                       [-g dB | -G STRING | -a] [--lnb-lo Hz] [--lnb-high-side]
+                       [--device-settings STRING] [--force-rate]
+                       [--force-bandwidth] [--tune-delay SECONDS] [--reset-stream]
+                       [-o PERCENT | -k PERCENT] [-s BUFFER_SIZE]
+                       [-S MAX_BUFFER_SIZE] [--even | --pow2] [--max-threads NUM]
+                       [--max-queue-size NUM] [--fft-threads FFT_THREADS]
+                       [--no-pyfftw] [--precision {single,double}]
+                       [--iq-conjugate] [-l] [-R] [-D {none,constant}]
+                       [--fft-window {boxcar,hann,hamming,blackman,bartlett,kaiser,tukey}]
                        [--fft-window-param FLOAT] [--fft-overlap PERCENT]
     
     Obtain a power spectrum from SoapySDR devices
@@ -34,11 +43,14 @@ Usage
     Main options:
       -h, --help            show this help message and exit
       -f Hz|Hz:Hz, --freq Hz|Hz:Hz
-                            center frequency or frequency range to scan, number can be followed by a k, M or G multiplier
-                            (default: 1420405752)
+                            center frequency or frequency range to scan, number
+                            can be followed by a k, M or G multiplier (default:
+                            1420405752)
       -O FILE, --output FILE
-                            output to file (incompatible with --output-fd, default is stdout)
-      --output-fd NUM       output to existing file descriptor (incompatible with -O)
+                            output to file (incompatible with --output-fd, default
+                            is stdout)
+      --output-fd NUM       output to existing file descriptor (incompatible with
+                            -O)
       -F {rtl_power,rtl_power_fftw,soapy_power_bin}, --format {rtl_power,rtl_power_fftw,soapy_power_bin}
                             output format (default: rtl_power)
       -q, --quiet           limit verbosity
@@ -48,22 +60,28 @@ Usage
       --version             show program's version number and exit
     
     FFT bins:
-      -b BINS, --bins BINS  number of FFT bins (incompatible with -B, default: 512)
+      -b BINS, --bins BINS  number of FFT bins (incompatible with -B, default:
+                            512)
       -B Hz, --bin-size Hz  bin size in Hz (incompatible with -b)
     
     Averaging:
       -n REPEATS, --repeats REPEATS
-                            number of spectra to average (incompatible with -t and -T, default: 1600)
+                            integration length in FFT-sized sample blocks
+                            (incompatible with -t and -T, default: 1600)
       -t SECONDS, --time SECONDS
                             integration time (incompatible with -T and -n)
       -T SECONDS, --total-time SECONDS
-                            total integration time of all hops (incompatible with -t and -n)
+                            total integration time of all hops (incompatible with
+                            -t and -n)
     
     Measurements:
-      -c, --continue        repeat the measurement endlessly (incompatible with -u and -e)
-      -u RUNS, --runs RUNS  number of measurements (incompatible with -c and -e, default: 1)
+      -c, --continue        repeat the measurement endlessly (incompatible with -u
+                            and -e)
+      -u RUNS, --runs RUNS  number of measurements (incompatible with -c and -e,
+                            default: 1)
       -e SECONDS, --elapsed SECONDS
-                            scan session duration (time limit in seconds, incompatible with -c and -u)
+                            scan session duration (time limit in seconds,
+                            incompatible with -c and -u)
     
     Device settings:
       -d DEVICE, --device DEVICE
@@ -76,45 +94,69 @@ Usage
       -w Hz, --bandwidth Hz
                             filter bandwidth (default: 0)
       -p PPM, --ppm PPM     frequency correction in ppm
-      -g dB, --gain dB      total gain (incompatible with -G and -a, default: 37.2)
+      -g dB, --gain dB      total gain (incompatible with -G and -a, default:
+                            37.2)
       -G STRING, --specific-gains STRING
-                            specific gains of individual amplification elements (incompatible with -g and -a, example:
+                            specific gains of individual amplification elements
+                            (incompatible with -g and -a, example:
                             LNA=28,VGA=12,AMP=0
-      -a, --agc             enable Automatic Gain Control (incompatible with -g and -G)
-      --lnb-lo Hz           LNB LO frequency, negative for upconverters (default: 0)
+      -a, --agc             enable Automatic Gain Control (incompatible with -g
+                            and -G)
+      --lnb-lo Hz           LNB LO frequency, negative for upconverters (default:
+                            0)
+      --lnb-high-side       use RF = LNB LO - IF and mirror the IQ frequency axis
       --device-settings STRING
                             SoapySDR device settings (example: biastee=true)
-      --force-rate          ignore list of sample rates provided by device and allow any value
-      --force-bandwidth     ignore list of filter bandwidths provided by device and allow any value
-      --tune-delay SECONDS  time to delay measurement after changing frequency (to avoid artifacts)
-      --reset-stream        reset streaming after changing frequency (to avoid artifacts)
+      --force-rate          ignore list of sample rates provided by device and
+                            allow any value
+      --force-bandwidth     ignore list of filter bandwidths provided by device
+                            and allow any value
+      --tune-delay SECONDS  time to delay measurement after changing frequency (to
+                            avoid artifacts)
+      --reset-stream        reset streaming after changing frequency (to avoid
+                            artifacts)
     
     Crop:
       -o PERCENT, --overlap PERCENT
-                            percent of overlap when frequency hopping (incompatible with -k)
+                            percent of overlap when frequency hopping
+                            (incompatible with -k)
       -k PERCENT, --crop PERCENT
-                            percent of crop when frequency hopping (incompatible with -o)
+                            percent of crop when frequency hopping (incompatible
+                            with -o)
     
     Performance options:
       -s BUFFER_SIZE, --buffer-size BUFFER_SIZE
-                            base buffer size (number of samples, 0 = auto, default: 0)
+                            base buffer size (number of samples, 0 = auto,
+                            default: 0)
       -S MAX_BUFFER_SIZE, --max-buffer-size MAX_BUFFER_SIZE
-                            maximum buffer size (number of samples, -1 = unlimited, 0 = auto, default: 0)
+                            maximum buffer size (number of samples, -1 =
+                            unlimited, 0 = auto, default: 0)
       --even                use only even numbers of FFT bins
       --pow2                use only powers of 2 as number of FFT bins
       --max-threads NUM     maximum number of PSD threads (0 = auto, default: 0)
-      --max-queue-size NUM  maximum size of PSD work queue (-1 = unlimited, 0 = auto, default: 0)
-      --no-pyfftw           don't use pyfftw library even if it is available (use scipy.fftpack or numpy.fft)
+      --max-queue-size NUM  maximum size of PSD work queue (-1 = unlimited, 0 =
+                            auto, default: 0)
+      --fft-threads FFT_THREADS
+                            threads per pyFFTW transform (default: 1; PSD workers
+                            run in parallel)
+      --no-pyfftw           don't use pyfftw library even if it is available (use
+                            scipy.fftpack or numpy.fft)
     
     Other options:
+      --precision {single,double}
+                            FFT computation precision (default: double)
+      --iq-conjugate        conjugate IQ to reverse baseband spectral orientation
       -l, --linear          linear power values instead of logarithmic
-      -R, --remove-dc       interpolate central point to cancel DC bias (useful only with boxcar window)
+      -R, --remove-dc       interpolate central point to cancel DC bias (useful
+                            only with boxcar window)
       -D {none,constant}, --detrend {none,constant}
-                            remove mean value from data to cancel DC bias (default: none)
+                            remove mean value from data to cancel DC bias
+                            (default: none)
       --fft-window {boxcar,hann,hamming,blackman,bartlett,kaiser,tukey}
                             Welch's method window function (default: hann)
       --fft-window-param FLOAT
-                            shape parameter of window function (required for kaiser and tukey windows)
+                            shape parameter of window function (required for
+                            kaiser and tukey windows)
       --fft-overlap PERCENT
                             Welch's method overlap between segments (default: 50)
 
@@ -202,11 +244,13 @@ They are not calibrated dBm without device-specific calibration. Integration of
 linear density over frequency gives signal power. Zero power is represented as
 negative infinity in logarithmic output.
 
-Averages are weighted by the number of complete Welch segments in each input
-buffer and accumulated in float64. Log conversion happens after averaging.
-Segments restart at each acquisition buffer; overlap does not span buffer
-boundaries. The requested integration time is a minimum: acquisition rounds to
-whole device blocks and each buffer must fit an FFT. Output sample counts and
+Averages use the number of complete Welch segments and compensated float64
+accumulation. FFT computation defaults to double precision; ``--precision single``
+is available when throughput matters more than the additional precision. Log conversion happens after averaging.
+The radio acquisition path preserves overlap across reads, so the PSD does not
+depend on how an uninterrupted record is divided into buffers. Independent
+records submitted through the library API remain independent. The requested
+integration time is a minimum: acquisition rounds once to whole device blocks. Output sample counts and
 UTC timestamps describe the data actually acquired, including partial shutdown.
 
 A Hann window with 50 percent segment overlap is a useful general default.
@@ -218,7 +262,10 @@ replaces the central bin and is mainly useful with boxcar.
 Install an accelerated backend with ``pip install '.[fft]'`` (SciPy) or
 ``pip install '.[fftw]'`` (pyFFTW). ``--no-pyfftw`` selects the available fallback.
 ``--pow2`` rounds FFT lengths upward and therefore changes frequency resolution.
-Choose thread and queue limits for available RAM: ``--max-buffer-size`` limits
+Automatic settings use up to four PSD workers, one pending slot per worker,
+and acquisition chunks of about 100 ms (at least one device block, at most
+100 MiB unless a device block itself is larger). Choose explicit thread and
+queue limits for available RAM: ``--max-buffer-size`` limits
 one acquisition buffer, not the whole process, and FFT workspaces and queued
 copies also consume memory. ``--max-threads 1 --max-queue-size 1`` minimizes
 concurrent PSD jobs. An unlimited queue can consume unbounded RAM.
@@ -240,3 +287,55 @@ worker, plus FFT workspaces. Windows are DFT-periodic for both odd and even FFT
 lengths; Tukey alpha=0 is boxcar and alpha=1 is Hann. ``--fft-threads`` controls
 threads per pyFFTW transform (default 1) independently of ``--max-threads`` PSD
 workers, avoiding nested CPU oversubscription by default.
+
+Radio and IQ conventions
+------------------------
+
+Input is complex CF32 IQ from SoapySDR, interpreted as I + jQ. A positive
+baseband tone maps above the tuned frequency by default; no one-sided factor
+of two is applied. ``--iq-conjugate`` explicitly reverses baseband orientation
+when an IQ convention or external signal chain requires it. It does not
+estimate or automatically correct IQ imbalance.
+
+Low-side translation uses RF = LO + IF with ``--lnb-lo``. Negative LO offsets
+remain useful for upconverters. ``--lnb-high-side`` uses RF = LO - IF, mirrors
+the frequency axis and emits ascending RF bins. An even FFT has one Nyquist
+endpoint, so its mirrored interval uses the opposite endpoint. Output follows
+the device's actual reported tuning; quantized tuning can change requested
+frequency coverage. Driver-reported rates and frequencies are not an external
+clock calibration.
+
+The acquisition reader handles short packets and retains unused packet samples
+between chunks. It aborts a measurement on reported overflow, abrupt termination
+or detected hardware timestamp gaps. Without hardware timestamps, unreported
+gaps cannot be detected. Time limits and interrupts are checked between device
+reads and frequency hops; a blocking driver call or queued computation can delay
+return. Existing asynchronous work drains before shutdown.
+
+FFT bin spacing is fs/N. Window equivalent noise bandwidth (ENBW), logged at
+setup, is fs*sum(w**2)/sum(w)**2; it is 1.5 bins for periodic Hann and one bin
+for boxcar. These are distinct quantities: narrower FFT spacing alone does not
+remove window leakage or resolve arbitrarily close signals. Raw segment counts
+are not counts of statistically independent averages when windows overlap.
+
+A coherent unit complex tone integrates to unit input power; a unit real cosine
+integrates to one half. Integrating an arbitrary windowed record returns its
+window-weighted mean-square power. Cropping, DC interpolation and detrending
+change the measured band or signal, so full-band energy identities must be
+applied before those operations. ``-n`` specifies integration length in FFT-sized
+sample blocks; Welch segment count also depends on overlap.
+
+Neither uncalibrated IQ amplitude nor device gain is enough to label values as
+dBm, dBm/Hz or calibrated dBFS. Absolute measurements need a defined IQ scale,
+receiver gain/frequency calibration, impedance convention and external reference.
+AGC, clipping, LO feedthrough, IQ images and analog filtering can change a
+spectrum. Mean removal and DC-bin interpolation can also remove real signals
+near zero frequency. No blind IQ/image correction or absolute power calibration
+is applied. Logarithms are taken after averaging linear power; this does not
+make the dB estimator statistically unbiased.
+
+Binary v2 retains its float32 payload and has no embedded units, gain, window,
+IQ orientation or calibration metadata. Preserve command/settings alongside the
+file. Text output retains float64 values. Binary reads validate frequency
+geometry and limit payloads to 256 MiB by default; the formatter's constructor
+can change or disable that limit for trusted larger records.

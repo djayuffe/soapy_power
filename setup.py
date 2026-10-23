@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from pathlib import Path
 from setuptools import setup
 from soapypower.version import __version__
 
@@ -7,10 +8,11 @@ setup(
     name='soapy_power',
     version=__version__,
     description='Obtain power spectrum from SoapySDR devices (RTL-SDR, Airspy, SDRplay, HackRF, bladeRF, USRP, LimeSDR, etc.)',
-    long_description=open('README.rst').read(),
+    long_description=(Path(__file__).parent / 'README.rst').read_text(encoding='utf-8'),
     author='Michal Krenek (Mikos)',
     author_email='m.krenek@gmail.com',
-    url='https://github.com/xmikos/soapy_power',
+    url='https://github.com/djayuffe/soapy_power',
+    project_urls={'Upstream': 'https://github.com/xmikos/soapy_power'},
     license='MIT',
     packages=['soapypower'],
     entry_points={

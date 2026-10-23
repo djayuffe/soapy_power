@@ -1,5 +1,6 @@
 """Thread pools with bounded submissions and public-API backpressure."""
 import os
+from soapypower.numerics import integer
 import threading
 import concurrent.futures
 
@@ -7,8 +8,9 @@ import concurrent.futures
 class ThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
     """Bound pending work without replacing the executor's internal queue."""
     def __init__(self, max_workers=0, thread_name_prefix='', max_queue_size=0):
-        if max_workers < 0 or max_queue_size < -1:
-            raise ValueError('invalid worker or queue limit')
+        max_workers = integer(max_workers, 'max_workers')
+        max_queue_size = integer(max_queue_size, 'max_queue_size', -1)
+        self._stopping = threading.Event()
         super().__init__(max_workers=max_workers or os.cpu_count() or 1,
                          thread_name_prefix=thread_name_prefix)
         self.max_queue_size = max_queue_size or self._max_workers * 10
@@ -25,8 +27,12 @@ class ThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
             self._slots.release()
 
     def submit(self, fn, *args, **kwargs):
+        if self._stopping.is_set():
+            raise RuntimeError('cannot schedule new futures after shutdown')
         if self._slots:
-            self._slots.acquire()
+            while not self._slots.acquire(timeout=0.1):
+                if self._stopping.is_set():
+                    raise RuntimeError('cannot schedule new futures after shutdown')
         with self._pending_lock:
             self._pending += 1
             queued = max(0, self._pending - self._max_workers)
@@ -38,3 +44,7 @@ class ThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
             raise
         future.add_done_callback(self._finished)
         return future
+
+    def shutdown(self, wait=True, **kwargs):
+        self._stopping.set()
+        return super().shutdown(wait=wait, **kwargs)
