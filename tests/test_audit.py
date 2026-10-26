@@ -259,7 +259,7 @@ class AcquisitionTests(unittest.TestCase):
                 self.buffer[:] = 1
                 return types.SimpleNamespace(ret=len(self.buffer), flags=0, timeNs=0)
         self.modules = mock.patch.dict(sys.modules, {'simplesoapy': types.SimpleNamespace(SoapyDevice=FakeDevice, SoapySDR=types.SimpleNamespace(
-            SOAPY_SDR_OVERFLOW=-4, SOAPY_SDR_END_ABRUPT=8, SOAPY_SDR_HAS_TIME=4))})
+            SOAPY_SDR_OVERFLOW=-4, SOAPY_SDR_END_ABRUPT=8, SOAPY_SDR_HAS_TIME=4, SOAPY_SDR_END_BURST=2))})
         self.modules.start()
         self.addCleanup(self.modules.stop)
         import importlib

@@ -7,6 +7,7 @@ import simplesoapy
 from simplespectral import zeros
 
 from soapypower import psd, writer
+from soapypower.frontend import Frontend
 from soapypower.numerics import crop_bins, finite, integer
 
 logger = logging.getLogger(__name__)
@@ -34,22 +35,39 @@ class SoapyPower:
     def __init__(self, soapy_args='', sample_rate=2.00e6, bandwidth=0, corr=0, gain=20.7,
                  auto_gain=False, channel=0, antenna='', settings=None,
                  force_sample_rate=False, force_bandwidth=False,
-                 output=sys.stdout, output_format='rtl_power'):
+                 output=sys.stdout, output_format='rtl_power', dc_correction='default',
+                 iq_correction='default', tune_args=None):
         finite(sample_rate, 'sample_rate', positive=True)
         finite(bandwidth, 'bandwidth', nonnegative=True)
         integer(channel, 'channel')
         if output_format not in writer.formats:
             raise ValueError('unknown output format')
         self.device = simplesoapy.SoapyDevice(
-            soapy_args=soapy_args, sample_rate=sample_rate, bandwidth=bandwidth, corr=corr,
-            gain=gain, auto_gain=auto_gain, channel=channel, antenna=antenna, settings=settings,
+            soapy_args=soapy_args, sample_rate=sample_rate, bandwidth=bandwidth, corr=0,
+            gain=None, auto_gain=False, channel=channel, antenna=antenna, settings=settings,
             force_sample_rate=force_sample_rate, force_bandwidth=force_bandwidth
         )
 
+        actual_channel = getattr(self.device, 'channel', channel)
+        if actual_channel != channel:
+            raise ValueError('requested RX channel is unavailable; refusing fallback channel')
+        self._frontend = Frontend(self.device, getattr(simplesoapy.SoapySDR, 'SOAPY_SDR_RX', 1), channel,
+                                  dc_correction, iq_correction)
+        self._requested_gain = dict(gain) if isinstance(gain, dict) else gain
+        self._requested_agc = bool(auto_gain)
+        self._apply_gain()
+        self._frontend.frequency_correction(corr)
+        self._frontend.apply_corrections()
+        self._device_settings = dict(settings or {})
+        self._tune_args = dict(tune_args or {})
+        if any(not isinstance(k, str) or not isinstance(v, str) for k, v in self._tune_args.items()):
+            raise ValueError('tuning arguments must be strings')
+        self._tune_args_applied = False
         finite(self.device.sample_rate, 'device sample_rate', positive=True)
         self._deadline = None
         self._read_tail = numpy.empty(0, dtype=numpy.complex64)
         self._next_sample_time = None
+        self._burst_ended = False
         self._output = output
         self._output_format = output_format
 
@@ -63,6 +81,19 @@ class SoapyPower:
         self._reset_stream = None
         self._psd = None
         self._writer = None
+
+    def _apply_gain(self):
+        self._frontend.gain_mode(self._requested_agc)
+        if not self._requested_agc:
+            if isinstance(self._requested_gain, dict):
+                for element, value in self._requested_gain.items():
+                    self.device.set_gain(element, finite(value, 'gain'))
+            elif self._requested_gain is not None:
+                self.device.gain = finite(self._requested_gain, 'gain')
+
+    def measurement_context(self):
+        return self._frontend.context(self._device_settings, self._tune_args,
+                                      self._lnb_lo, self._lnb_high_side, self._iq_conjugate)
 
     def nearest_freq(self, freq, bin_size):
         """Return nearest frequency based on bin size"""
@@ -209,7 +240,8 @@ class SoapyPower:
     def setup(self, bins, repeats, base_buffer_size=0, max_buffer_size=0, fft_window='hann',
               fft_overlap=0.5, crop_factor=0, log_scale=True, remove_dc=False, detrend=None,
               lnb_lo=0, tune_delay=0, reset_stream=False, max_threads=0, max_queue_size=0,
-              precision='double', iq_conjugate=False, lnb_high_side=False):
+              precision='double', iq_conjugate=False, lnb_high_side=False,
+              dc_mask_width=0, dc_offset=0, calibration=None, fft_threads=1):
         """Prepare samples buffer and start streaming samples from device"""
         bins = integer(bins, 'bins', 2)
         repeats = integer(repeats, 'repeats', 1)
@@ -222,6 +254,12 @@ class SoapyPower:
         if self._psd is not None or self.device.is_streaming:
             self.stop()
 
+        self._calibration = calibration
+        self._lnb_lo, self._lnb_high_side, self._iq_conjugate = lnb_lo, lnb_high_side, iq_conjugate
+        self._need_context = calibration is not None or self._output_format == 'json'
+        if calibration is not None:
+            calibration.validate_context(self.measurement_context(), before_tune=True)
+        self._burst_ended = False
         try:
             base_buffer = self.device.start_stream(buffer_size=base_buffer_size)
             block_size = integer(len(base_buffer), 'device block size', 1)
@@ -239,8 +277,12 @@ class SoapyPower:
                                 crop_factor=crop_factor, log_scale=log_scale, remove_dc=remove_dc, detrend=detrend,
                                 lnb_lo=lnb_lo, max_threads=max_threads, max_queue_size=max_queue_size,
                                 precision=precision, iq_conjugate=iq_conjugate,
-                                frequency_sign=-1 if lnb_high_side else 1)
-            self._writer = writer.formats[self._output_format](self._output, log_scale=log_scale)
+                                frequency_sign=-1 if lnb_high_side else 1,
+                                dc_mask_width=dc_mask_width, dc_offset=dc_offset, calibration=calibration,
+                                fft_threads=fft_threads)
+            self._writer = writer.formats[self._output_format](
+                self._output, log_scale=log_scale, allow_nan=bool(dc_mask_width),
+                power_unit='mW' if calibration is not None else 'input')
             logger.info('FFT bin spacing: %.8g Hz; window ENBW: %.8g Hz (%.6g bins)',
                         self._psd.bin_width, self._psd.enbw, self._psd.enbw / self._psd.bin_width)
         except BaseException:
@@ -287,7 +329,7 @@ class SoapyPower:
             output[:count] = self._read_tail[:count]
             self._read_tail = self._read_tail[count:]
             position = count
-        while position < len(output) and not self._cancelled():
+        while position < len(output) and not self._cancelled() and not self._burst_ended:
             result = self.device.read_stream()
             count = result.ret
             if count == constants.SOAPY_SDR_OVERFLOW:
@@ -319,6 +361,8 @@ class SoapyPower:
             position += copied
             if copied < count:
                 self._read_tail = self.device.buffer[copied:count].copy()
+            if result.flags & constants.SOAPY_SDR_END_BURST:
+                self._burst_ended = True
         return position
 
     def psd(self, freq):
@@ -329,13 +373,22 @@ class SoapyPower:
         t_freq = time.monotonic()
         self._read_tail = numpy.empty(0, dtype=numpy.complex64)
         self._next_sample_time = None
-        if self.device.freq != freq:
+        if self.device.freq != freq or (self._tune_args and not self._tune_args_applied):
             if self._reset_stream:
                 status = self.device.device.deactivateStream(self.device.stream)
                 if status:
                     raise RuntimeError('SDR stream deactivation failed: {}'.format(status))
             try:
-                self.device.freq = freq
+                if self._tune_args:
+                    if self._frontend.raw is None:
+                        raise ValueError('device does not expose tuning arguments')
+                    self._frontend.raw.setFrequency(self._frontend.direction, self._frontend.channel,
+                                                    freq, self._tune_args)
+                    self._tune_args_applied = True
+                else:
+                    self.device.freq = freq
+                self._apply_gain()
+                self._frontend.apply_corrections()
             finally:
                 if self._reset_stream:
                     status = self.device.device.activateStream(self.device.stream)
@@ -353,10 +406,16 @@ class SoapyPower:
         if not math.isclose(actual_freq, freq, rel_tol=0, abs_tol=self._psd.bin_width * 1e-6):
             logger.warning('Requested center %.9g Hz; device tuned %.9g Hz. Output uses actual tuning.',
                            freq, actual_freq)
+        context = self.measurement_context() if self._need_context else None
+        if self._calibration is not None:
+            self._calibration.validate_context(context)
         state = self._psd.set_center_freq(actual_freq)
+        self._last_state = state
+        self._last_context = context
         start = stop = None
         self._acquired_samples = 0
-        while self._acquired_samples < self._target_samples and not self._cancelled():
+        while (self._acquired_samples < self._target_samples and not self._cancelled() and
+               (not self._burst_ended or self._read_tail.size)):
             length = min(len(self._buffer), self._target_samples - self._acquired_samples)
             if start is None:
                 start = datetime.datetime.now(datetime.timezone.utc)
@@ -369,6 +428,9 @@ class SoapyPower:
         if self._acquired_samples < self._bins:
             # A cancelled partial hop has no full FFT and cannot yield a PSD.
             return None, start, stop
+        if self._calibration is not None:
+            # A mode/gain/rate change during acquisition invalidates this hop.
+            self._calibration.validate_context(self.measurement_context())
         future = self._psd.result_async(state)
         logger.debug('Acquired %d samples at %.9g Hz in %.3f s',
                      self._acquired_samples, actual_freq, time.monotonic() - t_freq)
@@ -377,7 +439,8 @@ class SoapyPower:
     def sweep(self, min_freq, max_freq, bins, repeats, runs=0, time_limit=0, overlap=0,
               fft_window='hann', fft_overlap=0.5, crop=False, log_scale=True, remove_dc=False, detrend=None, lnb_lo=0,
               tune_delay=0, reset_stream=False, base_buffer_size=0, max_buffer_size=0, max_threads=0, max_queue_size=0,
-              precision='double', iq_conjugate=False, lnb_high_side=False):
+              precision='double', iq_conjugate=False, lnb_high_side=False,
+              dc_mask_width=0, dc_offset=0, calibration=None, fft_threads=1):
         """Sweep spectrum using frequency hopping"""
         runs = integer(runs, 'runs')
         time_limit = finite(time_limit or 0, 'time_limit', nonnegative=True)
@@ -400,12 +463,13 @@ class SoapyPower:
                 log_scale=log_scale, remove_dc=remove_dc, detrend=detrend, lnb_lo=lnb_lo,
                 tune_delay=tune_delay, reset_stream=reset_stream,
                 max_threads=max_threads, max_queue_size=max_queue_size,
-                precision=precision, iq_conjugate=iq_conjugate, lnb_high_side=lnb_high_side
+                precision=precision, iq_conjugate=iq_conjugate, lnb_high_side=lnb_high_side,
+                dc_mask_width=dc_mask_width, dc_offset=dc_offset, calibration=calibration, fft_threads=fft_threads
             )
             self.freq_plan(min_freq, max_freq, bins, overlap, frequency_sign=direction)
             run = 0
             write_next_future = None
-            while not self._cancelled() and (runs == 0 or run < runs):
+            while not self._cancelled() and not self._burst_ended and (runs == 0 or run < runs):
                 run += 1
                 t_run_start = time.monotonic()
                 logger.debug('Run: {}'.format(run))
@@ -418,10 +482,17 @@ class SoapyPower:
 
                     # Write PSD to stdout (in another thread)
                     if psd_future is not None:
+                        def metadata(handler=self._psd, state=self._last_state,
+                                     context=self._last_context, end_burst=self._burst_ended):
+                            result = handler.measurement_metadata(state)
+                            result['end_burst'] = bool(end_burst)
+                            if context is not None:
+                                result['context'] = context
+                            return result
                         self._writer.write_async(psd_future, acq_time_start, acq_time_stop,
-                                                 self._acquired_samples)
+                                                 self._acquired_samples, metadata=metadata)
 
-                    if self._cancelled():
+                    if self._cancelled() or self._burst_ended:
                         break
 
                 # Write end of measurement marker (in another thread)

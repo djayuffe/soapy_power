@@ -59,7 +59,8 @@ class PSD:
     def __init__(self, bins, sample_rate, fft_window='hann', fft_overlap=0.5,
                  crop_factor=0, log_scale=True, remove_dc=False, detrend=None,
                  lnb_lo=0, max_threads=0, max_queue_size=0, precision='double',
-                 iq_conjugate=False, frequency_sign=1):
+                 iq_conjugate=False, frequency_sign=1, dc_mask_width=0, dc_offset=0,
+                 calibration=None, fft_threads=1):
         self._bins = integer(bins, 'bins', 2)
         self._sample_rate = finite(sample_rate, 'sample_rate', positive=True)
         self._fft_overlap = finite(fft_overlap, 'fft_overlap', nonnegative=True)
@@ -77,18 +78,48 @@ class PSD:
         if precision not in ('single', 'double'):
             raise ValueError('precision must be single or double')
         self._dtype = numpy.dtype(numpy.complex128 if precision == 'double' else numpy.complex64)
+        if precision == 'single':
+            # Normalize against the actual rounded coefficients used by the FFT.
+            self._window = self._window.astype(numpy.float32).astype(numpy.float64)
+            self._window_energy = numpy.dot(self._window, self._window)
+            self._window_scale = self._sample_rate * self._window_energy
         self._fft_overlap_bins = math.floor(self._bins * self._fft_overlap)
         self._step = self._bins - self._fft_overlap_bins
         self._log_scale = log_scale
+        if remove_dc and ((fft_window[0] if isinstance(fft_window, tuple) else fft_window) != 'boxcar' or self._bins < 3):
+            raise ValueError('DC-bin interpolation requires boxcar and at least 3 bins; use DC masking otherwise')
         self._remove_dc = remove_dc
+        self._dc_mask_width = finite(dc_mask_width, 'dc_mask_width', nonnegative=True)
+        self._dc_offset = finite(dc_offset, 'dc_offset')
+        if self._dc_mask_width >= self._sample_rate or abs(self._dc_offset) > self._sample_rate / 2:
+            raise ValueError('DC exclusion must lie in the sampled baseband and be narrower than the sample rate')
+        if self._dc_offset and not self._dc_mask_width:
+            raise ValueError('dc_offset requires a positive DC exclusion width')
+        if remove_dc and self._dc_mask_width:
+            raise ValueError('choose either DC interpolation or exclusion, not both')
+        self._fft_threads = integer(fft_threads, 'fft_threads', 1)
+        self._calibration = calibration
         self._detrend = detrend
         self._lnb_lo = finite(lnb_lo, 'lnb_lo')
-        if frequency_sign not in (-1, 1) or isinstance(frequency_sign, bool):
+        frequency_sign = integer(frequency_sign, 'frequency_sign', -1)
+        if frequency_sign not in (-1, 1):
             raise ValueError('frequency_sign must be +1 or -1')
         self._frequency_sign = frequency_sign
         self._iq_conjugate = iq_conjugate
         self._base_freq_array = numpy.fft.fftfreq(self._bins, 1 / self._sample_rate)
         self._freq_order = numpy.argsort(self._frequency_sign * self._base_freq_array)
+        self._dc_mask = numpy.zeros(self._bins, dtype=bool)
+        if self._dc_mask_width:
+            offset = -self._dc_offset if self._iq_conjugate else self._dc_offset
+            distance = abs((self._base_freq_array - offset + self._sample_rate / 2) %
+                           self._sample_rate - self._sample_rate / 2)
+            self._dc_mask = distance <= self._dc_mask_width / 2
+            if not self._dc_mask.any():
+                raise ValueError('DC exclusion contains no FFT bin centers; increase its width')
+            kept = self._dc_mask[self._freq_order]
+            half = self._crop_bins_half
+            if numpy.all(kept[half:-half] if half else kept):
+                raise ValueError('DC exclusion would remove all retained bins')
         workers = integer(max_threads, 'max_threads') or min(4, os.cpu_count() or 1)
         queue_size = integer(max_queue_size, 'max_queue_size', -1) or workers
         self._executor = threadpool.ThreadPoolExecutor(
@@ -107,6 +138,24 @@ class PSD:
     @property
     def coherent_gain(self):
         return self._window.mean()
+
+    def measurement_metadata(self, state):
+        order = state['freq_order']
+        half = self._crop_bins_half
+        mask = self._dc_mask[order]
+        if half:
+            mask = mask[half:-half]
+        return {'fft_bins': self._bins, 'sample_rate_hz': self._sample_rate,
+                'bin_width_hz': self.bin_width, 'window_enbw_hz': self.enbw,
+                'window': self._fft_window, 'segment_count': state['repeats'],
+                'overlap_samples': self._fft_overlap_bins, 'detrend': self._detrend,
+                'dc_interpolated': bool(self._remove_dc),
+                'dc_mask_width_hz': self._dc_mask_width, 'dc_offset_hz': self._dc_offset,
+                'masked_bins': numpy.flatnonzero(mask).tolist(),
+                'fft_threads': self._fft_threads,
+                'precision': 'double' if self._dtype == numpy.dtype(numpy.complex128) else 'single',
+                'iq_conjugate': bool(self._iq_conjugate), 'frequency_sign': self._frequency_sign,
+                'calibration': self._calibration.metadata() if self._calibration is not None else None}
 
     def set_center_freq(self, center_freq):
         """Start a measurement; never carry overlap across retuning or gaps."""
@@ -134,17 +183,33 @@ class PSD:
                 raise psd_state['error']
             if not psd_state['repeats']:
                 raise ValueError('no complete FFT segments have been accumulated')
-            power = psd_state['pwr_array'].copy() / psd_state['repeats']
+            power = psd_state['pwr_array'].copy()
         if self._remove_dc:
-            power[0] = (power[1] + power[-1]) / 2
+            power[0] = power[1] / 2 + power[-1] / 2
         freqs = psd_state['freq_array'][psd_state['freq_order']]
         power = power[psd_state['freq_order']]
         half = self._crop_bins_half
         if half:
             freqs, power = freqs[half:-half], power[half:-half]
-        if self._log_scale:
+        mask = self._dc_mask[psd_state['freq_order']]
+        if half:
+            mask = mask[half:-half]
+        if self._calibration is not None:
+            baseband = self._base_freq_array.copy()
+            if self._iq_conjugate:
+                baseband = (-baseband + self._sample_rate / 2) % self._sample_rate - self._sample_rate / 2
+            baseband = baseband[psd_state['freq_order']]
+            if half:
+                baseband = baseband[half:-half]
+            valid = ~mask
+            corrected = numpy.full_like(power, numpy.nan)
+            corrected[valid] = self._calibration.apply(freqs[valid], power[valid], self._log_scale,
+                                                       baseband_freqs=baseband[valid])
+            power = corrected
+        elif self._log_scale:
             with numpy.errstate(divide='ignore'):
                 power = 10 * numpy.log10(power)
+        power[mask] = numpy.nan
         return freqs, power
 
     def _complete_result(self, state):
@@ -204,6 +269,9 @@ class PSD:
             strides=(self._step * samples.strides[0], samples.strides[0]), writeable=False)
         batch_size = max(1, (8 * 1024**2) // (self._bins * samples.itemsize))
         total = numpy.zeros(self._bins, dtype=numpy.float64)
+        # Normalize before squaring/summing. This avoids intermediate overflow
+        # when the final mean density is representable but raw FFT power is not.
+        fft_scale = (1 / math.sqrt(self._window_scale)) / math.sqrt(segments)
         for start in range(0, segments, batch_size):
             batch = views[start:start + batch_size]
             if self._detrend:
@@ -211,13 +279,16 @@ class PSD:
             batch = batch * window
             if self._iq_conjugate:
                 numpy.conjugate(batch, out=batch)
-            transformed = simplespectral.fft(batch, n=self._bins, axis=-1)
-            # Square in float64 even with single-precision FFTs: avoid float32
-            # power overflow/underflow and preserve weak spectral components.
-            power = numpy.square(transformed.real, dtype=numpy.float64)
-            power += numpy.square(transformed.imag, dtype=numpy.float64)
-            total += power.sum(axis=0, dtype=numpy.float64)
-        total /= self._window_scale
+            options = {}
+            if getattr(simplespectral, 'fft_pyfftw', False) and simplespectral.use_pyfftw:
+                options['threads'] = self._fft_threads
+            transformed = simplespectral.fft(batch, n=self._bins, axis=-1, **options)
+            # Float64 scaling also prevents single-precision power overflow.
+            real = numpy.asarray(transformed.real, dtype=numpy.float64) * fft_scale
+            imag = numpy.asarray(transformed.imag, dtype=numpy.float64) * fft_scale
+            with numpy.errstate(over='ignore', invalid='ignore'):
+                power = numpy.square(real) + numpy.square(imag)
+                total += power.sum(axis=0, dtype=numpy.float64)
         if not numpy.isfinite(total).all():
             raise ValueError('PSD exceeds float64 range; rescale input IQ')
         return segments, total
@@ -225,15 +296,24 @@ class PSD:
     def _accumulate(self, state, samples):
         segments, total = self._compute(samples)
         with state['update_lock']:
-            state['repeats'] += segments
+            previous_count = state['repeats']
+            total_count = previous_count + segments
             if state['pwr_array'] is None:
-                state['pwr_array'] = total
+                updated = total
+                compensation = state['compensation']
             else:
-                # Compensated summation limits loss when averaging long scans.
-                corrected = total - state['compensation']
-                updated = state['pwr_array'] + corrected
-                state['compensation'] = (updated - state['pwr_array']) - corrected
-                state['pwr_array'] = updated
+                # A weighted running mean avoids overflow of a long sum.
+                # Carry the previous rounding residual with its remaining weight.
+                weight = segments / total_count
+                old = state['pwr_array']
+                corrected = (total - old) * weight - state['compensation'] * (1 - weight)
+                updated = old + corrected
+                compensation = (updated - old) - corrected
+            if not numpy.isfinite(updated).all():
+                raise ValueError('averaged PSD exceeds float64 range')
+            state['pwr_array'] = updated
+            state['compensation'] = compensation
+            state['repeats'] = total_count
 
     def _check_open(self, state, mode):
         if state['result_future'] is not None:

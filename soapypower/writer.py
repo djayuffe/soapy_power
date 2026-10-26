@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
-import os, sys, logging, struct, collections, io, threading, math, concurrent.futures
+import os, sys, logging, struct, collections, io, threading, math, concurrent.futures, json
 
 import numpy
 
 from soapypower import threadpool
+from soapypower.numerics import integer
 
 if sys.platform == 'win32':
     import msvcrt
@@ -14,8 +15,14 @@ logger = logging.getLogger(__name__)
 
 class BaseWriter:
     """Power Spectral Density writer base class"""
-    def __init__(self, output=sys.stdout, log_scale=True):
+    def __init__(self, output=sys.stdout, log_scale=True, allow_nan=False, power_unit='input'):
+        if power_unit not in ('input', 'mW'):
+            raise ValueError('power_unit must be input or mW')
         self._log_scale = log_scale
+        self._allow_nan = allow_nan
+        self._power_unit = power_unit
+        self.unit = (('dBm/Hz' if log_scale else 'mW/Hz') if power_unit == 'mW' else
+                     ('dB(input power/Hz)' if log_scale else 'input power/Hz'))
         self._close_output = False
         self._write_error = None
         self._error_lock = threading.Lock()
@@ -46,13 +53,13 @@ class BaseWriter:
             thread_name_prefix='Writer_thread'
         )
 
-    def write(self, psd_data_or_future, time_start, time_stop, samples):
+    def write(self, psd_data_or_future, time_start, time_stop, samples, metadata=None):
         """Write PSD of one frequency hop"""
         raise NotImplementedError
 
-    def write_async(self, psd_data_or_future, time_start, time_stop, samples):
+    def write_async(self, psd_data_or_future, time_start, time_stop, samples, metadata=None):
         """Write PSD of one frequncy hop (asynchronously in another thread)"""
-        return self._submit(self.write, psd_data_or_future, time_start, time_stop, samples)
+        return self._submit(self.write, psd_data_or_future, time_start, time_stop, samples, metadata)
 
     def write_next(self):
         """Write marker for next run of measurement"""
@@ -93,7 +100,7 @@ class BaseWriter:
             raise self._write_error
 
 
-def spectrum_data(data_or_future, log_scale):
+def spectrum_data(data_or_future, log_scale, allow_nan=False):
     if hasattr(data_or_future, 'result'):
         data_or_future = data_or_future.result()
     freqs, power = (numpy.asarray(array) for array in data_or_future)
@@ -110,6 +117,8 @@ def spectrum_data(data_or_future, log_scale):
         valid = numpy.isfinite(power) | numpy.isneginf(power)
     else:
         valid = numpy.isfinite(power) & (power >= 0)
+    if allow_nan:
+        valid |= numpy.isnan(power)
     if not valid.all():
         raise ValueError('invalid PSD values for selected linear/logarithmic scale')
     return freqs, power
@@ -123,7 +132,8 @@ class SoapyPowerBinFormat:
     version = 2
 
     def __init__(self, max_payload_bytes=256 * 1024**2):
-        self.max_payload_bytes = max_payload_bytes
+        self.max_payload_bytes = (None if max_payload_bytes is None else
+                                  integer(max_payload_bytes, 'max_payload_bytes', 8))
 
     @staticmethod
     def _validate_geometry(time_start, time_stop, start, stop, step, size):
@@ -181,10 +191,19 @@ class SoapyPowerBinFormat:
         header_bytes = self.header_struct.pack(
             self.version, time_start, time_stop, start, stop, step, samples, pwr_array.nbytes
         )
-        f.write(self.magic)
-        f.write(header_bytes)
-        f.write(pwr_array.tobytes())
+        self._write_all(f, self.magic)
+        self._write_all(f, header_bytes)
+        self._write_all(f, pwr_array.tobytes())
         f.flush()
+
+    @staticmethod
+    def _write_all(stream, data):
+        remaining = memoryview(data)
+        while remaining:
+            count = stream.write(remaining)
+            if type(count) is not int or count <= 0 or count > len(remaining):
+                raise OSError('binary output write made no valid progress')
+            remaining = remaining[count:]
 
     def header_size(self):
         """Return total size of header"""
@@ -193,13 +212,13 @@ class SoapyPowerBinFormat:
 
 class SoapyPowerBinWriter(BaseWriter):
     """Write Power Spectral Density to stdout or file (in soapy_power binary format)"""
-    def __init__(self, output=sys.stdout, log_scale=True):
-        super().__init__(output=output, log_scale=log_scale)
+    def __init__(self, output=sys.stdout, log_scale=True, allow_nan=False, power_unit='input'):
+        super().__init__(output=output, log_scale=log_scale, allow_nan=allow_nan, power_unit=power_unit)
         self.formatter = SoapyPowerBinFormat()
 
-    def write(self, psd_data_or_future, time_start, time_stop, samples):
+    def write(self, psd_data_or_future, time_start, time_stop, samples, metadata=None):
         """Write PSD of one frequency hop"""
-        f_array, pwr_array = spectrum_data(psd_data_or_future, self._log_scale)
+        f_array, pwr_array = spectrum_data(psd_data_or_future, self._log_scale, self._allow_nan)
 
         step = (f_array[-1] - f_array[0]) / (len(f_array) - 1)
         self.formatter.write(
@@ -220,22 +239,24 @@ class SoapyPowerBinWriter(BaseWriter):
 
 class RtlPowerFftwWriter(BaseWriter):
     """Write Power Spectral Density to stdout or file (in rtl_power_fftw format)"""
-    def __init__(self, output=sys.stdout, log_scale=True):
-        super().__init__(output=output, log_scale=log_scale)
+    def __init__(self, output=sys.stdout, log_scale=True, allow_nan=False, power_unit='input'):
+        super().__init__(output=output, log_scale=log_scale, allow_nan=allow_nan, power_unit=power_unit)
         if not isinstance(self.output, io.TextIOBase):
             self.output = io.TextIOWrapper(self.output, encoding='utf-8', newline='\n')
             self._wrapped_output = True
 
-    def write(self, psd_data_or_future, time_start, time_stop, samples):
+    def write(self, psd_data_or_future, time_start, time_stop, samples, metadata=None):
         """Write PSD of one frequency hop"""
-        f_array, pwr_array = spectrum_data(psd_data_or_future, self._log_scale)
+        f_array, pwr_array = spectrum_data(psd_data_or_future, self._log_scale, self._allow_nan)
 
         self.output.write('# soapy_power output\n')
         self.output.write('# Acquisition start: {}\n'.format(time_start))
         self.output.write('# Acquisition end: {}\n'.format(time_stop))
         self.output.write('#\n')
-        units = 'dB(input power/Hz)' if self._log_scale else 'input power/Hz'
-        self.output.write('# frequency [Hz] power spectral density [{}]\n'.format(units))
+        self.output.write('# frequency [Hz] power spectral density [{}]\n'.format(self.unit))
+        if metadata is not None:
+            details = metadata() if callable(metadata) else metadata
+            self.output.write('# Metadata: {}\n'.format(json.dumps(details, allow_nan=False, sort_keys=True)))
 
         for f, pwr in zip(f_array, pwr_array):
             self.output.write('{} {}\n'.format(f, pwr))
@@ -251,15 +272,15 @@ class RtlPowerFftwWriter(BaseWriter):
 
 class RtlPowerWriter(BaseWriter):
     """Write Power Spectral Density to stdout or file (in rtl_power format)"""
-    def __init__(self, output=sys.stdout, log_scale=True):
-        super().__init__(output=output, log_scale=log_scale)
+    def __init__(self, output=sys.stdout, log_scale=True, allow_nan=False, power_unit='input'):
+        super().__init__(output=output, log_scale=log_scale, allow_nan=allow_nan, power_unit=power_unit)
         if not isinstance(self.output, io.TextIOBase):
             self.output = io.TextIOWrapper(self.output, encoding='utf-8', newline='\n')
             self._wrapped_output = True
 
-    def write(self, psd_data_or_future, time_start, time_stop, samples):
+    def write(self, psd_data_or_future, time_start, time_stop, samples, metadata=None):
         """Write PSD of one frequency hop"""
-        f_array, pwr_array = spectrum_data(psd_data_or_future, self._log_scale)
+        f_array, pwr_array = spectrum_data(psd_data_or_future, self._log_scale, self._allow_nan)
 
         step = (f_array[-1] - f_array[0]) / (len(f_array) - 1)
         row = [
@@ -275,7 +296,37 @@ class RtlPowerWriter(BaseWriter):
         pass
 
 
+class JsonWriter(BaseWriter):
+    """One standard JSON record per hop, with explicit units and missing bins."""
+    def __init__(self, output=sys.stdout, log_scale=True, allow_nan=False, power_unit='input'):
+        super().__init__(output, log_scale, allow_nan, power_unit)
+        if not isinstance(self.output, io.TextIOBase):
+            self.output = io.TextIOWrapper(self.output, encoding='utf-8', newline='\n')
+            self._wrapped_output = True
+
+    def write(self, psd_data_or_future, time_start, time_stop, samples, metadata=None):
+        freqs, power = spectrum_data(psd_data_or_future, self._log_scale, self._allow_nan)
+        step = (freqs[-1] - freqs[0]) / (len(freqs) - 1)
+        details = metadata() if callable(metadata) else metadata
+        record = {
+            'version': 1, 'time_start': time_start.isoformat(), 'time_stop': time_stop.isoformat(),
+            'start_hz': float(freqs[0]), 'stop_hz': float(freqs[-1] + step), 'step_hz': float(step),
+            'samples': int(samples), 'unit': self.unit,
+            'power': [float(value) if numpy.isfinite(value) else None for value in power],
+            'masked_bins': numpy.flatnonzero(numpy.isnan(power)).tolist(),
+            'zero_power_bins': (numpy.flatnonzero(numpy.isneginf(power)).tolist() if self._log_scale
+                                else numpy.flatnonzero(power == 0).tolist()),
+            'metadata': details,
+        }
+        self.output.write(json.dumps(record, allow_nan=False, sort_keys=True) + '\n')
+        self.output.flush()
+
+    def write_next(self):
+        pass
+
+
 formats = {
+    'json': JsonWriter,
     'soapy_power_bin': SoapyPowerBinWriter,
     'rtl_power_fftw': RtlPowerFftwWriter,
     'rtl_power': RtlPowerWriter,

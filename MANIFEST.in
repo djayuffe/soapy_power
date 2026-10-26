@@ -2,3 +2,9 @@ include LICENSE
 include README.rst
 include AUDIT.md
 recursive-include tests *.py
+include RADIO_THEORY.md
+include OPERATIONS.md
+include DEVELOPMENT.md
+include pyproject.toml
+recursive-include tools *.py
+recursive-include .github/workflows *.yml

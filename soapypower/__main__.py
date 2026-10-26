@@ -103,6 +103,14 @@ def device_info(soapy_args='', channel=0):
         text.append('    {}'.format(', '.join(str(x) for x in device.list_channels())))
         text.append('  Available antennas:')
         text.append('    {}'.format(', '.join(device.list_antennas())))
+        from soapypower.frontend import Frontend
+        controls = Frontend(device, simplesoapy.SoapySDR.SOAPY_SDR_RX, device.channel)
+        text.append('  Frontend capabilities (selected RX channel):')
+        for label, method in (('AGC', 'hasGainMode'), ('automatic DC correction', 'hasDCOffsetMode'),
+                              ('automatic IQ correction', 'hasIQBalanceMode'),
+                              ('manual DC correction', 'hasDCOffset'), ('manual IQ correction', 'hasIQBalance'),
+                              ('frequency correction', 'hasFrequencyCorrection')):
+            text.append('    {}: {}'.format(label, 'supported' if controls.supported(method) else 'not advertised'))
         text.append('  Available tunable elements:')
         text.append('    {}'.format(', '.join(device.list_frequencies())))
         text.append('  Available amplification elements:')
@@ -236,6 +244,12 @@ def setup_argument_parser():
                               help='LNB LO frequency, negative for upconverters (default: %(default)s)')
     device_title.add_argument('--lnb-high-side', action='store_true',
                               help='use RF = LNB LO - IF and mirror the IQ frequency axis')
+    device_title.add_argument('--dc-correction', choices=['default', 'on', 'off'], default='default',
+                              help='driver DC correction mode (default leaves device behavior unchanged)')
+    device_title.add_argument('--iq-correction', choices=['default', 'on', 'off'], default='default',
+                              help='driver IQ correction mode (default leaves device behavior unchanged)')
+    device_title.add_argument('--tune-args', type=device_settings, default='', metavar='KEY=VALUE,...',
+                              help='SoapySDR frequency arguments, e.g. OFFSET=250000 (driver dependent)')
     device_title.add_argument('--device-settings', metavar='STRING', type=device_settings, default='',
                               help='SoapySDR device settings (example: biastee=true)')
     device_title.add_argument('--force-rate', action='store_true',
@@ -276,6 +290,12 @@ def setup_argument_parser():
                             help='don\'t use pyfftw library even if it is available (use scipy.fftpack or numpy.fft)')
 
     other_title = parser.add_argument_group('Other options')
+    other_title.add_argument('--calibration', metavar='JSON',
+                             help='measured, settings-matched power calibration profile; output dBm/Hz or mW/Hz')
+    other_title.add_argument('--dc-mask-width', type=float_with_multiplier, default=0, metavar='HZ',
+                             help='exclude this baseband DC/spur bandwidth as NaN (default: disabled)')
+    other_title.add_argument('--dc-offset', type=float_with_multiplier, default=0, metavar='HZ',
+                             help='spur center in raw IQ baseband before conjugation (requires DC mask)')
     other_title.add_argument('--precision', choices=['single', 'double'], default='double',
                              help='FFT computation precision (default: double)')
     other_title.add_argument('--iq-conjugate', action='store_true',
@@ -283,7 +303,7 @@ def setup_argument_parser():
     other_title.add_argument('-l', '--linear', action='store_true',
                              help='linear power values instead of logarithmic')
     other_title.add_argument('-R', '--remove-dc', action='store_true',
-                             help='interpolate central point to cancel DC bias (useful only with boxcar window)')
+                             help='interpolate the central PSD bin (requires boxcar; estimates rather than measures its power)')
     other_title.add_argument('-D', '--detrend', choices=['none', 'constant'], default='none',
                              help='remove mean value from data to cancel DC bias (default: %(default)s)')
     other_title.add_argument('--fft-window', choices=['boxcar', 'hann', 'hamming', 'blackman', 'bartlett', 'kaiser', 'tukey'],
@@ -302,7 +322,7 @@ def validate_arguments(parser, args):
         value = getattr(args, name)
         if value is not None and (not math.isfinite(value) or value <= 0):
             parser.error('--{} must be finite and positive'.format(name.replace('_', '-')))
-    for name in ('bandwidth', 'tune_delay'):
+    for name in ('bandwidth', 'tune_delay', 'dc_mask_width'):
         value = getattr(args, name)
         if not math.isfinite(value) or value < 0:
             parser.error('--{} must be finite and nonnegative'.format(name.replace('_', '-')))
@@ -318,10 +338,18 @@ def validate_arguments(parser, args):
         parser.error('--output-fd must be nonnegative')
     if args.fft_window_param is not None and args.fft_window not in ('kaiser', 'tukey'):
         parser.error('--fft-window-param is only valid with kaiser or tukey')
-    for name in ('gain', 'fft_window_param'):
+    for name in ('gain', 'fft_window_param', 'dc_offset'):
         value = getattr(args, name)
         if value is not None and not math.isfinite(value):
             parser.error('--{} must be finite'.format(name.replace('_', '-')))
+    if args.remove_dc and (args.fft_window != 'boxcar' or args.bins < 3):
+        parser.error('--remove-dc requires boxcar and at least 3 FFT bins; use --dc-mask-width otherwise')
+    if args.remove_dc and args.dc_mask_width:
+        parser.error('choose DC interpolation or DC exclusion, not both')
+    if args.dc_offset and not args.dc_mask_width:
+        parser.error('--dc-offset requires a positive --dc-mask-width')
+    if args.calibration and args.agc:
+        parser.error('absolute calibration requires fixed gain, not AGC')
     if args.fft_window in ('kaiser', 'tukey') and args.fft_window_param is None:
         parser.error('--fft-window-param is required for kaiser and tukey')
     if args.fft_window == 'kaiser' and args.fft_window_param < 0:
@@ -336,6 +364,13 @@ def main():
     args = parser.parse_args()
 
     validate_arguments(parser, args)
+    calibration = None
+    if args.calibration:
+        from soapypower.calibration import PowerCalibration
+        try:
+            calibration = PowerCalibration.load(args.calibration)
+        except (ValueError, OSError) as error:
+            parser.error('Invalid calibration: {}'.format(error))
 
     # Setup logging
     if args.quiet:
@@ -368,8 +403,6 @@ def main():
         print(device_text)
         sys.exit(0 if device else 1)
 
-    power.psd.simplespectral.fft_threads = args.fft_threads
-
     # Prepare arguments for SoapyPower
     if args.no_pyfftw:
         power.psd.simplespectral.use_pyfftw = False
@@ -382,10 +415,11 @@ def main():
             channel=args.channel, antenna=args.antenna, settings=args.device_settings,
             force_sample_rate=args.force_rate, force_bandwidth=args.force_bandwidth,
             output=args.output_fd if args.output_fd is not None else args.output,
-            output_format=args.format
+            output_format=args.format, dc_correction=args.dc_correction,
+            iq_correction=args.iq_correction, tune_args=args.tune_args
         )
         logger.info('Using device: {}'.format(sdr.device.hardware))
-    except RuntimeError as error:
+    except (RuntimeError, ValueError) as error:
         parser.error('Unable to initialize SDR: {}'.format(error))
 
     # Prepare arguments for SoapyPower.sweep()
@@ -429,17 +463,25 @@ def main():
 
     power.install_signal_handlers()
 
-    # Start frequency sweep
-    sdr.sweep(
-        args.freq[0], args.freq[1], args.bins, args.repeats,
-        runs=args.runs, time_limit=args.elapsed, overlap=args.overlap, crop=args.crop,
-        fft_window=args.fft_window, fft_overlap=args.fft_overlap / 100, log_scale=not args.linear,
-        remove_dc=args.remove_dc, detrend=args.detrend if args.detrend != 'none' else None,
-        lnb_lo=args.lnb_lo, tune_delay=args.tune_delay, reset_stream=args.reset_stream,
-        base_buffer_size=args.buffer_size, max_buffer_size=args.max_buffer_size,
-        max_threads=args.max_threads, max_queue_size=args.max_queue_size,
-        precision=args.precision, iq_conjugate=args.iq_conjugate, lnb_high_side=args.lnb_high_side
-    )
+    # Expected input/device errors have concise CLI messages; debug retains tracebacks.
+    try:
+        sdr.sweep(
+            args.freq[0], args.freq[1], args.bins, args.repeats,
+            runs=args.runs, time_limit=args.elapsed, overlap=args.overlap, crop=args.crop,
+            fft_window=args.fft_window, fft_overlap=args.fft_overlap / 100, log_scale=not args.linear,
+            remove_dc=args.remove_dc, detrend=args.detrend if args.detrend != 'none' else None,
+            lnb_lo=args.lnb_lo, tune_delay=args.tune_delay, reset_stream=args.reset_stream,
+            base_buffer_size=args.buffer_size, max_buffer_size=args.max_buffer_size,
+            max_threads=args.max_threads, max_queue_size=args.max_queue_size,
+            precision=args.precision, iq_conjugate=args.iq_conjugate, lnb_high_side=args.lnb_high_side,
+            dc_mask_width=args.dc_mask_width, dc_offset=args.dc_offset, calibration=calibration,
+            fft_threads=args.fft_threads
+        )
+    except (ValueError, RuntimeError, OSError) as error:
+        if args.debug:
+            raise
+        parser.error('Measurement failed: {}'.format(error))
+
 
 
 if __name__ == '__main__':

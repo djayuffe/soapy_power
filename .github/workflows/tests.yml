@@ -1,0 +1,26 @@
+name: Software validation
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  mathematics:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.9', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install numpy scipy pyfftw simplespectral build twine
+      - run: python -m pip install --no-deps -e .
+      - run: python tools/validate.py --backend numpy
+      - run: python tools/validate.py --backend scipy
+      - run: python tools/validate.py --backend fftw
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - run: soapy_power --help
+      - run: soapy_power_calibration --help

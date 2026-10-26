@@ -17,29 +17,45 @@ Requirements
 SciPy and pyFFTW provide optional accelerated FFT backends. Performance and
 memory use depend on FFT size, backend, thread count and the host system.
 
+Measurement and maintenance
+---------------------------
+
+See `OPERATIONS.md <OPERATIONS.md>`_ for receiver bring-up, architecture/DC
+choices, physical calibration and recurring reference checks.
+`RADIO_THEORY.md <RADIO_THEORY.md>`_ defines the mathematical contracts;
+`DEVELOPMENT.md <DEVELOPMENT.md>`_ describes backend tests and package checks.
+
+The offline ``soapy_power_calibration`` command provides ``context``, ``build``,
+``validate`` and ``integrate`` routines without opening a radio. Run
+``soapy_power_calibration --help`` for commands. Profiles are constructed from
+actual measured tone powers; nominal receiver gain is not a dBm calibration.
+
 Usage
 -----
 ::
 
     usage: soapy_power [-h] [-f Hz|Hz:Hz] [-O FILE | --output-fd NUM]
-                       [-F {rtl_power,rtl_power_fftw,soapy_power_bin}] [-q]
+                       [-F {json,rtl_power,rtl_power_fftw,soapy_power_bin}] [-q]
                        [--debug] [--detect] [--info] [--version] [-b BINS | -B Hz]
                        [-n REPEATS | -t SECONDS | -T SECONDS]
                        [-c | -u RUNS | -e SECONDS] [-d DEVICE] [-C CHANNEL]
                        [-A ANTENNA] [-r Hz] [-w Hz] [-p PPM]
                        [-g dB | -G STRING | -a] [--lnb-lo Hz] [--lnb-high-side]
-                       [--device-settings STRING] [--force-rate]
-                       [--force-bandwidth] [--tune-delay SECONDS] [--reset-stream]
-                       [-o PERCENT | -k PERCENT] [-s BUFFER_SIZE]
+                       [--dc-correction {default,on,off}]
+                       [--iq-correction {default,on,off}]
+                       [--tune-args KEY=VALUE,...] [--device-settings STRING]
+                       [--force-rate] [--force-bandwidth] [--tune-delay SECONDS]
+                       [--reset-stream] [-o PERCENT | -k PERCENT] [-s BUFFER_SIZE]
                        [-S MAX_BUFFER_SIZE] [--even | --pow2] [--max-threads NUM]
                        [--max-queue-size NUM] [--fft-threads FFT_THREADS]
-                       [--no-pyfftw] [--precision {single,double}]
+                       [--no-pyfftw] [--calibration JSON] [--dc-mask-width HZ]
+                       [--dc-offset HZ] [--precision {single,double}]
                        [--iq-conjugate] [-l] [-R] [-D {none,constant}]
                        [--fft-window {boxcar,hann,hamming,blackman,bartlett,kaiser,tukey}]
                        [--fft-window-param FLOAT] [--fft-overlap PERCENT]
-    
+
     Obtain a power spectrum from SoapySDR devices
-    
+
     Main options:
       -h, --help            show this help message and exit
       -f Hz|Hz:Hz, --freq Hz|Hz:Hz
@@ -51,19 +67,19 @@ Usage
                             is stdout)
       --output-fd NUM       output to existing file descriptor (incompatible with
                             -O)
-      -F {rtl_power,rtl_power_fftw,soapy_power_bin}, --format {rtl_power,rtl_power_fftw,soapy_power_bin}
+      -F {json,rtl_power,rtl_power_fftw,soapy_power_bin}, --format {json,rtl_power,rtl_power_fftw,soapy_power_bin}
                             output format (default: rtl_power)
       -q, --quiet           limit verbosity
       --debug               detailed debugging messages
       --detect              detect connected SoapySDR devices and exit
       --info                show info about selected SoapySDR device and exit
       --version             show program's version number and exit
-    
+
     FFT bins:
       -b BINS, --bins BINS  number of FFT bins (incompatible with -B, default:
                             512)
       -B Hz, --bin-size Hz  bin size in Hz (incompatible with -b)
-    
+
     Averaging:
       -n REPEATS, --repeats REPEATS
                             integration length in FFT-sized sample blocks
@@ -73,7 +89,7 @@ Usage
       -T SECONDS, --total-time SECONDS
                             total integration time of all hops (incompatible with
                             -t and -n)
-    
+
     Measurements:
       -c, --continue        repeat the measurement endlessly (incompatible with -u
                             and -e)
@@ -82,7 +98,7 @@ Usage
       -e SECONDS, --elapsed SECONDS
                             scan session duration (time limit in seconds,
                             incompatible with -c and -u)
-    
+
     Device settings:
       -d DEVICE, --device DEVICE
                             SoapySDR device to use
@@ -105,6 +121,15 @@ Usage
       --lnb-lo Hz           LNB LO frequency, negative for upconverters (default:
                             0)
       --lnb-high-side       use RF = LNB LO - IF and mirror the IQ frequency axis
+      --dc-correction {default,on,off}
+                            driver DC correction mode (default leaves device
+                            behavior unchanged)
+      --iq-correction {default,on,off}
+                            driver IQ correction mode (default leaves device
+                            behavior unchanged)
+      --tune-args KEY=VALUE,...
+                            SoapySDR frequency arguments, e.g. OFFSET=250000
+                            (driver dependent)
       --device-settings STRING
                             SoapySDR device settings (example: biastee=true)
       --force-rate          ignore list of sample rates provided by device and
@@ -115,7 +140,7 @@ Usage
                             avoid artifacts)
       --reset-stream        reset streaming after changing frequency (to avoid
                             artifacts)
-    
+
     Crop:
       -o PERCENT, --overlap PERCENT
                             percent of overlap when frequency hopping
@@ -123,7 +148,7 @@ Usage
       -k PERCENT, --crop PERCENT
                             percent of crop when frequency hopping (incompatible
                             with -o)
-    
+
     Performance options:
       -s BUFFER_SIZE, --buffer-size BUFFER_SIZE
                             base buffer size (number of samples, 0 = auto,
@@ -141,14 +166,20 @@ Usage
                             run in parallel)
       --no-pyfftw           don't use pyfftw library even if it is available (use
                             scipy.fftpack or numpy.fft)
-    
+
     Other options:
+      --calibration JSON    measured, settings-matched power calibration profile;
+                            output dBm/Hz or mW/Hz
+      --dc-mask-width HZ    exclude this baseband DC/spur bandwidth as NaN
+                            (default: disabled)
+      --dc-offset HZ        spur center in raw IQ baseband before conjugation
+                            (requires DC mask)
       --precision {single,double}
                             FFT computation precision (default: double)
       --iq-conjugate        conjugate IQ to reverse baseband spectral orientation
       -l, --linear          linear power values instead of logarithmic
-      -R, --remove-dc       interpolate central point to cancel DC bias (useful
-                            only with boxcar window)
+      -R, --remove-dc       interpolate the central PSD bin (requires boxcar;
+                            estimates rather than measures its power)
       -D {none,constant}, --detrend {none,constant}
                             remove mean value from data to cancel DC bias
                             (default: none)
@@ -190,7 +221,7 @@ Example
     INFO: min_freq (after crop): 88.000 MHz
     INFO: max_freq (after crop): 98.240 MHz
     DEBUG: Frequency hops table:
-    DEBUG:   Min:          Center:       Max:    
+    DEBUG:   Min:          Center:       Max:
     DEBUG:     88.000 MHz    89.280 MHz    90.560 MHz
     DEBUG:     90.560 MHz    91.840 MHz    93.120 MHz
     DEBUG:     93.120 MHz    94.400 MHz    95.680 MHz
@@ -236,7 +267,7 @@ Output::
     2017-03-17, 13:18:26, 95680000.0, 98240000.0, 426666.666667, 647168, -94.2324, -83.7932, -78.3108, -82.033, -89.1212, -97.4499
 
 Numerical accuracy and tuning
-----------------------------
+-----------------------------
 
 PSD values use a two-sided Welch density for complex IQ samples. Linear values
 have units of input power per Hz; logarithmic values are 10*log10(density).
@@ -326,16 +357,45 @@ applied before those operations. ``-n`` specifies integration length in FFT-size
 sample blocks; Welch segment count also depends on overlap.
 
 Neither uncalibrated IQ amplitude nor device gain is enough to label values as
-dBm, dBm/Hz or calibrated dBFS. Absolute measurements need a defined IQ scale,
+dBm, dBm/Hz or calibrated dBFS. An explicit measured ``--calibration`` profile
+now enables input-referred dBm/Hz or mW/Hz with strict context/range checks. Absolute measurements need a defined IQ scale,
 receiver gain/frequency calibration, impedance convention and external reference.
 AGC, clipping, LO feedthrough, IQ images and analog filtering can change a
 spectrum. Mean removal and DC-bin interpolation can also remove real signals
-near zero frequency. No blind IQ/image correction or absolute power calibration
-is applied. Logarithms are taken after averaging linear power; this does not
+near zero frequency. No blind IQ/image correction or guessed absolute calibration is applied. Logarithms are taken after averaging linear power; this does not
 make the dB estimator statistically unbiased.
 
 Binary v2 retains its float32 payload and has no embedded units, gain, window,
-IQ orientation or calibration metadata. Preserve command/settings alongside the
+IQ orientation or calibration metadata. JSON output records those fields. Preserve command/settings alongside the
 file. Text output retains float64 values. Binary reads validate frequency
 geometry and limit payloads to 256 MiB by default; the formatter's constructor
 can change or disable that limit for trusted larger records.
+
+Architecture, DC and measured calibration
+-----------------------------------------
+
+See `RADIO_THEORY.md <RADIO_THEORY.md>`_ for the architecture matrix, mathematical
+contract, DC choices, reference-plane calibration procedure, profile schema and
+measurement limits.
+
+New options are explicit and optional:
+
+- ``--dc-correction default|on|off`` and ``--iq-correction default|on|off`` use
+  capability-checked driver controls. Default preserves driver correction policy.
+- ``--tune-args OFFSET=250000`` forwards frequency arguments to supporting drivers.
+  Do not assume a particular artifact position from this value alone.
+- ``--dc-mask-width HZ --dc-offset HZ`` exclude a known raw-baseband artifact as
+  NaN without inventing power. Conjugation and high-side conversion are handled.
+- ``--remove-dc`` now requires boxcar and at least three bins. Use exclusion for
+  window-spread contamination rather than one-bin interpolation.
+- ``--calibration profile.json`` applies a measured RF-by-baseband response grid
+  only for matching actual settings, fixed gain and frequencies inside its range.
+  It converts density to dBm/Hz (or mW/Hz with ``--linear``).
+- ``-F json`` emits one standard JSON record per hop with units, hardware context,
+  segment/window metadata, calibration provenance and explicit masked/zero bins.
+
+Profiles must come from reference measurements; none are supplied or guessed.
+Fixed gain disables supported AGC and is reapplied after retuning. Explicit driver
+correction modes are also reapplied after tuning. Complete hardware bursts stop
+a sweep instead of being joined across a discontinuity. FFTW transform thread
+counts are now per PSD instance rather than a library-global setting.
