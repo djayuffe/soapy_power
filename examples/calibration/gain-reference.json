@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "reference": "REPLACE with stable same-RF A/B gain-state campaign",
+  "stationarity_confirmed": false,
+  "min_segments": 32,
+  "min_repeats": 2,
+  "min_snr_db": 10,
+  "max_repeat_span_db": 0.5,
+  "nominal_gain_step_db": null,
+  "max_nominal_error_db": 0.5,
+  "cells": [
+    {
+      "rf_hz": 915000000,
+      "baseband_hz": 100000,
+      "start_hz": 914990000,
+      "stop_hz": 915010000,
+      "background_start_hz": 914940000,
+      "background_stop_hz": 914960000,
+      "reference": "captures/gain_A_0.jsonl",
+      "observed": "captures/gain_B_0.jsonl",
+      "repeat_id": "0"
+    },
+    {
+      "rf_hz": 915000000,
+      "baseband_hz": 100000,
+      "start_hz": 914990000,
+      "stop_hz": 915010000,
+      "background_start_hz": 914940000,
+      "background_stop_hz": 914960000,
+      "reference": "captures/gain_A_1.jsonl",
+      "observed": "captures/gain_B_1.jsonl",
+      "repeat_id": "1"
+    }
+  ]
+}

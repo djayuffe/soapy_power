@@ -167,6 +167,31 @@ def parser():
     holdout.add_argument('-O', '--output', required=True)
     holdout.add_argument('--force', action='store_true')
     holdout.add_argument('--require-checks', action='store_true')
+    overlap = commands.add_parser('overlap-fit', help='relative IF tomography from repeated stable RF channels and validation captures')
+    overlap.add_argument('manifest')
+    overlap.add_argument('-O', '--output', required=True)
+    overlap.add_argument('--force', action='store_true')
+    gain = commands.add_parser('gain-compare', help='compare repeated same-RF observations at two fixed gain states')
+    gain.add_argument('manifest')
+    gain.add_argument('-O', '--output', required=True)
+    gain.add_argument('--force', action='store_true')
+    gain.add_argument('--require-checks', action='store_true')
+    tone = commands.add_parser('tone-audit', help='isolated selected-IQ tone frequency/drift diagnostic; no protocol identification')
+    tone.add_argument('iq')
+    tone.add_argument('--sample-rate', type=float, required=True)
+    tone.add_argument('--expected-baseband-hz', type=float, required=True)
+    tone.add_argument('--reference-rf-hz', type=float, required=True)
+    tone.add_argument('--frame-size', type=int, default=4096)
+    tone.add_argument('--frames', type=int, default=128)
+    tone.add_argument('--search-hz', type=float, default=500)
+    tone.add_argument('--min-tone-fraction', type=float, default=0.8)
+    tone.add_argument('-O', '--output', required=True)
+    tone.add_argument('--force', action='store_true')
+    intervals = commands.add_parser('interval-audit', help='operator-identified active/quiet IQ intervals; no calibrated noise figure')
+    intervals.add_argument('iq')
+    intervals.add_argument('--intervals', required=True)
+    intervals.add_argument('-O', '--output', required=True)
+    intervals.add_argument('--force', action='store_true')
     return root
 
 
@@ -177,7 +202,35 @@ def main(argv=None):
         root.print_help()
         return 2
     try:
-        if args.command == 'equalize':
+        if args.command in ('overlap-fit','gain-compare','tone-audit','interval-audit'):
+            protected = [getattr(args,'manifest',None),getattr(args,'iq',None),getattr(args,'intervals',None)]
+            if getattr(args,'manifest',None):
+                document=load_json(args.manifest)
+                if isinstance(document,dict) and isinstance(document.get('cells'),list):
+                    for cell in document['cells']:
+                        if isinstance(cell,dict):
+                            for key in ('capture','reference','observed'):
+                                if isinstance(cell.get(key),str):
+                                    protected.append(Path(args.manifest).resolve().parent/cell[key])
+            if Path(args.output).resolve() in {Path(name).resolve() for name in protected if name is not None}:
+                raise ValueError('passive analysis output must not replace source evidence')
+            if args.command == 'overlap-fit':
+                from soapypower.passive_response import build_overlap
+                report=build_overlap(args.manifest).profile
+            elif args.command == 'gain-compare':
+                from soapypower.gain_comparison import compare_gain_states
+                report=compare_gain_states(args.manifest)
+            elif args.command == 'tone-audit':
+                from soapypower.passive_iq import tone_audit
+                report=tone_audit(args.iq,args.sample_rate,args.expected_baseband_hz,args.reference_rf_hz,
+                                  args.frame_size,args.frames,args.search_hz,args.min_tone_fraction)
+            else:
+                from soapypower.passive_iq import interval_audit
+                report=interval_audit(args.iq,args.intervals)
+            write_json(args.output,report,overwrite=args.force)
+            if args.command == 'gain-compare' and args.require_checks and not report['passed']:
+                return 1
+        elif args.command == 'equalize':
             from soapypower.equalization import equalize_file
             damping = args.regularization if args.regularization is not None else (0 if args.mode == 'attenuation-only' else 0.001)
             if args.usable_policy and Path(args.output).resolve() == Path(args.usable_policy).resolve():
@@ -229,11 +282,11 @@ def main(argv=None):
             else:
                 write_json(args.output, build_manifest(args.manifest).profile, overwrite=args.force)
         elif args.command == 'validate':
-            calibration = PowerCalibration.load(args.profile)
-            profile = calibration.profile
+            from soapypower.passive_response import load_response_profile
+            calibration = load_response_profile(args.profile)
             output = calibration.metadata()
-            output.update(rf_range_hz=[profile['points'][0][0], profile['points'][-1][0]],
-                          baseband_range_hz=[profile['baseband_hz'][0], profile['baseband_hz'][-1]],
+            output.update(rf_range_hz=list(calibration.domain['rf_hz']),
+                          baseband_range_hz=list(calibration.domain['raw_baseband_hz']),
                           context=calibration.context)
             print(json.dumps(output, allow_nan=False, sort_keys=True))
         elif args.command == 'context':

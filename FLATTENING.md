@@ -234,3 +234,9 @@ errors, training-data reuse, uncertainty invalidation and atomic failures.
 Physical RF, source and temperature validation remain required for the actual
 measurement chain. See [EQUALIZATION.md](EQUALIZATION.md) for the underlying
 PSD model and [CALIBRATION.md](CALIBRATION.md) for absolute-power procedures.
+
+## Passive reference diagnostics
+
+[PASSIVE_REFERENCES.md](PASSIVE_REFERENCES.md) adds relative IF overlap fitting,
+fixed-gain-state comparison, selected-tone drift and active/quiet IQ intervals.
+Public signals do not independently establish input dBm, receiver NF or phase.

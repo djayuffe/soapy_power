@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "reference": "REPLACE with operator-verified sample interval labels; sample indices are illustrative",
+  "intervals": [
+    {
+      "start_sample": 0,
+      "stop_sample": 1000,
+      "label": "quiet"
+    },
+    {
+      "start_sample": 1000,
+      "stop_sample": 5000,
+      "label": "active"
+    }
+  ]
+}

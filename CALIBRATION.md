@@ -221,3 +221,9 @@ room-correction report. This does not invert a terminated noise curve.
 [FLATTENING.md](FLATTENING.md) adds whole-file attenuation-only equalization,
 explicit usable-band selection, constrained uncertainty-weighted smoothing and
 independent tone holdout validation, with templates and colored workflow.
+
+## Passive reference diagnostics
+
+[PASSIVE_REFERENCES.md](PASSIVE_REFERENCES.md) adds relative IF overlap fitting,
+fixed-gain-state comparison, selected-tone drift and active/quiet IQ intervals.
+Public signals do not independently establish input dBm, receiver NF or phase.

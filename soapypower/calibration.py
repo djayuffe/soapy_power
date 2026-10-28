@@ -133,6 +133,11 @@ class PowerCalibration:
     def context(self):
         return copy.deepcopy(self._context)
 
+    @property
+    def domain(self):
+        return {'rf_hz': (float(self._freqs[0]), float(self._freqs[-1])),
+                'raw_baseband_hz': (float(self._baseband[0]), float(self._baseband[-1]))}
+
     @classmethod
     def load(cls, path):
         return cls(load_json(path))

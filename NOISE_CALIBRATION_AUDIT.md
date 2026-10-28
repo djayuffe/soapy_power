@@ -131,3 +131,9 @@ joint correlated uncertainty. Its report is distinct from a power profile.
 See [EQUALIZATION.md](EQUALIZATION.md) for bounded measured-response shaping,
 its distinction from absolute power/NF calibration, and corrections to the
 room-correction report. This does not invert a terminated noise curve.
+
+## Passive reference diagnostics
+
+[PASSIVE_REFERENCES.md](PASSIVE_REFERENCES.md) adds relative IF overlap fitting,
+fixed-gain-state comparison, selected-tone drift and active/quiet IQ intervals.
+Public signals do not independently establish input dBm, receiver NF or phase.

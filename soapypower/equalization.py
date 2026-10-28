@@ -144,9 +144,9 @@ def _prepare_record(record, calibration, reference_rf_hz, reference_baseband_hz,
             reasons[int(i)].append(reason)
     old = np.zeros(len(rf), dtype=bool);old[record['masked_bins']] = True
     exclude(old, 'input_mask')
-    profile = calibration.profile
-    outside = ((rf < profile['points'][0][0]) | (rf > profile['points'][-1][0]) |
-               (raw_bb < profile['baseband_hz'][0]) | (raw_bb > profile['baseband_hz'][-1]))
+    domain = calibration.domain
+    outside = ((rf < domain['rf_hz'][0]) | (rf > domain['rf_hz'][1]) |
+               (raw_bb < domain['raw_baseband_hz'][0]) | (raw_bb > domain['raw_baseband_hz'][1]))
     if usable_policy is None and np.any(outside & ~old):
         raise ValueError('spectrum lies outside calibration range; select a usable-band policy to exclude it')
     exclude(outside, 'outside_measured_calibration')
@@ -243,7 +243,8 @@ def equalize_file(records, profile, output, reference_rf_hz, reference_baseband_
     destination = Path(output).resolve()
     if destination in (Path(records).resolve(), Path(profile).resolve()):
         raise ValueError('equalization output must differ from source records and profile')
-    calibration = PowerCalibration.load(profile)
+    from soapypower.passive_response import load_response_profile
+    calibration = load_response_profile(profile)
     source_hash = _sha256(records)
     target = None
     if mode == 'attenuation-only':

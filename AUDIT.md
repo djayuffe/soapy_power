@@ -221,3 +221,19 @@ Validation: 188 tests pass across NumPy, SciPy and FFTW on Python 3.12, plus
 the Python 3.9 NumPy fallback (unavailable-backend checks skip). Wheel/sdist
 build, metadata checks and installed offline CLI workflows pass. No physical
 RF or phase-response certification is claimed.
+
+## Version 1.12.0: passive references and relative overlap models
+
+Reviewed the three public-signal reports. Added capture-backed anchored robust
+IF tomography with graph/rank, repeated-stability, SNR and independent-validation
+gates; a distinct relative profile accepted only for relative equalization;
+fixed gain-state comparison; isolated-tone frequency/drift checks; and selected
+quiet/active interval diagnostics. No GSM/TETRA/DAB/LTE decoder, absolute public
+signal level, receiver NF, coherent phase reference or automatic hardware PPM
+correction is inferred. See [PASSIVE_REFERENCES.md](PASSIVE_REFERENCES.md).
+
+Validation: 202 tests pass across NumPy, SciPy and FFTW on Python 3.12, plus
+the Python 3.9 NumPy fallback (unavailable-backend checks skip). Package builds,
+metadata checks and installed offline command workflows pass. Channel-width
+and known-gain-readback gates prevent unsupported point-response/fixed-state
+claims. No physical public-band/SDR or standards-decoder certification is claimed.

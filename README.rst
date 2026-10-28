@@ -405,3 +405,10 @@ Validated response flattening
 
 See `FLATTENING.md <FLATTENING.md>`_ for attenuation-only equalization, usable
 bands, uncertainty-weighted response smoothing and independent holdout checks.
+
+Passive reference diagnostics
+-----------------------------
+
+See `PASSIVE_REFERENCES.md <PASSIVE_REFERENCES.md>`_ for overlapping IF
+response fitting, gain-state comparisons and selected-IQ diagnostics.
+These are relative/diagnostic tools, not public-signal absolute calibration.
