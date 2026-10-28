@@ -1,19 +1,41 @@
 """Capability-checked SoapySDR controls; never infer architecture from a model name."""
+import math
 from soapypower.numerics import finite
 
 
 class Frontend:
-    def __init__(self, wrapper, direction, channel, dc_correction='default', iq_correction='default'):
+    def __init__(self, wrapper, direction, channel, dc_correction='default', iq_correction='default', manual_dc=None, manual_iq=None):
+        self._capabilities = {}
         self.wrapper = wrapper
         self.raw = getattr(wrapper, 'device', None)
         self.direction, self.channel = direction, channel
         if dc_correction not in ('default', 'on', 'off') or iq_correction not in ('default', 'on', 'off'):
             raise ValueError('hardware corrections must be default, on or off')
         self.dc_correction, self.iq_correction = dc_correction, iq_correction
+        self.manual_dc = self._manual_pair(manual_dc, 'DC offset')
+        self.manual_iq = self._manual_pair(manual_iq, 'IQ balance')
+
+    @staticmethod
+    def _manual_pair(value, name):
+        if value is None:
+            return None
+        try:
+            if isinstance(value, (str, bytes)) or len(value) != 2:
+                raise ValueError
+            result = tuple(finite(component, name) for component in value)
+        except (TypeError, ValueError):
+            raise ValueError(name + ' requires two finite normalized components') from None
+        if any(abs(component) > 1 for component in result):
+            raise ValueError(name + ' components must be in [-1, 1]')
+        return result
 
     def supported(self, capability):
-        method = getattr(self.raw, capability, None)
-        return bool(method(self.direction, self.channel)) if method is not None else False
+        # Some drivers probe gain-mode support by changing AGC temporarily.
+        # Query once before acquisition, never repeatedly in measurement readback.
+        if capability not in self._capabilities:
+            method = getattr(self.raw, capability, None)
+            self._capabilities[capability] = bool(method(self.direction, self.channel)) if method is not None else False
+        return self._capabilities[capability]
 
     def gain_mode(self, automatic):
         if self.supported('hasGainMode'):
@@ -45,6 +67,30 @@ class Frontend:
             if bool(actual) != enabled:
                 raise RuntimeError('SDR did not apply requested hardware ' + suffix)
 
+        for value, suffix, mode in ((self.manual_dc, 'DCOffset', self.dc_correction),
+                                    (self.manual_iq, 'IQBalance', self.iq_correction)):
+            if value is None:
+                continue
+            if not self.supported('has' + suffix):
+                raise ValueError('selected RX channel does not support manual ' + suffix)
+            if self.supported('has' + suffix + 'Mode') and mode != 'off':
+                raise ValueError('manual ' + suffix + ' requires automatic correction explicitly off')
+            getattr(self.raw, 'set' + suffix)(self.direction, self.channel, complex(*value))
+            self._manual_readback(suffix, value)
+
+    def _manual_readback(self, suffix, requested):
+        try:
+            actual = complex(getattr(self.raw, 'get' + suffix)(self.direction, self.channel))
+        except (AttributeError, TypeError, ValueError):
+            raise RuntimeError('manual ' + suffix + ' readback is unavailable or invalid') from None
+        if not math.isfinite(actual.real) or not math.isfinite(actual.imag):
+            raise RuntimeError('nonfinite manual ' + suffix + ' readback')
+        driver = self.optional('getDriverKey')
+        quantum = (1 / (2048 if suffix == 'DCOffset' else 4096)) if driver == 'bladerf' else 1e-9
+        if any(abs(got - wanted) > quantum + 1e-12 for got, wanted in zip((actual.real, actual.imag), requested)):
+            raise RuntimeError('SDR did not apply requested manual ' + suffix)
+        return {'requested': list(requested), 'actual': [actual.real, actual.imag]}
+
     def optional(self, method, *args):
         function = getattr(self.raw, method, None)
         if function is None:
@@ -71,7 +117,13 @@ class Frontend:
             else:
                 value = self.optional('getGain', self.direction, self.channel)
                 gains = {'overall': value} if value is not None else None
-        info = self.optional('getHardwareInfo') or {}
+        info = dict(self.optional('getHardwareInfo') or {})
+        manual = {}
+        for value, suffix in ((self.manual_dc, 'DCOffset'), (self.manual_iq, 'IQBalance')):
+            if value is not None:
+                manual[suffix] = self._manual_readback(suffix, value)
+        if manual:
+            info['soapypower_manual_rx_corrections'] = manual
         if self.supported('hasFrequencyCorrection'):
             ppm = self.optional('getFrequencyCorrection', self.direction, self.channel)
         else:

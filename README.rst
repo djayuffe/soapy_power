@@ -25,6 +25,8 @@ choices, physical calibration and recurring reference checks.
 `RADIO_THEORY.md <RADIO_THEORY.md>`_ defines the mathematical contracts;
 `DEVELOPMENT.md <DEVELOPMENT.md>`_ describes backend tests and package checks.
 
+See `BLADERF.md <BLADERF.md>`_ for bladeRF RX calibration and manual DC/IQ controls.
+
 See `CALIBRATION.md <CALIBRATION.md>`_ for RTL-SDR/75 ohm termination,
 antennas, measured tone and hot/cold calibration workflows.
 `REMEDIATION.md <REMEDIATION.md>`_ documents JSON v2, binary v3, exact targets
@@ -47,10 +49,11 @@ Usage
                        [-A ANTENNA] [-r Hz] [-w Hz] [-p PPM]
                        [-g dB | -G STRING | -a] [--lnb-lo Hz] [--lnb-high-side]
                        [--dc-correction {default,on,off}]
-                       [--iq-correction {default,on,off}]
-                       [--tune-args KEY=VALUE,...] [--device-settings STRING]
-                       [--force-rate] [--force-bandwidth] [--tune-delay SECONDS]
-                       [--reset-stream] [-o PERCENT | -k PERCENT] [-s BUFFER_SIZE]
+                       [--iq-correction {default,on,off}] [--manual-dc I,Q]
+                       [--manual-iq GAIN,PHASE] [--tune-args KEY=VALUE,...]
+                       [--device-settings STRING] [--force-rate]
+                       [--force-bandwidth] [--tune-delay SECONDS] [--reset-stream]
+                       [-o PERCENT | -k PERCENT] [-s BUFFER_SIZE]
                        [-S MAX_BUFFER_SIZE] [--even | --pow2] [--max-threads NUM]
                        [--max-queue-size NUM] [--fft-threads FFT_THREADS]
                        [--no-pyfftw] [--partial-policy {emit,reject,legacy}]
@@ -140,6 +143,11 @@ Usage
       --iq-correction {default,on,off}
                             driver IQ correction mode (default leaves device
                             behavior unchanged)
+      --manual-dc I,Q       normalized RX hardware DC correction (capability
+                            checked)
+      --manual-iq GAIN,PHASE
+                            normalized driver IQ correction controls, not
+                            dB/radians
       --tune-args KEY=VALUE,...
                             SoapySDR frequency arguments, e.g. OFFSET=250000
                             (driver dependent)

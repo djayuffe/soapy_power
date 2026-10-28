@@ -37,6 +37,16 @@ def freq_or_freq_range(string):
     return freqs
 
 
+def correction_pair(text):
+    try:
+        values = tuple(float(value) for value in text.split(','))
+    except ValueError:
+        raise argparse.ArgumentTypeError('use two normalized numbers separated by a comma') from None
+    if len(values) != 2 or any(not math.isfinite(value) or abs(value) > 1 for value in values):
+        raise argparse.ArgumentTypeError('correction requires two finite components in [-1, 1]')
+    return values
+
+
 def specific_gains(string):
     """Convert string with gains of individual amplification elements to dict"""
     if not string:
@@ -248,6 +258,10 @@ def setup_argument_parser():
                               help='driver DC correction mode (default leaves device behavior unchanged)')
     device_title.add_argument('--iq-correction', choices=['default', 'on', 'off'], default='default',
                               help='driver IQ correction mode (default leaves device behavior unchanged)')
+    device_title.add_argument('--manual-dc', type=correction_pair, metavar='I,Q',
+                              help='normalized RX hardware DC correction (capability checked)')
+    device_title.add_argument('--manual-iq', type=correction_pair, metavar='GAIN,PHASE',
+                              help='normalized driver IQ correction controls, not dB/radians')
     device_title.add_argument('--tune-args', type=device_settings, default='', metavar='KEY=VALUE,...',
                               help='SoapySDR frequency arguments, e.g. OFFSET=250000 (driver dependent)')
     device_title.add_argument('--device-settings', metavar='STRING', type=device_settings, default='',
@@ -431,7 +445,8 @@ def main():
             force_sample_rate=args.force_rate, force_bandwidth=args.force_bandwidth,
             output=args.output_fd if args.output_fd is not None else args.output,
             output_format=args.format, dc_correction=args.dc_correction,
-            iq_correction=args.iq_correction, tune_args=args.tune_args
+            iq_correction=args.iq_correction, tune_args=args.tune_args,
+            manual_dc=args.manual_dc, manual_iq=args.manual_iq
         )
         logger.info('Using device: {}'.format(sdr.device.hardware))
     except (RuntimeError, ValueError) as error:

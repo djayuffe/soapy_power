@@ -11,3 +11,4 @@ recursive-include .github/workflows *.yml
 include CALIBRATION.md
 include REMEDIATION.md
 recursive-include examples *.json
+include BLADERF.md

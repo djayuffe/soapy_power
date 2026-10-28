@@ -110,6 +110,20 @@ Source archive/wheel builds, archive contents, `twine check`, installed CLI help
 and offline workflows are checked. The configured remote CI matrix is separate
 from locally observed results. No physical receiver/reference was exercised.
 
+## bladeRF support — version 1.7.1
+
+Added normalized manual RX DC/IQ controls, readback/quantization checks,
+correction identity in context, per-retune reapplication and capability caching
+to avoid repeated AGC support probes during context readback. The measured
+power-calibration workflow remains serial/channel/gain specific. See
+[BLADERF.md](BLADERF.md) and its measured-tone manifest template.
+
+The suite contains 136 tests: Python 3.12 checks NumPy, SciPy and FFTW separately
+(the FFTW-only test skips on the other two backends). Python 3.9 checks the
+NumPy-only environment with two optional tests skipped. New bladeRF tests use
+simulated driver controls and a real DSP/writer acquisition pipeline. No physical
+bladeRF, native gain-table import or automated IQ coefficient search is claimed.
+
 ## Limits of this audit
 
 - No SDR was physically exercised; the SoapySDR binding and an intended radio

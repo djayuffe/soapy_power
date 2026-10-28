@@ -194,3 +194,6 @@ Revalidate after changing gain, sample rate, filters, antenna path, clock,
 firmware, driver, correction policy or environment. Keep certificates, raw
 captures, manifest, hashes and acceptance results. A matching JSON context is
 necessary but cannot establish unreported analog state or physical accuracy.
+
+See [BLADERF.md](BLADERF.md) for board/channel selection, manual RX correction
+controls and the distinction from native Nuand calibration tables.

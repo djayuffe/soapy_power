@@ -1,6 +1,6 @@
 # Development package for the audited fork. Original project: Michal Krenek.
 pkgname=soapy_power-git
-pkgver=1.7.0.r0
+pkgver=1.7.1.r0
 pkgrel=1
 pkgdesc="Power spectrum measurement from SoapySDR devices (audited development fork)"
 arch=('any')
@@ -19,7 +19,7 @@ sha256sums=('SKIP')
 
 pkgver() {
   cd "$srcdir/soapy_power"
-  printf '1.7.0.r%s.g%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  printf '1.7.1.r%s.g%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 build() {

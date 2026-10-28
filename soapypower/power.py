@@ -37,7 +37,7 @@ class SoapyPower:
                  auto_gain=False, channel=0, antenna='', settings=None,
                  force_sample_rate=False, force_bandwidth=False,
                  output=sys.stdout, output_format='rtl_power', dc_correction='default',
-                 iq_correction='default', tune_args=None):
+                 iq_correction='default', tune_args=None, manual_dc=None, manual_iq=None):
         finite(sample_rate, 'sample_rate', positive=True)
         finite(bandwidth, 'bandwidth', nonnegative=True)
         integer(channel, 'channel')
@@ -53,7 +53,7 @@ class SoapyPower:
         if actual_channel != channel:
             raise ValueError('requested RX channel is unavailable; refusing fallback channel')
         self._frontend = Frontend(self.device, getattr(simplesoapy.SoapySDR, 'SOAPY_SDR_RX', 1), channel,
-                                  dc_correction, iq_correction)
+                                  dc_correction, iq_correction, manual_dc, manual_iq)
         self._requested_gain = dict(gain) if isinstance(gain, dict) else gain
         self._requested_agc = bool(auto_gain)
         self._apply_gain()
@@ -274,6 +274,8 @@ class SoapyPower:
         self._calibration = calibration
         self._lnb_lo, self._lnb_high_side, self._iq_conjugate = lnb_lo, lnb_high_side, iq_conjugate
         self._need_context = calibration is not None or self._output_format in ('json', 'rtl_power_fftw', 'soapy_power_bin_v3')
+        if self._frontend.manual_dc is not None or self._frontend.manual_iq is not None:
+            self._frontend.apply_corrections()
         if calibration is not None:
             calibration.validate_context(self.measurement_context(), before_tune=True)
         self._burst_ended = False
