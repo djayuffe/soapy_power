@@ -3,6 +3,9 @@
 import os, sys, logging, struct, collections, io, threading, math, concurrent.futures, json
 
 import numpy
+import hashlib
+from soapypower.files import loads_json
+from soapypower.records import validate_record
 
 from soapypower import threadpool
 from soapypower.numerics import integer
@@ -23,6 +26,7 @@ class BaseWriter:
         self._power_unit = power_unit
         self.unit = (('dBm/Hz' if log_scale else 'mW/Hz') if power_unit == 'mW' else
                      ('dB(input power/Hz)' if log_scale else 'input power/Hz'))
+        self.nonblocking = False
         self._close_output = False
         self._write_error = None
         self._error_lock = threading.Lock()
@@ -79,7 +83,8 @@ class BaseWriter:
     def _submit(self, fn, *args):
         if self._write_error is not None:
             raise self._write_error
-        future = self._executor.submit(fn, *args)
+        submit = self._executor.submit_nowait if self.nonblocking else self._executor.submit
+        future = submit(fn, *args)
         future.add_done_callback(self._record_error)
         return future
 
@@ -304,13 +309,19 @@ class JsonWriter(BaseWriter):
             self.output = io.TextIOWrapper(self.output, encoding='utf-8', newline='\n')
             self._wrapped_output = True
 
-    def write(self, psd_data_or_future, time_start, time_stop, samples, metadata=None):
+    def make_record(self, psd_data_or_future, time_start, time_stop, samples, metadata=None):
         freqs, power = spectrum_data(psd_data_or_future, self._log_scale, self._allow_nan)
         step = (freqs[-1] - freqs[0]) / (len(freqs) - 1)
         details = metadata() if callable(metadata) else metadata
+        if isinstance(details, dict) and 'bin_width_hz' in details:
+            step = details['bin_width_hz']
         record = {
-            'version': 1, 'time_start': time_start.isoformat(), 'time_stop': time_stop.isoformat(),
+            'version': 2, 'time_start': time_start.isoformat(), 'time_stop': time_stop.isoformat(),
             'start_hz': float(freqs[0]), 'stop_hz': float(freqs[-1] + step), 'step_hz': float(step),
+            'first_bin_center_hz': float(freqs[0]), 'bin_width_hz': float(step),
+            'coverage_start_hz': float(freqs[0] - step / 2),
+            'coverage_stop_hz': float(freqs[0] + (len(freqs) - 0.5) * step),
+            'estimated_bins': details.get('estimated_bins', []) if isinstance(details, dict) else [],
             'samples': int(samples), 'unit': self.unit,
             'power': [float(value) if numpy.isfinite(value) else None for value in power],
             'masked_bins': numpy.flatnonzero(numpy.isnan(power)).tolist(),
@@ -318,6 +329,10 @@ class JsonWriter(BaseWriter):
                                 else numpy.flatnonzero(power == 0).tolist()),
             'metadata': details,
         }
+        return record
+
+    def write(self, psd_data_or_future, time_start, time_stop, samples, metadata=None):
+        record = self.make_record(psd_data_or_future, time_start, time_stop, samples, metadata)
         self.output.write(json.dumps(record, allow_nan=False, sort_keys=True) + '\n')
         self.output.flush()
 
@@ -325,9 +340,77 @@ class JsonWriter(BaseWriter):
         pass
 
 
+class SoapyPowerBinV3Format:
+    """Bounded float64 records with strict JSON metadata and SHA-256 integrity."""
+    magic = b'SDRFF3\0'
+    lengths = struct.Struct('<QQ')
+
+    def __init__(self, max_payload_bytes=256 * 1024**2, max_metadata_bytes=16 * 1024**2):
+        self.max_payload_bytes = integer(max_payload_bytes, 'payload limit', 16)
+        self.max_metadata_bytes = integer(max_metadata_bytes, 'metadata limit', 2)
+
+    def write(self, stream, record, power):
+        validate_record(record)
+        power = numpy.asarray(power, dtype='<f8')
+        header = dict(record)
+        del header['power']
+        header['binary_version'] = 3
+        header['power_dtype'] = 'float64-le'
+        metadata = json.dumps(header, allow_nan=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+        payload = power.tobytes()
+        if len(payload) != 8 * len(record['power']):
+            raise ValueError('v3 payload length does not match record')
+        self._check_lengths(len(metadata), len(payload))
+        lengths = self.lengths.pack(len(metadata), len(payload))
+        digest = hashlib.sha256(lengths + metadata + payload).digest()
+        for data in (self.magic, lengths, digest, metadata, payload):
+            SoapyPowerBinFormat._write_all(stream, data)
+        stream.flush()
+
+    def _check_lengths(self, metadata, payload):
+        if metadata < 2 or metadata > self.max_metadata_bytes or payload < 16 or payload % 8 or payload > self.max_payload_bytes:
+            raise ValueError('invalid or excessive v3 record size')
+
+    def read(self, stream):
+        first = stream.read(1)
+        if not first:
+            return None
+        magic = first + SoapyPowerBinFormat._read_exact(stream, len(self.magic) - 1)
+        if magic != self.magic:
+            raise ValueError('invalid v3 magic')
+        lengths = SoapyPowerBinFormat._read_exact(stream, self.lengths.size)
+        metadata_size, payload_size = self.lengths.unpack(lengths)
+        self._check_lengths(metadata_size, payload_size)
+        digest = SoapyPowerBinFormat._read_exact(stream, 32)
+        metadata = SoapyPowerBinFormat._read_exact(stream, metadata_size)
+        payload = SoapyPowerBinFormat._read_exact(stream, payload_size)
+        if digest != hashlib.sha256(lengths + metadata + payload).digest():
+            raise ValueError('v3 checksum mismatch')
+        record = loads_json(metadata.decode('utf-8'))
+        if not isinstance(record, dict) or record.pop('binary_version', None) != 3 or record.pop('power_dtype', None) != 'float64-le':
+            raise ValueError('invalid v3 metadata')
+        values = numpy.frombuffer(payload, dtype='<f8')
+        if numpy.isposinf(values).any():
+            raise ValueError('invalid infinite v3 power')
+        record['power'] = [float(x) if numpy.isfinite(x) else None for x in values]
+        return validate_record(record)
+
+
+class SoapyPowerBinV3Writer(JsonWriter):
+    def __init__(self, output=sys.stdout, log_scale=True, allow_nan=False, power_unit='input'):
+        BaseWriter.__init__(self, output, log_scale, allow_nan, power_unit)
+        self.formatter = SoapyPowerBinV3Format()
+
+    def write(self, psd_data_or_future, time_start, time_stop, samples, metadata=None):
+        freqs, power = spectrum_data(psd_data_or_future, self._log_scale, self._allow_nan)
+        record = self.make_record((freqs, power), time_start, time_stop, samples, metadata)
+        self.formatter.write(self.output, record, power)
+
+
 formats = {
     'json': JsonWriter,
     'soapy_power_bin': SoapyPowerBinWriter,
+    'soapy_power_bin_v3': SoapyPowerBinV3Writer,
     'rtl_power_fftw': RtlPowerFftwWriter,
     'rtl_power': RtlPowerWriter,
 }

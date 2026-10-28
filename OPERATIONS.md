@@ -148,9 +148,9 @@ ratio or removes all offset. Avoid changing correction modes during a capture.
 soapy_power_calibration integrate calibrated.jsonl --start-hz 99900000 --stop-hz 100100000
 ```
 
-Band bounds select bin centers in the half-open interval `[start, stop)` and must
-lie inside **each record's** frequency grid. The routine converts dB densities
-to linear power, sums and multiplies by bin spacing. It emits one result per hop,
+For JSON v2, band bounds select intersections with bin support in `[start, stop)`
+and must lie inside **each record's** measured support. Version-1 records retain
+legacy center selection unless `--method fractional` is explicit. The routine integrates densities in linear power over actual intersected bin widths. It emits one result per hop,
 not a stitched or simultaneous wideband measurement. Do not sum overlapping
 hops or acquisitions as independent frequency bins.
 
@@ -191,3 +191,7 @@ validate its error against double precision for the required dynamic range.
 A larger FFT changes resolution, memory and processing latency, not the
 receiver's analog selectivity. Deadlines cannot interrupt a blocking driver
 call or promise real-time completion.
+
+See [CALIBRATION.md](CALIBRATION.md) for terminated baseline/antenna comparisons
+and manifest-driven measured calibration; [REMEDIATION.md](REMEDIATION.md) lists
+the current integrity, timing, exact-target and versioned-output contracts.

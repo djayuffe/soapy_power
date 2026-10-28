@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import math, os, logging, threading, concurrent.futures
+import math, os, logging, threading, concurrent.futures, warnings
 
 import numpy
 import simplespectral
@@ -60,8 +60,18 @@ class PSD:
                  crop_factor=0, log_scale=True, remove_dc=False, detrend=None,
                  lnb_lo=0, max_threads=0, max_queue_size=0, precision='double',
                  iq_conjugate=False, frequency_sign=1, dc_mask_width=0, dc_offset=0,
-                 calibration=None, fft_threads=1):
+                 calibration=None, fft_threads=1, nonblocking=False,
+                 workspace_budget_bytes=64 * 1024**2, input_format='legacy', allow_estimated_dc=False):
         self._bins = integer(bins, 'bins', 2)
+        self._workspace_budget = integer(workspace_budget_bytes, 'workspace budget', 1)
+        self._workspace_fixed = self._bins * 80
+        self._workspace_point_bytes = 112 if detrend else 96
+        if self._workspace_fixed + self._bins * self._workspace_point_bytes > self._workspace_budget:
+            raise ValueError('one FFT segment exceeds the application workspace budget')
+        if input_format not in ('legacy', 'complex', 'real'):
+            raise ValueError('input_format must be legacy, complex or real')
+        self._input_format, self._nonblocking = input_format, bool(nonblocking)
+        self._cancel_event = threading.Event()
         self._sample_rate = finite(sample_rate, 'sample_rate', positive=True)
         self._fft_overlap = finite(fft_overlap, 'fft_overlap', nonnegative=True)
         if self._fft_overlap >= 1:
@@ -83,6 +93,13 @@ class PSD:
             self._window = self._window.astype(numpy.float32).astype(numpy.float64)
             self._window_energy = numpy.dot(self._window, self._window)
             self._window_scale = self._sample_rate * self._window_energy
+        coherent_sum = math.fsum(float(x) for x in self._window)
+        l1 = math.fsum(abs(float(x)) for x in self._window)
+        if abs(coherent_sum) <= 8 * numpy.finfo(float).eps * l1:
+            raise ValueError('window coherent gain is ill-conditioned; ENBW undefined')
+        self._enbw = self._window_scale / coherent_sum**2
+        if not math.isfinite(self._enbw) or self._enbw <= 0:
+            raise ValueError('window ENBW is outside float64 range')
         self._fft_overlap_bins = math.floor(self._bins * self._fft_overlap)
         self._step = self._bins - self._fft_overlap_bins
         self._log_scale = log_scale
@@ -98,6 +115,8 @@ class PSD:
         if remove_dc and self._dc_mask_width:
             raise ValueError('choose either DC interpolation or exclusion, not both')
         self._fft_threads = integer(fft_threads, 'fft_threads', 1)
+        if calibration is not None:
+            calibration.validate_processing(detrend, remove_dc, allow_estimated_dc)
         self._calibration = calibration
         self._detrend = detrend
         self._lnb_lo = finite(lnb_lo, 'lnb_lo')
@@ -106,7 +125,9 @@ class PSD:
             raise ValueError('frequency_sign must be +1 or -1')
         self._frequency_sign = frequency_sign
         self._iq_conjugate = iq_conjugate
-        self._base_freq_array = numpy.fft.fftfreq(self._bins, 1 / self._sample_rate)
+        indices = numpy.arange(self._bins, dtype=numpy.int64)
+        self._base_bin_indices = numpy.where(indices < (self._bins + 1) // 2, indices, indices - self._bins)
+        self._base_freq_array = self._base_bin_indices * self.bin_width
         self._freq_order = numpy.argsort(self._frequency_sign * self._base_freq_array)
         self._dc_mask = numpy.zeros(self._bins, dtype=bool)
         if self._dc_mask_width:
@@ -132,8 +153,7 @@ class PSD:
     @property
     def enbw(self):
         """Equivalent noise bandwidth in Hz, distinct from FFT bin spacing."""
-        coherent_sum = self._window.sum()
-        return self._sample_rate * self._window_energy / coherent_sum**2
+        return self._enbw
 
     @property
     def coherent_gain(self):
@@ -145,7 +165,20 @@ class PSD:
         mask = self._dc_mask[order]
         if half:
             mask = mask[half:-half]
-        return {'fft_bins': self._bins, 'sample_rate_hz': self._sample_rate,
+        estimated = numpy.zeros(self._bins, dtype=bool)
+        estimated[0] = self._remove_dc
+        estimated = estimated[order]
+        if half:
+            estimated = estimated[half:-half]
+        kept_indices = self._frequency_sign * self._base_bin_indices[order]
+        if half:
+            kept_indices = kept_indices[half:-half]
+        return {'frequency_grid': {'rf_origin_hz': state['rf_origin_hz'], 'step_hz': self.bin_width,
+                                  'first_bin_index': int(kept_indices[0]), 'bin_count': len(kept_indices)},
+                'tuned_center_hz': state['center_freq_hz'],
+                'estimated_bins': numpy.flatnonzero(estimated & ~mask).tolist(),
+                'application_workspace_budget_bytes_per_worker': self._workspace_budget,
+                'fft_bins': self._bins, 'sample_rate_hz': self._sample_rate,
                 'bin_width_hz': self.bin_width, 'window_enbw_hz': self.enbw,
                 'window': self._fft_window, 'segment_count': state['repeats'],
                 'overlap_samples': self._fft_overlap_bins, 'detrend': self._detrend,
@@ -160,14 +193,15 @@ class PSD:
     def set_center_freq(self, center_freq):
         """Start a measurement; never carry overlap across retuning or gaps."""
         center_freq = finite(center_freq, 'center_freq')
-        freqs = self._lnb_lo + self._frequency_sign * (self._base_freq_array + center_freq)
+        origin = math.fsum((self._lnb_lo, self._frequency_sign * center_freq))
+        freqs = origin + self._frequency_sign * self._base_freq_array
         order = self._freq_order
         shifted = freqs[order]
         if not numpy.isfinite(freqs).all() or not numpy.all(numpy.diff(shifted) > 0):
             raise ValueError('frequency bins cannot be represented distinctly in float64')
         return {
-            'repeats': 0, 'freq_array': freqs, 'freq_order': order, 'pwr_array': None,
-            'compensation': numpy.zeros(self._bins, dtype=numpy.float64),
+            'rf_origin_hz': origin, 'center_freq_hz': center_freq, 'repeats': 0, 'freq_array': freqs, 'freq_order': order, 'pwr_array': None,
+            'mean_residual': numpy.zeros(self._bins, dtype=numpy.float64),
             'update_lock': threading.Lock(), 'input_lock': threading.Lock(),
             'futures': set(), 'error': None, 'result_future': None,
             'completing': False, 'tail': numpy.empty(0, dtype=self._dtype),
@@ -247,13 +281,22 @@ class PSD:
         self._complete_result(psd_state)
         return future
 
-    def close(self):
+    def close(self, cancel=False):
+        if cancel:
+            self._cancel_event.set()
         self._executor.shutdown(wait=True)
 
     def _samples(self, samples):
         samples = numpy.asarray(samples)
         if samples.ndim != 1 or samples.dtype.kind not in 'iufc':
             raise ValueError('samples must be a one-dimensional numeric IQ array')
+        if samples.dtype.kind != 'c':
+            if self._calibration is not None or self._input_format == 'complex' or samples.dtype.kind in 'iu':
+                raise ValueError('PSD requires complex IQ; convert native/interleaved formats explicitly')
+            if self._input_format == 'legacy':
+                warnings.warn('real PSD input is deprecated; choose input_format=real explicitly', DeprecationWarning, stacklevel=3)
+        elif self._input_format == 'real':
+            raise ValueError('real input mode requires an explicitly real floating array')
         samples = numpy.asarray(samples, dtype=self._dtype)
         if not numpy.isfinite(samples).all():
             raise ValueError('IQ samples must be finite')
@@ -267,12 +310,15 @@ class PSD:
         views = numpy.lib.stride_tricks.as_strided(
             samples, shape=(segments, self._bins),
             strides=(self._step * samples.strides[0], samples.strides[0]), writeable=False)
-        batch_size = max(1, (8 * 1024**2) // (self._bins * samples.itemsize))
+        batch_size = max(1, (self._workspace_budget - self._workspace_fixed) //
+                         (self._bins * self._workspace_point_bytes))
         total = numpy.zeros(self._bins, dtype=numpy.float64)
         # Normalize before squaring/summing. This avoids intermediate overflow
         # when the final mean density is representable but raw FFT power is not.
         fft_scale = (1 / math.sqrt(self._window_scale)) / math.sqrt(segments)
         for start in range(0, segments, batch_size):
+            if self._cancel_event.is_set():
+                raise concurrent.futures.CancelledError()
             batch = views[start:start + batch_size]
             if self._detrend:
                 batch = batch - batch.mean(axis=-1, keepdims=True)
@@ -283,6 +329,8 @@ class PSD:
             if getattr(simplespectral, 'fft_pyfftw', False) and simplespectral.use_pyfftw:
                 options['threads'] = self._fft_threads
             transformed = simplespectral.fft(batch, n=self._bins, axis=-1, **options)
+            if self._cancel_event.is_set():
+                raise concurrent.futures.CancelledError()
             # Float64 scaling also prevents single-precision power overflow.
             real = numpy.asarray(transformed.real, dtype=numpy.float64) * fft_scale
             imag = numpy.asarray(transformed.imag, dtype=numpy.float64) * fft_scale
@@ -300,19 +348,20 @@ class PSD:
             total_count = previous_count + segments
             if state['pwr_array'] is None:
                 updated = total
-                compensation = state['compensation']
+                residual = state['mean_residual']
             else:
-                # A weighted running mean avoids overflow of a long sum.
-                # Carry the previous rounding residual with its remaining weight.
+                # Invariant: represented mean = pwr_array + mean_residual.
+                # TwoSum isolates addition error; products/division still round.
                 weight = segments / total_count
                 old = state['pwr_array']
-                corrected = (total - old) * weight - state['compensation'] * (1 - weight)
-                updated = old + corrected
-                compensation = (updated - old) - corrected
+                correction = (total - old) * weight + state['mean_residual'] * (previous_count / total_count)
+                updated = old + correction
+                z = updated - old
+                residual = (old - (updated - z)) + (correction - z)
             if not numpy.isfinite(updated).all():
                 raise ValueError('averaged PSD exceeds float64 range')
             state['pwr_array'] = updated
-            state['compensation'] = compensation
+            state['mean_residual'] = residual
             state['repeats'] = total_count
 
     def _check_open(self, state, mode):
@@ -322,16 +371,17 @@ class PSD:
             raise state['error']
         if state['input_mode'] not in (None, mode):
             raise ValueError('do not mix independent records and contiguous IQ in one state')
-        state['input_mode'] = mode
 
     def update(self, psd_state, samples_array):
         """Average one independent record; no overlap is shared with other calls."""
         with psd_state['input_lock']:
             self._check_open(psd_state, 'independent')
             self._accumulate(psd_state, self._samples(samples_array))
+            psd_state['input_mode'] = 'independent'
 
     def _submit(self, state, samples):
-        future = self._executor.submit(self._accumulate, state, samples)
+        submit = self._executor.submit_nowait if self._nonblocking else self._executor.submit
+        future = submit(self._accumulate, state, samples)
         with state['update_lock']:
             state['futures'].add(future)
         future.add_done_callback(lambda done: self._update_done(state, done))
@@ -341,7 +391,9 @@ class PSD:
         """Queue an independent record, with bounded backpressure."""
         with psd_state['input_lock']:
             self._check_open(psd_state, 'independent')
-            return self._submit(psd_state, self._samples(samples_array))
+            future = self._submit(psd_state, self._samples(samples_array))
+            psd_state['input_mode'] = 'independent'
+            return future
 
     def update_contiguous_async(self, psd_state, samples_array):
         """Append uninterrupted IQ; retain fewer than bins samples for next read.
@@ -356,10 +408,15 @@ class PSD:
                 samples = numpy.concatenate((psd_state['tail'], samples))
             segments = max(0, 1 + (samples.size - self._bins) // self._step)
             consumed = segments * self._step
-            psd_state['tail'] = samples[consumed:].copy()
+            next_tail = samples[consumed:].copy()
             if not segments:
+                psd_state['tail'] = next_tail
+                psd_state['input_mode'] = 'contiguous'
                 future = concurrent.futures.Future()
                 future.set_result(None)
                 return future
             end = consumed + self._fft_overlap_bins
-            return self._submit(psd_state, samples[:end])
+            future = self._submit(psd_state, samples[:end])
+            psd_state['tail'] = next_tail
+            psd_state['input_mode'] = 'contiguous'
+            return future

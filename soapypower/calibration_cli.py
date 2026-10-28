@@ -7,7 +7,7 @@ import json
 import math
 from pathlib import Path
 
-from soapypower.calibration import PowerCalibration, CONTEXT_FIELDS, _compare
+from soapypower.calibration import PowerCalibration, CONTEXT_FIELDS, _compare, require_fixed_gain
 from soapypower.files import load_json, write_json
 from soapypower.numerics import finite
 from soapypower.records import read_records, integrate_record
@@ -88,8 +88,7 @@ def extract_context(path):
             raise ValueError('record does not contain a complete acquisition context')
         if metadata.get('calibration') is not None or record['unit'] not in ('input power/Hz', 'dB(input power/Hz)'):
             raise ValueError('extract calibration context from uncalibrated records')
-        if candidate['agc'] is not False:
-            raise ValueError('calibration context requires AGC off')
+        require_fixed_gain(candidate)
         if context is not None:
             _compare(context, candidate)
         context = candidate
@@ -120,7 +119,26 @@ def parser():
     integrate.add_argument('records')
     integrate.add_argument('--start-hz', type=float)
     integrate.add_argument('--stop-hz', type=float)
+    integrate.add_argument('--method', choices=['fractional', 'legacy-centers'])
+    integrate.add_argument('--include-estimated', action='store_true')
     integrate.add_argument('--omit-masked', action='store_true', help='report only measured bandwidth; never claim full-band power')
+    baseline = commands.add_parser('baseline', help='measure terminated raw baseline; never infer absolute gain from one load')
+    baseline.add_argument('records')
+    baseline.add_argument('--temperature-k', type=float, required=True)
+    baseline.add_argument('--source-ohms', type=float, required=True)
+    baseline.add_argument('--receiver-ohms', type=float, required=True)
+    for cmd in (baseline,):
+        cmd.add_argument('--start-hz', type=float)
+        cmd.add_argument('--stop-hz', type=float)
+    compare = commands.add_parser('compare', help='compare antenna/observed capture to terminated/reference baseline')
+    compare.add_argument('reference')
+    compare.add_argument('observed')
+    compare.add_argument('--start-hz', type=float)
+    compare.add_argument('--stop-hz', type=float)
+    measured = commands.add_parser('from-captures', help='build a measured tone, hot-cold or known-NF grid from a manifest')
+    measured.add_argument('manifest')
+    measured.add_argument('-O', '--output', required=True)
+    measured.add_argument('--force', action='store_true')
     return root
 
 
@@ -131,7 +149,19 @@ def main(argv=None):
         root.print_help()
         return 2
     try:
-        if args.command == 'validate':
+        if args.command in ('baseline', 'compare', 'from-captures'):
+            from soapypower.calibration_workflows import (thermal_reference, average_capture,
+                                                         band_summary, compare_captures, build_manifest)
+            if args.command == 'baseline':
+                output = thermal_reference(args.temperature_k, args.source_ohms, args.receiver_ohms)
+                output['measured_baseline'] = band_summary(average_capture(args.records), args.start_hz, args.stop_hz)
+                output['next_step'] = 'Known tone, two known noise temperatures, or independently known receiver noise figure required for absolute scale'
+                print(json.dumps(output, allow_nan=False, sort_keys=True))
+            elif args.command == 'compare':
+                print(json.dumps(compare_captures(args.reference, args.observed, args.start_hz, args.stop_hz), allow_nan=False, sort_keys=True))
+            else:
+                write_json(args.output, build_manifest(args.manifest).profile, overwrite=args.force)
+        elif args.command == 'validate':
             calibration = PowerCalibration.load(args.profile)
             profile = calibration.profile
             output = calibration.metadata()
@@ -148,11 +178,11 @@ def main(argv=None):
             write_json(args.output, calibration.profile, overwrite=args.force)
         elif args.command == 'integrate':
             for number, record in enumerate(read_records(args.records), 1):
-                output = integrate_record(record, args.start_hz, args.stop_hz, args.omit_masked)
+                output = integrate_record(record, args.start_hz, args.stop_hz, args.omit_masked, args.method, args.include_estimated)
                 output['record_number'] = number
                 output['time_start'] = record.get('time_start')
                 print(json.dumps(output, allow_nan=False, sort_keys=True))
-    except (ValueError, OSError) as error:
+    except (ValueError, OSError, OverflowError) as error:
         root.error(str(error))
     return 0
 

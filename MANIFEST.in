@@ -8,3 +8,6 @@ include DEVELOPMENT.md
 include pyproject.toml
 recursive-include tools *.py
 recursive-include .github/workflows *.yml
+include CALIBRATION.md
+include REMEDIATION.md
+recursive-include examples *.json

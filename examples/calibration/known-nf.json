@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "method": "known-nf",
+  "reference": "REPLACE with source identity, certificate and measurement procedure",
+  "reference_plane": "Receiver input connector",
+  "reference_baseband_hz": 100000,
+  "min_segments": 32,
+  "cells": [
+    {
+      "rf_hz": 100000000,
+      "baseband_hz": -100000,
+      "start_hz": 99980000,
+      "stop_hz": 100020000,
+      "cold": "captures/100000000_-100000_cold.jsonl",
+      "cold_temperature_k": null,
+      "source_ohms": 50,
+      "receiver_ohms": 50,
+      "path_loss_db": 0,
+      "path_temperature_k": 290,
+      "noise_figure_db": null
+    },
+    {
+      "rf_hz": 100000000,
+      "baseband_hz": 100000,
+      "start_hz": 99980000,
+      "stop_hz": 100020000,
+      "cold": "captures/100000000_+100000_cold.jsonl",
+      "cold_temperature_k": null,
+      "source_ohms": 50,
+      "receiver_ohms": 50,
+      "path_loss_db": 0,
+      "path_temperature_k": 290,
+      "noise_figure_db": null
+    },
+    {
+      "rf_hz": 101000000,
+      "baseband_hz": -100000,
+      "start_hz": 100980000,
+      "stop_hz": 101020000,
+      "cold": "captures/101000000_-100000_cold.jsonl",
+      "cold_temperature_k": null,
+      "source_ohms": 50,
+      "receiver_ohms": 50,
+      "path_loss_db": 0,
+      "path_temperature_k": 290,
+      "noise_figure_db": null
+    },
+    {
+      "rf_hz": 101000000,
+      "baseband_hz": 100000,
+      "start_hz": 100980000,
+      "stop_hz": 101020000,
+      "cold": "captures/101000000_+100000_cold.jsonl",
+      "cold_temperature_k": null,
+      "source_ohms": 50,
+      "receiver_ohms": 50,
+      "path_loss_db": 0,
+      "path_temperature_k": 290,
+      "noise_figure_db": null
+    }
+  ],
+  "assumptions_confirmed": false,
+  "accept_ideal_mismatch": false
+}

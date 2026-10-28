@@ -216,3 +216,12 @@ memory. Performance choices require workload and hardware benchmarks.
 - [UHD power references, gain and calibration](https://files.ettus.com/manual/page_power.html)
 - [SciPy Welch density, periodic windows and scaling](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.welch.html)
 - [pyFFTW interfaces and threading](https://pyfftw.readthedocs.io/en/latest/source/pyfftw/interfaces/interfaces.html)
+
+## Measurement integrity and expanded calibration workflows
+
+See [REMEDIATION.md](REMEDIATION.md) for the updated mean-residual invariant,
+transactional framing, exact acquisition targets, timestamp confidence and
+versioned support geometry. JSON v2 uses fractional bin-support integration by
+default. Binary v3 preserves float64 and metadata with per-record checksums.
+[CALIBRATION.md](CALIBRATION.md) specifies the thermal and tone reference models;
+one passive load alone does not identify both gain and receiver noise.

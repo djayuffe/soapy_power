@@ -81,3 +81,15 @@ versions, firmware/driver versions, capture context, measurement CSV, profile
 hash and acceptance results. Only tag or publish after the intended checks pass.
 No software-only routine can certify analog linearity, noise figure, absolute
 power uncertainty or sustained device throughput.
+
+## Additional integrity and calibration checks
+
+The suite includes Decimal direct-DFT/aggregation references and queue, timing,
+partial-result, settling, v3 checksum and measured-manifest fault tests. Run
+`python tools/fuzz_integration.py --trials 100000` for randomized fractional
+interval checks against exact rational float-input widths. This is a finite
+seeded test, not an exhaustive proof for all floating inputs.
+
+See [REMEDIATION.md](REMEDIATION.md) for per-finding disposition and remaining
+architecture/metrology limits, and [CALIBRATION.md](CALIBRATION.md) for real
+RTL-SDR/termination/tone/noise procedures.

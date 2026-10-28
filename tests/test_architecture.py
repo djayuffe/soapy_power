@@ -445,7 +445,7 @@ class HardwareIntegrationTests(unittest.TestCase):
         self.assertEqual(len(records), 1)
         record = json.loads(records[0])
         self.assertEqual(record['samples'], 64)
-        self.assertTrue(record['metadata']['end_burst'])
+        self.assertTrue(record['metadata']['end_burst_seen'])
         self.assertEqual(sdr.device.reads, 1)
 
     def test_calibration_checks_frontend_state_after_driver_retune(self):

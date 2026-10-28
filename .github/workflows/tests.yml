@@ -20,6 +20,7 @@ jobs:
       - run: python tools/validate.py --backend numpy
       - run: python tools/validate.py --backend scipy
       - run: python tools/validate.py --backend fftw
+      - run: python tools/fuzz_integration.py --trials 10000
       - run: python -m build
       - run: python -m twine check dist/*
       - run: soapy_power --help

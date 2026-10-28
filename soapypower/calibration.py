@@ -12,6 +12,7 @@ import numpy
 
 from soapypower.numerics import finite, integer
 from soapypower.files import load_json
+from soapypower.uncertainty import evaluate_budget
 
 CONTEXT_FIELDS = frozenset((
     'hardware', 'driver', 'serial', 'channel', 'antenna', 'sample_rate', 'bandwidth',
@@ -36,16 +37,34 @@ def _compare(expected, actual, path='context'):
         raise ValueError('calibration mismatch: {}'.format(path))
 
 
+def require_fixed_gain(context):
+    if context.get('agc') is not False:
+        raise ValueError('absolute calibration/reference comparison requires fixed gain (AGC off)')
+    settings = context.get('device_settings')
+    if not isinstance(settings, dict):
+        raise ValueError('calibration device_settings must contain actual readback')
+    for name in ('digital_agc', 'if_agc', 'testmode'):
+        if str(settings.get(name, 'false')).strip().lower() not in ('false', '0', 'off'):
+            raise ValueError('calibration requires ' + name + ' disabled with known readback')
+
+
 class PowerCalibration:
     def __init__(self, profile):
         if not isinstance(profile, dict):
             raise ValueError('calibration profile must be a JSON object')
         required = {'version', 'units', 'reference', 'reference_plane', 'context', 'points',
                     'baseband_hz', 'baseband_correction_db', 'reference_baseband_hz'}
-        if set(profile) - (required | {'uncertainty_db', 'measured_at', 'measurements_sha256'}) or not required <= set(profile):
+        if set(profile) - (required | {'uncertainty_db', 'measured_at', 'measurements_sha256', 'method', 'method_details', 'processing', 'uncertainty'}) or not required <= set(profile):
             raise ValueError('invalid calibration profile fields')
-        if type(profile['version']) is not int or profile['version'] != 1 or profile['units'] != 'dBm':
-            raise ValueError('expected calibration version 1 with dBm reference units')
+        if type(profile['version']) is not int or profile['version'] not in (1, 2) or profile['units'] != 'dBm':
+            raise ValueError('expected calibration version 1 or 2 with dBm reference units')
+        if profile['version'] == 2:
+            self._uncertainty = evaluate_budget(profile.get('uncertainty'))
+        elif 'uncertainty' in profile:
+            raise ValueError('structured uncertainty requires profile version 2')
+        else:
+            self._uncertainty = {'status': 'not_evaluated', 'combined_standard_db': None,
+                                 'measurement_statistics_included': False}
         for field in ('reference', 'reference_plane'):
             if not isinstance(profile[field], str) or not profile[field].strip():
                 raise ValueError('calibration {} must identify the measured reference'.format(field))
@@ -62,8 +81,7 @@ class PowerCalibration:
             raise ValueError('calibration requires CF32 input and actual gain readback')
         for value in context['gains'].values():
             finite(value, 'calibration gain')
-        if context['agc'] is not False:
-            raise ValueError('absolute power calibration requires fixed gain (AGC off)')
+        require_fixed_gain(context)
         if 'measured_at' in profile and (not isinstance(profile['measured_at'], str) or not profile['measured_at'].strip()):
             raise ValueError('measured_at must be a nonempty date/time string')
         if 'measurements_sha256' in profile:
@@ -131,6 +149,15 @@ class PowerCalibration:
         if context['agc'] is not False:
             raise ValueError('AGC invalidates fixed power calibration')
 
+    def validate_processing(self, detrend, remove_dc, allow_estimated_dc=False):
+        expected = self._profile.get('processing', {'detrend': None})
+        if not isinstance(expected, dict) or set(expected) != {'detrend'} or expected['detrend'] not in (None, 'constant'):
+            raise ValueError('invalid calibration processing contract')
+        if expected['detrend'] != detrend:
+            raise ValueError('calibration detrend transformation does not match')
+        if remove_dc and not allow_estimated_dc:
+            raise ValueError('calibrated DC interpolation requires explicit allow_estimated_dc')
+
     def offsets_db(self, freqs, baseband_freqs=None):
         freqs = numpy.asarray(freqs, dtype=numpy.float64)
         if (not numpy.isfinite(freqs).all() or numpy.any(freqs < self._freqs[0]) or
@@ -171,12 +198,12 @@ class PowerCalibration:
         return result
 
     def metadata(self):
-        result = {'profile_sha256': self.profile_id,
+        result = {'uncertainty_evaluation': copy.deepcopy(self._uncertainty), 'profile_sha256': self.profile_id,
                   'reference': self._profile['reference'],
                   'reference_plane': self._profile['reference_plane'],
                   'model': 'rf_and_raw_baseband_grid',
                   'reference_baseband_hz': self._reference_bb}
-        for field in ('uncertainty_db', 'measured_at', 'measurements_sha256'):
+        for field in ('uncertainty_db', 'measured_at', 'measurements_sha256', 'method', 'method_details'):
             if field in self._profile:
                 result[field] = self.profile[field]
         return result

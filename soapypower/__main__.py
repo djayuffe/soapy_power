@@ -290,6 +290,17 @@ def setup_argument_parser():
                             help='don\'t use pyfftw library even if it is available (use scipy.fftpack or numpy.fft)')
 
     other_title = parser.add_argument_group('Other options')
+    other_title.add_argument('--partial-policy', choices=['emit', 'reject', 'legacy'],
+                             help='partial acquisition policy (default: reject calibrated, emit metadata-capable raw)')
+    other_title.add_argument('--acquisition-rounding', choices=['exact', 'block'], default='exact')
+    other_title.add_argument('--settle-samples', type=int, default=0)
+    other_title.add_argument('--lock-sensor', help='driver RX lock sensor name; requires a true readback')
+    other_title.add_argument('--lock-timeout', type=float, default=2.0)
+    other_title.add_argument('--timestamp-tolerance-samples', type=float, default=0.25)
+    other_title.add_argument('--require-timestamps', action='store_true')
+    other_title.add_argument('--workspace-budget', type=int, default=64 * 1024**2,
+                             help='application FFT workspace bytes per worker; excludes driver/input queues and backend cache')
+    other_title.add_argument('--allow-estimated-dc', action='store_true')
     other_title.add_argument('--calibration', metavar='JSON',
                              help='measured, settings-matched power calibration profile; output dBm/Hz or mW/Hz')
     other_title.add_argument('--dc-mask-width', type=float_with_multiplier, default=0, metavar='HZ',
@@ -348,6 +359,10 @@ def validate_arguments(parser, args):
         parser.error('choose DC interpolation or DC exclusion, not both')
     if args.dc_offset and not args.dc_mask_width:
         parser.error('--dc-offset requires a positive --dc-mask-width')
+    if args.settle_samples < 0 or args.workspace_budget <= 0:
+        parser.error('settle samples must be nonnegative and workspace budget positive')
+    if not math.isfinite(args.lock_timeout) or args.lock_timeout <= 0 or not math.isfinite(args.timestamp_tolerance_samples) or args.timestamp_tolerance_samples < 0:
+        parser.error('invalid lock timeout or timestamp tolerance')
     if args.calibration and args.agc:
         parser.error('absolute calibration requires fixed gain, not AGC')
     if args.fft_window in ('kaiser', 'tukey') and args.fft_window_param is None:
@@ -475,7 +490,12 @@ def main():
             max_threads=args.max_threads, max_queue_size=args.max_queue_size,
             precision=args.precision, iq_conjugate=args.iq_conjugate, lnb_high_side=args.lnb_high_side,
             dc_mask_width=args.dc_mask_width, dc_offset=args.dc_offset, calibration=calibration,
-            fft_threads=args.fft_threads
+            fft_threads=args.fft_threads, partial_policy=args.partial_policy,
+            acquisition_rounding=args.acquisition_rounding, settle_samples=args.settle_samples,
+            lock_sensor=args.lock_sensor, lock_timeout=args.lock_timeout,
+            timestamp_tolerance_samples=args.timestamp_tolerance_samples,
+            require_timestamps=args.require_timestamps, workspace_budget_bytes=args.workspace_budget,
+            allow_estimated_dc=args.allow_estimated_dc
         )
     except (ValueError, RuntimeError, OSError) as error:
         if args.debug:

@@ -76,7 +76,12 @@ class Frontend:
             ppm = self.optional('getFrequencyCorrection', self.direction, self.channel)
         else:
             ppm = getattr(self.wrapper, 'corr', None)
-        settings = {key: self.optional('readSetting', key) for key in device_settings}
+        keys = set(device_settings)
+        for info_item in self.optional('getSettingInfo') or []:
+            key = getattr(info_item, 'key', None)
+            if isinstance(key, str) and key:
+                keys.add(key)
+        settings = {key: self.optional('readSetting', key) for key in sorted(keys)}
         gain_mode = (self.optional('getGainMode', self.direction, self.channel)
                      if self.supported('hasGainMode') else False)
         return {

@@ -5,6 +5,10 @@ import threading
 import concurrent.futures
 
 
+class QueueFullError(RuntimeError):
+    """Bounded processing capacity exhausted; no work was accepted."""
+
+
 class ThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
     """Bound pending work without replacing the executor's internal queue."""
     def __init__(self, max_workers=0, thread_name_prefix='', max_queue_size=0):
@@ -27,10 +31,18 @@ class ThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
             self._slots.release()
 
     def submit(self, fn, *args, **kwargs):
+        return self._submit_policy(True, fn, *args, **kwargs)
+
+    def submit_nowait(self, fn, *args, **kwargs):
+        return self._submit_policy(False, fn, *args, **kwargs)
+
+    def _submit_policy(self, block, fn, *args, **kwargs):
         if self._stopping.is_set():
             raise RuntimeError('cannot schedule new futures after shutdown')
         if self._slots:
-            while not self._slots.acquire(timeout=0.1):
+            if not block and not self._slots.acquire(blocking=False):
+                raise QueueFullError('processing_overrun: bounded queue is full')
+            while block and not self._slots.acquire(timeout=0.1):
                 if self._stopping.is_set():
                     raise RuntimeError('cannot schedule new futures after shutdown')
         with self._pending_lock:

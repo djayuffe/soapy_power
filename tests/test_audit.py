@@ -293,7 +293,7 @@ class AcquisitionTests(unittest.TestCase):
             self.power._shutdown = True
             return result
         self.sdr.device.read_stream = interrupt
-        self.sdr.sweep(10000, 10000, 64, 4, runs=1, max_threads=1, max_buffer_size=128)
+        self.sdr.sweep(10000, 10000, 64, 4, runs=1, max_threads=1, max_buffer_size=128, partial_policy='legacy')
         self.output.seek(0)
         header, _ = writer.SoapyPowerBinFormat().read(self.output)
         self.assertEqual(header.samples, 64)

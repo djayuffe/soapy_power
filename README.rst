@@ -25,8 +25,13 @@ choices, physical calibration and recurring reference checks.
 `RADIO_THEORY.md <RADIO_THEORY.md>`_ defines the mathematical contracts;
 `DEVELOPMENT.md <DEVELOPMENT.md>`_ describes backend tests and package checks.
 
+See `CALIBRATION.md <CALIBRATION.md>`_ for RTL-SDR/75 ohm termination,
+antennas, measured tone and hot/cold calibration workflows.
+`REMEDIATION.md <REMEDIATION.md>`_ documents JSON v2, binary v3, exact targets
+and partial/timing/queue integrity policies.
+
 The offline ``soapy_power_calibration`` command provides ``context``, ``build``,
-``validate`` and ``integrate`` routines without opening a radio. Run
+``validate``, ``integrate``, ``baseline``, ``compare`` and ``from-captures`` routines without opening a radio. Run
 ``soapy_power_calibration --help`` for commands. Profiles are constructed from
 actual measured tone powers; nominal receiver gain is not a dBm calibration.
 
@@ -35,9 +40,9 @@ Usage
 ::
 
     usage: soapy_power [-h] [-f Hz|Hz:Hz] [-O FILE | --output-fd NUM]
-                       [-F {json,rtl_power,rtl_power_fftw,soapy_power_bin}] [-q]
-                       [--debug] [--detect] [--info] [--version] [-b BINS | -B Hz]
-                       [-n REPEATS | -t SECONDS | -T SECONDS]
+                       [-F {json,rtl_power,rtl_power_fftw,soapy_power_bin,soapy_power_bin_v3}]
+                       [-q] [--debug] [--detect] [--info] [--version]
+                       [-b BINS | -B Hz] [-n REPEATS | -t SECONDS | -T SECONDS]
                        [-c | -u RUNS | -e SECONDS] [-d DEVICE] [-C CHANNEL]
                        [-A ANTENNA] [-r Hz] [-w Hz] [-p PPM]
                        [-g dB | -G STRING | -a] [--lnb-lo Hz] [--lnb-high-side]
@@ -48,9 +53,17 @@ Usage
                        [--reset-stream] [-o PERCENT | -k PERCENT] [-s BUFFER_SIZE]
                        [-S MAX_BUFFER_SIZE] [--even | --pow2] [--max-threads NUM]
                        [--max-queue-size NUM] [--fft-threads FFT_THREADS]
-                       [--no-pyfftw] [--calibration JSON] [--dc-mask-width HZ]
-                       [--dc-offset HZ] [--precision {single,double}]
-                       [--iq-conjugate] [-l] [-R] [-D {none,constant}]
+                       [--no-pyfftw] [--partial-policy {emit,reject,legacy}]
+                       [--acquisition-rounding {exact,block}]
+                       [--settle-samples SETTLE_SAMPLES]
+                       [--lock-sensor LOCK_SENSOR] [--lock-timeout LOCK_TIMEOUT]
+                       [--timestamp-tolerance-samples TIMESTAMP_TOLERANCE_SAMPLES]
+                       [--require-timestamps]
+                       [--workspace-budget WORKSPACE_BUDGET]
+                       [--allow-estimated-dc] [--calibration JSON]
+                       [--dc-mask-width HZ] [--dc-offset HZ]
+                       [--precision {single,double}] [--iq-conjugate] [-l] [-R]
+                       [-D {none,constant}]
                        [--fft-window {boxcar,hann,hamming,blackman,bartlett,kaiser,tukey}]
                        [--fft-window-param FLOAT] [--fft-overlap PERCENT]
 
@@ -67,7 +80,7 @@ Usage
                             is stdout)
       --output-fd NUM       output to existing file descriptor (incompatible with
                             -O)
-      -F {json,rtl_power,rtl_power_fftw,soapy_power_bin}, --format {json,rtl_power,rtl_power_fftw,soapy_power_bin}
+      -F {json,rtl_power,rtl_power_fftw,soapy_power_bin,soapy_power_bin_v3}, --format {json,rtl_power,rtl_power_fftw,soapy_power_bin,soapy_power_bin_v3}
                             output format (default: rtl_power)
       -q, --quiet           limit verbosity
       --debug               detailed debugging messages
@@ -168,6 +181,20 @@ Usage
                             scipy.fftpack or numpy.fft)
 
     Other options:
+      --partial-policy {emit,reject,legacy}
+                            partial acquisition policy (default: reject
+                            calibrated, emit metadata-capable raw)
+      --acquisition-rounding {exact,block}
+      --settle-samples SETTLE_SAMPLES
+      --lock-sensor LOCK_SENSOR
+                            driver RX lock sensor name; requires a true readback
+      --lock-timeout LOCK_TIMEOUT
+      --timestamp-tolerance-samples TIMESTAMP_TOLERANCE_SAMPLES
+      --require-timestamps
+      --workspace-budget WORKSPACE_BUDGET
+                            application FFT workspace bytes per worker; excludes
+                            driver/input queues and backend cache
+      --allow-estimated-dc
       --calibration JSON    measured, settings-matched power calibration profile;
                             output dBm/Hz or mW/Hz
       --dc-mask-width HZ    exclude this baseband DC/spur bandwidth as NaN
@@ -191,81 +218,6 @@ Usage
       --fft-overlap PERCENT
                             Welch's method overlap between segments (default: 50)
 
-Example
--------
-::
-
-    [user@host ~] soapy_power -r 2.56M -f 88M:98M -B 500k -F rtl_power -O output.txt --even -T 1 --debug
-    DEBUG: pyfftw module found (using 4 threads by default)
-    DEBUG: Applying fixes for RTLSDR quirks...
-    INFO: Using device: RTLSDR
-    DEBUG: SoapySDR stream - buffer size: 8192
-    DEBUG: SoapySDR stream - read timeout: 0.103200
-    INFO: repeats: 106667
-    INFO: samples: 640002 (time: 0.25000 s)
-    INFO: max_buffer_size (samples): 32768000 (repeats: 5461333.33, time: 12.80000 s)
-    INFO: buffer_size (samples): 647168 (repeats: 107861.33, time: 0.25280 s)
-    INFO: buffer_repeats: 1
-    INFO: overlap: 0.00000
-    INFO: bin_size: 426666.67 Hz
-    INFO: bins: 6
-    INFO: bins (after crop): 6
-    INFO: sample_rate: 2.560 MHz
-    INFO: sample_rate (after crop): 2.560 MHz
-    INFO: freq_range: 10.000 MHz
-    INFO: hopping: YES
-    INFO: hop_size: 2.560 MHz
-    INFO: hops: 4
-    INFO: min_center_freq: 89.280 MHz
-    INFO: max_center_freq: 96.960 MHz
-    INFO: min_freq (after crop): 88.000 MHz
-    INFO: max_freq (after crop): 98.240 MHz
-    DEBUG: Frequency hops table:
-    DEBUG:   Min:          Center:       Max:
-    DEBUG:     88.000 MHz    89.280 MHz    90.560 MHz
-    DEBUG:     90.560 MHz    91.840 MHz    93.120 MHz
-    DEBUG:     93.120 MHz    94.400 MHz    95.680 MHz
-    DEBUG:     95.680 MHz    96.960 MHz    98.240 MHz
-    DEBUG: Run: 1
-    DEBUG:   Frequency hop: 89280000.00 Hz
-    DEBUG:     Tune time: 0.017 s
-    DEBUG:     Repeat: 1
-    DEBUG:       Acquisition time: 0.251 s
-    DEBUG:     Total hop time: 0.282 s
-    DEBUG: FFT time: 0.103 s
-    DEBUG:   Frequency hop: 91840000.00 Hz
-    DEBUG:     Tune time: 0.010 s
-    DEBUG:     Repeat: 1
-    DEBUG:       Acquisition time: 0.251 s
-    DEBUG:     Total hop time: 0.272 s
-    DEBUG: FFT time: 0.006 s
-    DEBUG:   Frequency hop: 94400000.00 Hz
-    DEBUG:     Tune time: 0.010 s
-    DEBUG:     Repeat: 1
-    DEBUG:       Acquisition time: 0.252 s
-    DEBUG:     Total hop time: 0.266 s
-    DEBUG: FFT time: 0.004 s
-    DEBUG:   Frequency hop: 96960000.00 Hz
-    DEBUG:     Tune time: 0.010 s
-    DEBUG:     Repeat: 1
-    DEBUG:       Acquisition time: 0.253 s
-    DEBUG:     Total hop time: 0.267 s
-    DEBUG: FFT time: 0.004 s
-    DEBUG:   Total run time: 1.095 s
-    DEBUG: Number of USB buffer overflow errors: 0
-    DEBUG: PSD worker threads: 4
-    DEBUG: Max. PSD queue size: 2 / 40
-    DEBUG: Writer worker threads: 1
-    DEBUG: Max. Writer queue size: 2 / 100
-    INFO: Total time: 1.137 s
-
-Output::
-
-    2017-03-17, 13:18:25, 88000000.0, 90560000.0, 426666.666667, 647168, -98.6323, -98.7576, -97.3716, -98.3133, -98.8829, -98.9333
-    2017-03-17, 13:18:25, 90560000.0, 93120000.0, 426666.666667, 647168, -95.7163, -96.2564, -97.01, -98.1281, -90.701, -88.0872
-    2017-03-17, 13:18:25, 93120000.0, 95680000.0, 426666.666667, 647168, -99.0242, -91.3061, -91.9134, -85.4561, -86.0053, -97.8411
-    2017-03-17, 13:18:26, 95680000.0, 98240000.0, 426666.666667, 647168, -94.2324, -83.7932, -78.3108, -82.033, -89.1212, -97.4499
-
 Numerical accuracy and tuning
 -----------------------------
 
@@ -280,9 +232,10 @@ accumulation. FFT computation defaults to double precision; ``--precision single
 is available when throughput matters more than the additional precision. Log conversion happens after averaging.
 The radio acquisition path preserves overlap across reads, so the PSD does not
 depend on how an uninterrupted record is divided into buffers. Independent
-records submitted through the library API remain independent. The requested
-integration time is a minimum: acquisition rounds once to whole device blocks. Output sample counts and
-UTC timestamps describe the data actually acquired, including partial shutdown.
+records submitted through the library API remain independent. Acquisition targets exactly ``bins*repeats`` samples by default; use
+``--acquisition-rounding block`` for the old block-rounded policy. Metadata
+distinguishes actual/requested counts, partial reasons, hardware sample clocks
+and host UTC read bounds. Calibrated partial acquisitions are rejected by default.
 
 A Hann window with 50 percent segment overlap is a useful general default.
 Boxcar gives narrow bins for coherent tones but has more leakage. Other windows
@@ -293,13 +246,13 @@ replaces the central bin and is mainly useful with boxcar.
 Install an accelerated backend with ``pip install '.[fft]'`` (SciPy) or
 ``pip install '.[fftw]'`` (pyFFTW). ``--no-pyfftw`` selects the available fallback.
 ``--pow2`` rounds FFT lengths upward and therefore changes frequency resolution.
-Automatic settings use up to four PSD workers, one pending slot per worker,
+Automatic live settings use up to four PSD workers and 32 pending chunk slots,
 and acquisition chunks of about 100 ms (at least one device block, at most
 100 MiB unless a device block itself is larger). Choose explicit thread and
 queue limits for available RAM: ``--max-buffer-size`` limits
 one acquisition buffer, not the whole process, and FFT workspaces and queued
 copies also consume memory. ``--max-threads 1 --max-queue-size 1`` minimizes
-concurrent PSD jobs. An unlimited queue can consume unbounded RAM.
+concurrent PSD jobs. Live acquisition refuses an unbounded queue and fails explicitly on overload.
 
 Binary format version 2 always writes little-endian float32 payloads. Readers
 reject truncated records, unsupported versions and invalid payload alignment.
@@ -313,8 +266,8 @@ Run hardware-free regression tests with::
 SciPy enables an additional reference comparison. Real device tuning, gain
 calibration, driver behavior and sustained acquisition require hardware testing.
 
-Welch transforms run in batches with approximately 8 MiB of windowed input per
-worker, plus FFT workspaces. Windows are DFT-periodic for both odd and even FFT
+Welch batch sizes respect a conservative application workspace budget per
+worker (64 MiB by default), excluding queued input, driver and backend caches. Windows are DFT-periodic for both odd and even FFT
 lengths; Tukey alpha=0 is boxcar and alpha=1 is Hann. ``--fft-threads`` controls
 threads per pyFFTW transform (default 1) independently of ``--max-threads`` PSD
 workers, avoiding nested CPU oversubscription by default.

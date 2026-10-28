@@ -234,7 +234,7 @@ class RadioAcquisitionTests(unittest.TestCase):
             return result
         self.sdr.device.read_stream = packet
         with mock.patch.object(self.power.time, 'monotonic', side_effect=lambda: now[0]):
-            self.sdr.sweep(10000, 20000, 64, 100, runs=1, time_limit=0.15, max_threads=1)
+            self.sdr.sweep(10000, 20000, 64, 100, runs=1, time_limit=0.15, max_threads=1, partial_policy='legacy')
         self.output.seek(0)
         header, _ = writer.SoapyPowerBinFormat().read(self.output)
         self.assertEqual(header.samples, 128)
@@ -297,7 +297,7 @@ class RadioAcquisitionTests(unittest.TestCase):
             self.sdr.sweep(10000, 10000, 63, 17, runs=1, max_buffer_size=limit, max_threads=1)
             self.output.seek(0)
             header, _ = writer.SoapyPowerBinFormat().read(self.output)
-            self.assertEqual(header.samples, 1088)
+            self.assertEqual(header.samples, 1071)
 
 
 class OutputContractTests(unittest.TestCase):

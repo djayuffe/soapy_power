@@ -1,7 +1,7 @@
-# SDR architecture, DC and calibration audit — 2026-10-26
+# SDR architecture, integrity and calibration audit — 2026-10-28
 
-Base: clean `1683b77` on `djayuffe/soapy_power`. This report supersedes the
-2026-10-23 audit. See [RADIO_THEORY.md](RADIO_THEORY.md) for the full measurement
+This audit extends the work based on `1683b77` and the calibration/integrity
+review of `8395c2f` on `djayuffe/soapy_power`. See [RADIO_THEORY.md](RADIO_THEORY.md) for the full measurement
 model, architecture matrix, calibration procedure and remaining physical limits.
 Maintenance procedures are in [OPERATIONS.md](OPERATIONS.md) and repeatable
 software checks in [DEVELOPMENT.md](DEVELOPMENT.md).
@@ -84,31 +84,31 @@ with separate `masked_bins` and `zero_power_bins` to distinguish missing data
 from a zero-density logarithm. Legacy CSV/binary retain their layouts and need
 external settings/profile records to identify units and provenance.
 
-## Verification
+## Verification — 2026-10-28 update
 
-Run `python tools/validate.py` from the checkout, or require an individual
-backend with `--backend numpy|scipy|fftw`. See DEVELOPMENT.md for report and build
-commands. The suite contains **102 tests**. Local macOS results:
+Current baseline is `8395c2f`; this update incorporates the attached report
+review and the practical calibration workflow work. See
+[REMEDIATION.md](REMEDIATION.md) for per-finding implementation and remaining
+limits, and [CALIBRATION.md](CALIBRATION.md) for physical reference procedures.
 
-| Python | NumPy | SciPy | pyFFTW | Results |
-| --- | --- | --- | --- | --- |
-| 3.9.6 | 2.0.2 | 1.13.1 | 0.14.0 | FFTW: 102 pass. NumPy and SciPy: 101 pass, one FFTW-only test skipped per run. |
-| 3.12.10 | 2.5.4 | 1.18.1 | 0.15.1 | FFTW: 102 pass. NumPy and SciPy: 101 pass, one FFTW-only test skipped per run. |
+Run `python tools/validate.py`. The suite now contains **131 tests**, including
+independent 70-digit direct-DFT and 80-digit aggregation references, fault
+injection and synthetic calibration manifests.
 
-Tests exercise Parseval/tone/noise integrals, periodic windows/ENBW, continuous
-framing, odd/even inversion and Nyquist mapping, actual tuning geometry,
-partial packets and timestamps, gaps/bursts/overflows, hardware-control and
-calibration context safeguards, measured RF/baseband grids, metadata and units,
-queue backpressure and shutdown, extreme representable power, partial writes,
-strict JSON/atomic artifacts, band integration with masks/zeros/extreme dB
-values, and an offline CLI workflow. Device boundaries are simulated.
+| Environment | Result |
+| --- | --- |
+| Python 3.12.10 / NumPy 2.5.4 / SciPy 1.18.1 / pyFFTW 0.15.1 | FFTW: 131 pass. NumPy and SciPy: 130 pass, one FFTW-only test skipped per run. |
+| Python 3.9.6 / NumPy 1.26.2 / no optional FFT backends | NumPy: 129 pass, two optional-reference/backend tests skipped. |
 
-The sdist and wheel are built, including a wheel built from the sdist, and pass
-`twine check`. Archive contents include the new modules, tests, theory and
-operations/development guides and validation routine. A wheel installed into a
-fresh Python 3.12 environment without SoapySDR passes both CLI help checks and
-the offline workflow. Arch recipe shell syntax is checked; no Arch package is
-built on macOS. The configured remote CI matrix has not yet been exercised.
+A separate seeded test of 100,000 fractional integration bands against exact
+rational float-input widths passed (flat linear-density case, maximum observed
+error 0 ULP). This does not prove an 8-ULP bound for every spectrum or log input.
+The existing stochastic/window/backend tests remain; real SimpleSpectral and
+installed backends are exercised, not an FFT compatibility stub.
+
+Source archive/wheel builds, archive contents, `twine check`, installed CLI help
+and offline workflows are checked. The configured remote CI matrix is separate
+from locally observed results. No physical receiver/reference was exercised.
 
 ## Limits of this audit
 
@@ -139,7 +139,8 @@ built on macOS. The configured remote CI matrix has not yet been exercised.
   Host UTC bounds are not hardware RF timestamps. Untimestamped unreported
   sample loss remains undetectable.
 - Binary v2 remains float32 and lacks units/context fields. JSON/text preserve
-  float64 powers. Explicit exclusion introduces NaN into legacy arrays; clients
+  float64 powers. The opt-in v3 binary format preserves float64 and metadata
+  with checksums. Explicit exclusion introduces NaN into legacy arrays; clients
   using it must support missing values.
 - Queue/FFT batches are bounded, but backend workspaces and the dependency's
   FFTW interface plan cache affect total RSS. No universal speed optimum is
