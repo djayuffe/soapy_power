@@ -215,3 +215,9 @@ joint correlated uncertainty. Its report is distinct from a power profile.
 See [EQUALIZATION.md](EQUALIZATION.md) for bounded measured-response shaping,
 its distinction from absolute power/NF calibration, and corrections to the
 room-correction report. This does not invert a terminated noise curve.
+
+## Validated response flattening
+
+[FLATTENING.md](FLATTENING.md) adds whole-file attenuation-only equalization,
+explicit usable-band selection, constrained uncertainty-weighted smoothing and
+independent tone holdout validation, with templates and colored workflow.

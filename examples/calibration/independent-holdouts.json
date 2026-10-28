@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "reference": "REPLACE with independent source certificate and procedure",
+  "independent_measurements_confirmed": false,
+  "min_segments": 32,
+  "min_snr_db": 10,
+  "max_abs_error_db": 0.2,
+  "max_ripple_db": 0.2,
+  "cells": [
+    {
+      "rf_hz": 916000000,
+      "baseband_hz": 50000,
+      "start_hz": 915980000,
+      "stop_hz": 916020000,
+      "input_dbm": null,
+      "on": "captures/holdout_0_on.jsonl",
+      "off": "captures/holdout_0_off.jsonl"
+    },
+    {
+      "rf_hz": 918000000,
+      "baseband_hz": -50000,
+      "start_hz": 917980000,
+      "stop_hz": 918020000,
+      "input_dbm": null,
+      "on": "captures/holdout_1_on.jsonl",
+      "off": "captures/holdout_1_off.jsonl"
+    }
+  ]
+}

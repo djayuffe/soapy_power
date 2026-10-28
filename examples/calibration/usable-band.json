@@ -1,0 +1,7 @@
+{
+  "edge_guard_hz": 100000,
+  "dc_exclusion_hz": 5000,
+  "dc_offset_hz": 0,
+  "max_correction_db": 6,
+  "max_residual_db": 0.25
+}

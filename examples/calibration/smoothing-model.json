@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "standard_uncertainty_db": [
+    [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  ],
+  "strength": 1,
+  "max_change_db": 0.1,
+  "breakpoints_hz": [],
+  "protected_baseband_hz": [],
+  "uncertainty_assumption": "independent_knot_standard_errors"
+}

@@ -149,10 +149,24 @@ def parser():
     equalize.add_argument('--profile', required=True)
     equalize.add_argument('--reference-rf-hz', type=float, required=True)
     equalize.add_argument('--reference-baseband-hz', type=float, required=True)
-    equalize.add_argument('--regularization', type=float, default=0.001)
+    equalize.add_argument('--regularization', type=float, default=None)
+    equalize.add_argument('--mode', choices=['regularized', 'attenuation-only'], default='regularized')
+    equalize.add_argument('--usable-policy', help='explicit JSON band selection policy; exclusions become masks')
     equalize.add_argument('--max-boost-db', type=float, default=12)
     equalize.add_argument('-O', '--output', required=True)
     equalize.add_argument('--force', action='store_true')
+    smooth = commands.add_parser('smooth-profile', help='constrained uncertainty-weighted smoothing; independent holdouts required')
+    smooth.add_argument('profile')
+    smooth.add_argument('--model', required=True)
+    smooth.add_argument('--holdouts', required=True)
+    smooth.add_argument('-O', '--output', required=True)
+    smooth.add_argument('--force', action='store_true')
+    holdout = commands.add_parser('validate-response', help='validate a frozen profile against independent on/off tone captures')
+    holdout.add_argument('profile')
+    holdout.add_argument('--holdouts', required=True)
+    holdout.add_argument('-O', '--output', required=True)
+    holdout.add_argument('--force', action='store_true')
+    holdout.add_argument('--require-checks', action='store_true')
     return root
 
 
@@ -165,8 +179,37 @@ def main(argv=None):
     try:
         if args.command == 'equalize':
             from soapypower.equalization import equalize_file
+            damping = args.regularization if args.regularization is not None else (0 if args.mode == 'attenuation-only' else 0.001)
+            if args.usable_policy and Path(args.output).resolve() == Path(args.usable_policy).resolve():
+                raise ValueError('equalization output must not replace its usable-band policy')
+            policy = load_json(args.usable_policy) if args.usable_policy else None
             equalize_file(args.records, args.profile, args.output, args.reference_rf_hz,
-                          args.reference_baseband_hz, args.regularization, args.max_boost_db, args.force)
+                          args.reference_baseband_hz, damping, args.max_boost_db, args.force, args.mode, policy)
+        elif args.command in ('smooth-profile', 'validate-response'):
+            # Derived artifacts must never replace the measured source or any
+            # manifest/model/capture evidence, even with explicit --force.
+            from soapypower.response_validation import validate_holdout
+            evidence = [args.profile, args.holdouts]
+            if args.command == 'smooth-profile':
+                evidence.append(args.model)
+            manifest = load_json(args.holdouts)
+            if isinstance(manifest, dict) and isinstance(manifest.get('cells'), list):
+                for cell in manifest['cells']:
+                    if isinstance(cell, dict):
+                        for key in ('on', 'off'):
+                            if isinstance(cell.get(key), str):
+                                evidence.append(Path(args.holdouts).resolve().parent/cell[key])
+            if Path(args.output).resolve() in {Path(name).resolve() for name in evidence}:
+                raise ValueError('derived output must not replace source profile or measurement evidence')
+            calibration = PowerCalibration.load(args.profile)
+            if args.command == 'smooth-profile':
+                from soapypower.response_smoothing import smooth_profile
+                write_json(args.output, smooth_profile(calibration,args.model,args.holdouts).profile, overwrite=args.force)
+            else:
+                report = validate_holdout(calibration,args.holdouts)
+                write_json(args.output, report, overwrite=args.force)
+                if args.require_checks and not report['passed']:
+                    return 1
         elif args.command == 'characterize':
             from soapypower.characterization import ReceiverCharacterization
             report = ReceiverCharacterization.from_manifest(args.manifest).report

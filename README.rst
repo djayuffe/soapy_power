@@ -399,3 +399,9 @@ Optional relative PSD equalization
 Use ``soapy_power_calibration equalize --help`` for bounded, opt-in shaping
 from a measured calibration profile. See `EQUALIZATION.md <EQUALIZATION.md>`_
 for regularization, residual bias and separation from absolute power calibration.
+
+Validated response flattening
+-----------------------------
+
+See `FLATTENING.md <FLATTENING.md>`_ for attenuation-only equalization, usable
+bands, uncertainty-weighted response smoothing and independent holdout checks.

@@ -207,3 +207,17 @@ Validation: 173 tests pass across NumPy, SciPy and FFTW on Python 3.12; the
 Python 3.9 NumPy fallback passes with unavailable-backend checks skipped.
 Wheel/sdist build, metadata checks and installed offline equalization pass.
 No physical RF, time-domain FIR or measured phase correction is claimed.
+
+## Version 1.11.0: measured response flattening controls
+
+Added attenuation-only shaping with one target across all file hops; explicit
+usable-band policy and classified masks; constrained, independently weighted
+baseband smoothing with protected endpoints/knots and breakpoints; and frozen
+profile validation against independent source-on/off tone captures. Smoothed
+profiles require passing holdouts before atomic publication and do not inherit
+a false complete uncertainty claim. See [FLATTENING.md](FLATTENING.md).
+
+Validation: 188 tests pass across NumPy, SciPy and FFTW on Python 3.12, plus
+the Python 3.9 NumPy fallback (unavailable-backend checks skip). Wheel/sdist
+build, metadata checks and installed offline CLI workflows pass. No physical
+RF or phase-response certification is claimed.

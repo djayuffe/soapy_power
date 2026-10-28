@@ -175,3 +175,9 @@ References:
 [Welch density scaling and ENBW](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.welch.html),
 [Ettus B2xx RF impedance](https://kb.ettus.com/index.php?redirect=no&title=B200%2FB210%2FB200mini%2FB205mini%2FB206mini),
 [B200mini converter specifications](https://www.ettus.com/wp-content/uploads/2019/01/USRP_B200mini_Data_Sheet.pdf).
+
+## Validated response flattening
+
+[FLATTENING.md](FLATTENING.md) adds whole-file attenuation-only equalization,
+explicit usable-band selection, constrained uncertainty-weighted smoothing and
+independent tone holdout validation, with templates and colored workflow.
