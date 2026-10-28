@@ -139,6 +139,11 @@ def parser():
     measured.add_argument('manifest')
     measured.add_argument('-O', '--output', required=True)
     measured.add_argument('--force', action='store_true')
+    characterize = commands.add_parser('characterize', help='fit measured multi-temperature receiver/cascade characterization (not a power profile)')
+    characterize.add_argument('manifest')
+    characterize.add_argument('-O', '--output', required=True)
+    characterize.add_argument('--force', action='store_true')
+    characterize.add_argument('--require-checks', action='store_true', help='save report, then return failure if any measured checks fail')
     return root
 
 
@@ -149,7 +154,13 @@ def main(argv=None):
         root.print_help()
         return 2
     try:
-        if args.command in ('baseline', 'compare', 'from-captures'):
+        if args.command == 'characterize':
+            from soapypower.characterization import ReceiverCharacterization
+            report = ReceiverCharacterization.from_manifest(args.manifest).report
+            write_json(args.output, report, overwrite=args.force)
+            if args.require_checks and any(cell['validation_status'] != 'passed_measured_checks' for cell in report['cells']):
+                return 1
+        elif args.command in ('baseline', 'compare', 'from-captures'):
             from soapypower.calibration_workflows import (thermal_reference, average_capture,
                                                          band_summary, compare_captures, build_manifest)
             if args.command == 'baseline':

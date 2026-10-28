@@ -203,3 +203,9 @@ controls and the distinction from native Nuand calibration tables.
 See [Ettus/USRP](ETTUS.md), [bladeRF](BLADERF.md), and the
 [colored calibration workflow and offline IQ audit](NOISE_CALIBRATION_AUDIT.md).
 Noise-shape diagnostics do not replace measured power references.
+
+## Multi-temperature receiver and LNA characterization
+
+The separate [receiver/LNA workflow](RECEIVER_CHARACTERIZATION.md) fits measured
+source-temperature levels, checks CW/noise linearity and optionally propagates
+joint correlated uncertainty. Its report is distinct from a power profile.

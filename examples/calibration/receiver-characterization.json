@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "interpretation": "external-lna",
+  "reference": "REPLACE with measurement procedure and certificates",
+  "reference_plane": "REPLACE with physical LNA input connector",
+  "downstream_chain": "REPLACE with THRU/pad/cable/receiver identities and loss corrections",
+  "source_calibration": "REPLACE with source serial, ENR certificate and temperature/path model",
+  "matched_scalar_model_confirmed": false,
+  "unchanged_downstream_confirmed": false,
+  "min_segments": 32,
+  "cells": [
+    {
+      "rf_hz": 915000000,
+      "baseband_hz": 100000,
+      "start_hz": 914980000,
+      "stop_hz": 915020000,
+      "receiver": [
+        {
+          "temperature_k": null,
+          "capture": "captures/receiver_cold.jsonl"
+        },
+        {
+          "temperature_k": null,
+          "capture": "captures/receiver_medium.jsonl"
+        },
+        {
+          "temperature_k": null,
+          "capture": "captures/receiver_hot.jsonl"
+        }
+      ],
+      "receiver_cw": [
+        {
+          "input_dbm": null,
+          "on": "captures/receiver_cw0_on.jsonl",
+          "off": "captures/receiver_cw0_off.jsonl"
+        },
+        {
+          "input_dbm": null,
+          "on": "captures/receiver_cw1_on.jsonl",
+          "off": "captures/receiver_cw1_off.jsonl"
+        },
+        {
+          "input_dbm": null,
+          "on": "captures/receiver_cw2_on.jsonl",
+          "off": "captures/receiver_cw2_off.jsonl"
+        }
+      ],
+      "cascade": [
+        {
+          "temperature_k": null,
+          "capture": "captures/cascade_cold.jsonl"
+        },
+        {
+          "temperature_k": null,
+          "capture": "captures/cascade_medium.jsonl"
+        },
+        {
+          "temperature_k": null,
+          "capture": "captures/cascade_hot.jsonl"
+        }
+      ],
+      "cascade_cw": [
+        {
+          "input_dbm": null,
+          "on": "captures/cascade_cw0_on.jsonl",
+          "off": "captures/cascade_cw0_off.jsonl"
+        },
+        {
+          "input_dbm": null,
+          "on": "captures/cascade_cw1_on.jsonl",
+          "off": "captures/cascade_cw1_off.jsonl"
+        },
+        {
+          "input_dbm": null,
+          "on": "captures/cascade_cw2_on.jsonl",
+          "off": "captures/cascade_cw2_off.jsonl"
+        }
+      ]
+    }
+  ]
+}

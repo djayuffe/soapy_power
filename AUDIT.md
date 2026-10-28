@@ -175,3 +175,20 @@ amplitude statistics, DC/variation warnings and protected JSON output.
 See [ETTUS.md](ETTUS.md) and [NOISE_CALIBRATION_AUDIT.md](NOISE_CALIBRATION_AUDIT.md)
 for device-specific limits, equations and colored Mermaid workflow.
 The suite contains 148 tests; no physical USRP validation is claimed.
+
+## Version 1.9.0: receiver/cascade noise characterization
+
+Reviewed the multi-temperature/LNA report and corrected its stale claim that
+fractional integration and hot/cold calibration were missing. Added a separate
+measured-cell receiver characterization workflow, centered/scaled SVD fits,
+conditional covariance, scalar Friis extraction, CW/contrast/residual gates and
+optional correlated-input Monte Carlo. Native stream format/full-scale and
+hardware-time capability are now included in context when exposed.
+See [RECEIVER_CHARACTERIZATION.md](RECEIVER_CHARACTERIZATION.md) for equations,
+input schema, colored workflow, conditional uncertainty and physical limits.
+
+Validation: 161 tests across NumPy, SciPy and FFTW on Python 3.12, plus the
+Python 3.9 NumPy fallback. Backend-specific checks skip when unavailable.
+Wheel/sdist build, metadata validation and installed offline capture-to-report
+smoke checks pass. Legacy native-format binding failure is explicitly unknown.
+No physical receiver/LNA calibration or vector mismatch validation is claimed.

@@ -385,3 +385,10 @@ See `ETTUS.md <ETTUS.md>`_ for USRP clock, reference-lock and calibration
 controls. `NOISE_CALIBRATION_AUDIT.md <NOISE_CALIBRATION_AUDIT.md>`_ contains
 the colored Mermaid workflow and offline complex IQ noise analysis. Run
 ``soapy_power_noise_audit --help`` for the diagnostic CLI.
+
+Receiver and external-LNA characterization
+------------------------------------------
+
+See `RECEIVER_CHARACTERIZATION.md <RECEIVER_CHARACTERIZATION.md>`_ for
+multi-temperature receiver/cascade fitting, CW validation and correlated
+uncertainty. Run ``soapy_power_calibration characterize --help``.

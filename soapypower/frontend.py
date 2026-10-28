@@ -152,6 +152,24 @@ class Frontend:
         mapping = self.optional('getFrontendMapping', self.direction)
         if isinstance(mapping, str) and mapping.strip():
             info['soapypower_rx_frontend_mapping'] = mapping
+        try:
+            native = self.optional('getNativeStreamFormat', self.direction, self.channel)
+        except TypeError:
+            # Older SoapySDR SWIG bindings lack the double& output typemap.
+            # Do not guess a scale or fail otherwise usable CF32 acquisition.
+            native = None
+            info['soapypower_native_stream'] = {'status': 'unavailable_python_binding',
+                                               'requested_format': 'CF32'}
+        if native is not None:
+            if (not isinstance(native, (tuple, list)) or len(native) != 2
+                    or not isinstance(native[0], str) or not native[0].strip()):
+                raise ValueError('invalid native stream format/full-scale readback')
+            full_scale = finite(native[1], 'native full-scale', positive=True)
+            info['soapypower_native_stream'] = {'format': native[0], 'full_scale': full_scale,
+                                               'requested_format': 'CF32'}
+        hardware_time = self.optional('hasHardwareTime')
+        if hardware_time is not None:
+            info['soapypower_hardware_time_available'] = bool(hardware_time)
         manual = {}
         for value, suffix in ((self.manual_dc, 'DCOffset'), (self.manual_iq, 'IQBalance')):
             if value is not None:

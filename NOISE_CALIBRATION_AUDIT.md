@@ -119,3 +119,9 @@ actual hardware. Put termination before the LNA for whole-chain measurements.
 Use the correct impedance; 75-ohm/50-ohm mismatch cannot be ignored. Automatic
 IQ recording, temperature characterization and physical hardware certification
 are not provided by this offline diagnostic.
+
+## Multi-temperature receiver and LNA characterization
+
+The separate [receiver/LNA workflow](RECEIVER_CHARACTERIZATION.md) fits measured
+source-temperature levels, checks CW/noise linearity and optionally propagates
+joint correlated uncertainty. Its report is distinct from a power profile.
