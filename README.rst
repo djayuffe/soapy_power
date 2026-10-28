@@ -49,17 +49,22 @@ Usage
                        [-A ANTENNA] [-r Hz] [-w Hz] [-p PPM]
                        [-g dB | -G STRING | -a] [--lnb-lo Hz] [--lnb-high-side]
                        [--dc-correction {default,on,off}]
-                       [--iq-correction {default,on,off}] [--manual-dc I,Q]
-                       [--manual-iq GAIN,PHASE] [--tune-args KEY=VALUE,...]
-                       [--device-settings STRING] [--force-rate]
-                       [--force-bandwidth] [--tune-delay SECONDS] [--reset-stream]
-                       [-o PERCENT | -k PERCENT] [-s BUFFER_SIZE]
+                       [--iq-correction {default,on,off}]
+                       [--clock-source CLOCK_SOURCE] [--time-source TIME_SOURCE]
+                       [--master-clock-rate HZ]
+                       [--manual-correction-tolerance MANUAL_CORRECTION_TOLERANCE]
+                       [--manual-dc I,Q] [--manual-iq GAIN,PHASE]
+                       [--tune-args KEY=VALUE,...] [--device-settings STRING]
+                       [--force-rate] [--force-bandwidth] [--tune-delay SECONDS]
+                       [--reset-stream] [-o PERCENT | -k PERCENT] [-s BUFFER_SIZE]
                        [-S MAX_BUFFER_SIZE] [--even | --pow2] [--max-threads NUM]
                        [--max-queue-size NUM] [--fft-threads FFT_THREADS]
                        [--no-pyfftw] [--partial-policy {emit,reject,legacy}]
                        [--acquisition-rounding {exact,block}]
                        [--settle-samples SETTLE_SAMPLES]
-                       [--lock-sensor LOCK_SENSOR] [--lock-timeout LOCK_TIMEOUT]
+                       [--lock-sensor LOCK_SENSOR]
+                       [--reference-lock-sensor REFERENCE_LOCK_SENSOR]
+                       [--lock-timeout LOCK_TIMEOUT]
                        [--timestamp-tolerance-samples TIMESTAMP_TOLERANCE_SAMPLES]
                        [--require-timestamps]
                        [--workspace-budget WORKSPACE_BUDGET]
@@ -143,6 +148,15 @@ Usage
       --iq-correction {default,on,off}
                             driver IQ correction mode (default leaves device
                             behavior unchanged)
+      --clock-source CLOCK_SOURCE
+                            supported motherboard clock source
+      --time-source TIME_SOURCE
+                            supported time source; does not reset/synchronize
+                            device time
+      --master-clock-rate HZ
+      --manual-correction-tolerance MANUAL_CORRECTION_TOLERANCE
+                            explicit absolute tolerance for normalized manual
+                            correction readback
       --manual-dc I,Q       normalized RX hardware DC correction (capability
                             checked)
       --manual-iq GAIN,PHASE
@@ -196,6 +210,9 @@ Usage
       --settle-samples SETTLE_SAMPLES
       --lock-sensor LOCK_SENSOR
                             driver RX lock sensor name; requires a true readback
+      --reference-lock-sensor REFERENCE_LOCK_SENSOR
+                            motherboard reference-lock sensor, separate from RX LO
+                            lock
       --lock-timeout LOCK_TIMEOUT
       --timestamp-tolerance-samples TIMESTAMP_TOLERANCE_SAMPLES
       --require-timestamps
@@ -360,3 +377,11 @@ Fixed gain disables supported AGC and is reapplied after retuning. Explicit driv
 correction modes are also reapplied after tuning. Complete hardware bursts stop
 a sweep instead of being joined across a discontinuity. FFTW transform thread
 counts are now per PSD instance rather than a library-global setting.
+
+Ettus/USRP and noise diagnostics
+--------------------------------
+
+See `ETTUS.md <ETTUS.md>`_ for USRP clock, reference-lock and calibration
+controls. `NOISE_CALIBRATION_AUDIT.md <NOISE_CALIBRATION_AUDIT.md>`_ contains
+the colored Mermaid workflow and offline complex IQ noise analysis. Run
+``soapy_power_noise_audit --help`` for the diagnostic CLI.

@@ -25,3 +25,4 @@ jobs:
       - run: python -m twine check dist/*
       - run: soapy_power --help
       - run: soapy_power_calibration --help
+      - run: soapy_power_noise_audit --help

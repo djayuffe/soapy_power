@@ -121,6 +121,13 @@ def device_info(soapy_args='', channel=0):
                               ('manual DC correction', 'hasDCOffset'), ('manual IQ correction', 'hasIQBalance'),
                               ('frequency correction', 'hasFrequencyCorrection')):
             text.append('    {}: {}'.format(label, 'supported' if controls.supported(method) else 'not advertised'))
+        for label, method, arguments in (
+                ('Clock sources', 'listClockSources', ()),
+                ('Time sources', 'listTimeSources', ()),
+                ('Motherboard sensors', 'listSensors', ()),
+                ('Selected RX sensors', 'listSensors', (controls.direction, controls.channel))):
+            values = controls.optional(method, *arguments)
+            text.append('  {}: {}'.format(label, ', '.join(map(str, values)) if values else 'not advertised'))
         text.append('  Available tunable elements:')
         text.append('    {}'.format(', '.join(device.list_frequencies())))
         text.append('  Available amplification elements:')
@@ -258,6 +265,11 @@ def setup_argument_parser():
                               help='driver DC correction mode (default leaves device behavior unchanged)')
     device_title.add_argument('--iq-correction', choices=['default', 'on', 'off'], default='default',
                               help='driver IQ correction mode (default leaves device behavior unchanged)')
+    device_title.add_argument('--clock-source', help='supported motherboard clock source')
+    device_title.add_argument('--time-source', help='supported time source; does not reset/synchronize device time')
+    device_title.add_argument('--master-clock-rate', type=float_with_multiplier, metavar='HZ')
+    device_title.add_argument('--manual-correction-tolerance', type=float,
+                              help='explicit absolute tolerance for normalized manual correction readback')
     device_title.add_argument('--manual-dc', type=correction_pair, metavar='I,Q',
                               help='normalized RX hardware DC correction (capability checked)')
     device_title.add_argument('--manual-iq', type=correction_pair, metavar='GAIN,PHASE',
@@ -309,6 +321,7 @@ def setup_argument_parser():
     other_title.add_argument('--acquisition-rounding', choices=['exact', 'block'], default='exact')
     other_title.add_argument('--settle-samples', type=int, default=0)
     other_title.add_argument('--lock-sensor', help='driver RX lock sensor name; requires a true readback')
+    other_title.add_argument('--reference-lock-sensor', help='motherboard reference-lock sensor, separate from RX LO lock')
     other_title.add_argument('--lock-timeout', type=float, default=2.0)
     other_title.add_argument('--timestamp-tolerance-samples', type=float, default=0.25)
     other_title.add_argument('--require-timestamps', action='store_true')
@@ -377,6 +390,10 @@ def validate_arguments(parser, args):
         parser.error('settle samples must be nonnegative and workspace budget positive')
     if not math.isfinite(args.lock_timeout) or args.lock_timeout <= 0 or not math.isfinite(args.timestamp_tolerance_samples) or args.timestamp_tolerance_samples < 0:
         parser.error('invalid lock timeout or timestamp tolerance')
+    if args.master_clock_rate is not None and (not math.isfinite(args.master_clock_rate) or args.master_clock_rate <= 0):
+        parser.error('master clock rate must be finite and positive')
+    if args.manual_correction_tolerance is not None and (not math.isfinite(args.manual_correction_tolerance) or args.manual_correction_tolerance < 0):
+        parser.error('manual correction tolerance must be finite and nonnegative')
     if args.calibration and args.agc:
         parser.error('absolute calibration requires fixed gain, not AGC')
     if args.fft_window in ('kaiser', 'tukey') and args.fft_window_param is None:
@@ -446,7 +463,9 @@ def main():
             output=args.output_fd if args.output_fd is not None else args.output,
             output_format=args.format, dc_correction=args.dc_correction,
             iq_correction=args.iq_correction, tune_args=args.tune_args,
-            manual_dc=args.manual_dc, manual_iq=args.manual_iq
+            manual_dc=args.manual_dc, manual_iq=args.manual_iq,
+            manual_tolerance=args.manual_correction_tolerance, clock_source=args.clock_source,
+            time_source=args.time_source, master_clock_rate=args.master_clock_rate
         )
         logger.info('Using device: {}'.format(sdr.device.hardware))
     except (RuntimeError, ValueError) as error:
@@ -508,6 +527,7 @@ def main():
             fft_threads=args.fft_threads, partial_policy=args.partial_policy,
             acquisition_rounding=args.acquisition_rounding, settle_samples=args.settle_samples,
             lock_sensor=args.lock_sensor, lock_timeout=args.lock_timeout,
+            reference_lock_sensor=args.reference_lock_sensor,
             timestamp_tolerance_samples=args.timestamp_tolerance_samples,
             require_timestamps=args.require_timestamps, workspace_budget_bytes=args.workspace_budget,
             allow_estimated_dc=args.allow_estimated_dc

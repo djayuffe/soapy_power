@@ -37,7 +37,8 @@ class SoapyPower:
                  auto_gain=False, channel=0, antenna='', settings=None,
                  force_sample_rate=False, force_bandwidth=False,
                  output=sys.stdout, output_format='rtl_power', dc_correction='default',
-                 iq_correction='default', tune_args=None, manual_dc=None, manual_iq=None):
+                 iq_correction='default', tune_args=None, manual_dc=None, manual_iq=None,
+                 manual_tolerance=None, clock_source=None, time_source=None, master_clock_rate=None):
         finite(sample_rate, 'sample_rate', positive=True)
         finite(bandwidth, 'bandwidth', nonnegative=True)
         integer(channel, 'channel')
@@ -53,7 +54,13 @@ class SoapyPower:
         if actual_channel != channel:
             raise ValueError('requested RX channel is unavailable; refusing fallback channel')
         self._frontend = Frontend(self.device, getattr(simplesoapy.SoapySDR, 'SOAPY_SDR_RX', 1), channel,
-                                  dc_correction, iq_correction, manual_dc, manual_iq)
+                                  dc_correction, iq_correction, manual_dc, manual_iq, manual_tolerance)
+        self._frontend.configure_clocking(clock_source, time_source, master_clock_rate)
+        if clock_source is not None or master_clock_rate is not None:
+            # Clock reconfiguration can alter/coerce the delivered rate and filters.
+            self.device.sample_rate = sample_rate
+            if bandwidth:
+                self.device.bandwidth = bandwidth
         self._requested_gain = dict(gain) if isinstance(gain, dict) else gain
         self._requested_agc = bool(auto_gain)
         self._apply_gain()
@@ -245,7 +252,8 @@ class SoapyPower:
               precision='double', iq_conjugate=False, lnb_high_side=False,
               dc_mask_width=0, dc_offset=0, calibration=None, fft_threads=1, partial_policy=None, acquisition_rounding='exact',
               settle_samples=0, lock_sensor=None, lock_timeout=2.0, timestamp_tolerance_samples=0.25,
-              require_timestamps=False, workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False):
+              require_timestamps=False, workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False,
+              reference_lock_sensor=None):
         """Prepare samples buffer and start streaming samples from device"""
         bins = integer(bins, 'bins', 2)
         repeats = integer(repeats, 'repeats', 1)
@@ -267,6 +275,7 @@ class SoapyPower:
         self._partial_policy = partial_policy or ('reject' if calibration is not None else 'emit')
         self._settle_samples = integer(settle_samples, 'settle samples')
         self._lock_sensor = lock_sensor
+        self._reference_lock_sensor = reference_lock_sensor
         self._lock_timeout = finite(lock_timeout, 'lock timeout', positive=True)
         self._timestamp_tolerance = finite(timestamp_tolerance_samples, 'timestamp tolerance', nonnegative=True)
         self._require_timestamps = bool(require_timestamps)
@@ -409,6 +418,11 @@ class SoapyPower:
                 if value is None:
                     raise ValueError('requested RX lock sensor is unavailable')
                 locked = str(value).strip().lower() in ('true', '1', 'yes', 'locked')
+            if self._reference_lock_sensor:
+                value = self._frontend.optional('readSensor', self._reference_lock_sensor)
+                if value is None:
+                    raise ValueError('requested motherboard reference-lock sensor is unavailable')
+                locked = locked and str(value).strip().lower() in ('true', '1', 'yes', 'locked')
             now = time.monotonic()
             if discarded >= self._settle_samples and now >= tuned_at + self._tune_delay and locked:
                 break
@@ -510,7 +524,8 @@ class SoapyPower:
                                     hardware_first_sample_ns=first_ns, hardware_last_sample_ns=last_ns,
                                     hardware_time_is_utc=False, settled_discarded_samples=settled_samples,
                                     settle_policy={'min_time_s': self._tune_delay, 'min_samples': self._settle_samples,
-                                                   'lock_sensor': self._lock_sensor, 'timeout_s': self._lock_timeout},
+                                                   'lock_sensor': self._lock_sensor, 'reference_lock_sensor': self._reference_lock_sensor,
+                                                   'timeout_s': self._lock_timeout},
                                     time_basis={'host_read_bounds_utc': True, 'hardware_sample_time': first_ns is not None})
         if self._require_timestamps and clock['continuity'] != 'verified':
             raise RuntimeError('hardware timestamp continuity is not verified')
@@ -536,7 +551,7 @@ class SoapyPower:
               dc_mask_width=0, dc_offset=0, calibration=None, fft_threads=1, partial_policy=None,
               acquisition_rounding='exact', settle_samples=0, lock_sensor=None, lock_timeout=2.0,
               timestamp_tolerance_samples=0.25, require_timestamps=False,
-              workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False):
+              workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False, reference_lock_sensor=None):
         """Sweep spectrum using frequency hopping"""
         runs = integer(runs, 'runs')
         time_limit = finite(time_limit or 0, 'time_limit', nonnegative=True)
@@ -563,6 +578,7 @@ class SoapyPower:
                 dc_mask_width=dc_mask_width, dc_offset=dc_offset, calibration=calibration, fft_threads=fft_threads,
                 partial_policy=partial_policy, acquisition_rounding=acquisition_rounding,
                 settle_samples=settle_samples, lock_sensor=lock_sensor, lock_timeout=lock_timeout,
+                reference_lock_sensor=reference_lock_sensor,
                 timestamp_tolerance_samples=timestamp_tolerance_samples, require_timestamps=require_timestamps,
                 workspace_budget_bytes=workspace_budget_bytes, allow_estimated_dc=allow_estimated_dc
             )

@@ -164,3 +164,14 @@ bladeRF, native gain-table import or automated IQ coefficient search is claimed.
 Primary sources and architecture reasoning are linked in
 [RADIO_THEORY.md](RADIO_THEORY.md). The existing hardware-free mathematical
 contracts are verified; physical calibration accuracy remains empirical.
+
+## Version 1.8.0: USRP controls and IQ noise audit
+
+Added capability-checked clock/time/master-clock controls, motherboard reference
+lock gating distinct from RX LO lock, USRP serial/frontend mapping identity, and
+explicit manual-correction readback tolerances. Added independent offline IQ
+noise diagnostics with linear PSD averaging, bounded frame work, overlap-aware
+amplitude statistics, DC/variation warnings and protected JSON output.
+See [ETTUS.md](ETTUS.md) and [NOISE_CALIBRATION_AUDIT.md](NOISE_CALIBRATION_AUDIT.md)
+for device-specific limits, equations and colored Mermaid workflow.
+The suite contains 148 tests; no physical USRP validation is claimed.

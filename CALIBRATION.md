@@ -197,3 +197,9 @@ necessary but cannot establish unreported analog state or physical accuracy.
 
 See [BLADERF.md](BLADERF.md) for board/channel selection, manual RX correction
 controls and the distinction from native Nuand calibration tables.
+
+## Device guides and noise diagnostics
+
+See [Ettus/USRP](ETTUS.md), [bladeRF](BLADERF.md), and the
+[colored calibration workflow and offline IQ audit](NOISE_CALIBRATION_AUDIT.md).
+Noise-shape diagnostics do not replace measured power references.

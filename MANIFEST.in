@@ -12,3 +12,5 @@ include CALIBRATION.md
 include REMEDIATION.md
 recursive-include examples *.json
 include BLADERF.md
+include ETTUS.md
+include NOISE_CALIBRATION_AUDIT.md

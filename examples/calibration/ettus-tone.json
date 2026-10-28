@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "method": "tone",
+  "reference": "REPLACE with USRP motherboard/daughterboard serials, RX subdevice/channel, clock state, source certificate and native calibration state",
+  "reference_plane": "Receiver input connector",
+  "reference_baseband_hz": 100000,
+  "min_segments": 32,
+  "cells": [
+    {
+      "rf_hz": 915000000,
+      "baseband_hz": -100000,
+      "start_hz": 914980000,
+      "stop_hz": 915020000,
+      "on": "captures/usrp_rx0_915000000_-100000_on.jsonl",
+      "off": "captures/usrp_rx0_915000000_-100000_off.jsonl",
+      "input_dbm": null,
+      "path_loss_db": 0
+    },
+    {
+      "rf_hz": 915000000,
+      "baseband_hz": 100000,
+      "start_hz": 914980000,
+      "stop_hz": 915020000,
+      "on": "captures/usrp_rx0_915000000_+100000_on.jsonl",
+      "off": "captures/usrp_rx0_915000000_+100000_off.jsonl",
+      "input_dbm": null,
+      "path_loss_db": 0
+    },
+    {
+      "rf_hz": 920000000,
+      "baseband_hz": -100000,
+      "start_hz": 919980000,
+      "stop_hz": 920020000,
+      "on": "captures/usrp_rx0_920000000_-100000_on.jsonl",
+      "off": "captures/usrp_rx0_920000000_-100000_off.jsonl",
+      "input_dbm": null,
+      "path_loss_db": 0
+    },
+    {
+      "rf_hz": 920000000,
+      "baseband_hz": 100000,
+      "start_hz": 919980000,
+      "stop_hz": 920020000,
+      "on": "captures/usrp_rx0_920000000_+100000_on.jsonl",
+      "off": "captures/usrp_rx0_920000000_+100000_off.jsonl",
+      "input_dbm": null,
+      "path_loss_db": 0
+    }
+  ]
+}

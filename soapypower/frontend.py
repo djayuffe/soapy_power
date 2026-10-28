@@ -4,7 +4,7 @@ from soapypower.numerics import finite
 
 
 class Frontend:
-    def __init__(self, wrapper, direction, channel, dc_correction='default', iq_correction='default', manual_dc=None, manual_iq=None):
+    def __init__(self, wrapper, direction, channel, dc_correction='default', iq_correction='default', manual_dc=None, manual_iq=None, manual_tolerance=None):
         self._capabilities = {}
         self.wrapper = wrapper
         self.raw = getattr(wrapper, 'device', None)
@@ -14,6 +14,8 @@ class Frontend:
         self.dc_correction, self.iq_correction = dc_correction, iq_correction
         self.manual_dc = self._manual_pair(manual_dc, 'DC offset')
         self.manual_iq = self._manual_pair(manual_iq, 'IQ balance')
+        self.manual_tolerance = (None if manual_tolerance is None else
+                                 finite(manual_tolerance, 'manual correction tolerance', nonnegative=True))
 
     @staticmethod
     def _manual_pair(value, name):
@@ -87,9 +89,38 @@ class Frontend:
             raise RuntimeError('nonfinite manual ' + suffix + ' readback')
         driver = self.optional('getDriverKey')
         quantum = (1 / (2048 if suffix == 'DCOffset' else 4096)) if driver == 'bladerf' else 1e-9
-        if any(abs(got - wanted) > quantum + 1e-12 for got, wanted in zip((actual.real, actual.imag), requested)):
+        tolerance = quantum if self.manual_tolerance is None else self.manual_tolerance
+        if any(abs(got - wanted) > tolerance + 1e-12 for got, wanted in zip((actual.real, actual.imag), requested)):
             raise RuntimeError('SDR did not apply requested manual ' + suffix)
-        return {'requested': list(requested), 'actual': [actual.real, actual.imag]}
+        result = {'requested': list(requested), 'actual': [actual.real, actual.imag]}
+        if self.manual_tolerance is not None:
+            result['readback_tolerance'] = tolerance
+        return result
+
+    def configure_clocking(self, clock_source=None, time_source=None, master_clock_rate=None):
+        for choice, suffix in ((clock_source, 'ClockSource'), (time_source, 'TimeSource')):
+            if choice is None:
+                continue
+            if not isinstance(choice, str) or not choice.strip():
+                raise ValueError('clock/time source must be a nonempty name')
+            choices = self.optional('list' + suffix + 's')
+            if choices is not None and choice not in choices:
+                raise ValueError('unsupported ' + suffix + ': ' + choice)
+            setter = getattr(self.raw, 'set' + suffix, None)
+            if setter is None:
+                raise ValueError('device does not expose ' + suffix)
+            setter(choice)
+            if self.optional('get' + suffix) != choice:
+                raise RuntimeError('SDR did not apply requested ' + suffix)
+        if master_clock_rate is not None:
+            rate = finite(master_clock_rate, 'master clock rate', positive=True)
+            setter = getattr(self.raw, 'setMasterClockRate', None)
+            if setter is None:
+                raise ValueError('device does not expose master clock rate')
+            setter(rate)
+            actual = self.optional('getMasterClockRate')
+            if actual is None or not math.isclose(float(actual), rate, rel_tol=1e-10, abs_tol=1e-6):
+                raise RuntimeError('SDR did not apply requested master clock rate')
 
     def optional(self, method, *args):
         function = getattr(self.raw, method, None)
@@ -118,6 +149,9 @@ class Frontend:
                 value = self.optional('getGain', self.direction, self.channel)
                 gains = {'overall': value} if value is not None else None
         info = dict(self.optional('getHardwareInfo') or {})
+        mapping = self.optional('getFrontendMapping', self.direction)
+        if isinstance(mapping, str) and mapping.strip():
+            info['soapypower_rx_frontend_mapping'] = mapping
         manual = {}
         for value, suffix in ((self.manual_dc, 'DCOffset'), (self.manual_iq, 'IQBalance')):
             if value is not None:
@@ -138,7 +172,7 @@ class Frontend:
                      if self.supported('hasGainMode') else False)
         return {
             'hardware': getattr(self.wrapper, 'hardware', None),
-            'driver': self.optional('getDriverKey'), 'serial': info.get('serial'),
+            'driver': self.optional('getDriverKey'), 'serial': info.get('serial') or info.get('mboard_serial'),
             'hardware_info': dict(info), 'clock_source': self.optional('getClockSource'),
             'time_source': self.optional('getTimeSource'), 'master_clock_rate': self.optional('getMasterClockRate'),
             'channel': getattr(self.wrapper, 'channel', self.channel),
