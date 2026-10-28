@@ -81,6 +81,8 @@ def average_capture(path, min_segments=1, require_complete=False):
         if not isinstance(candidate, dict) or set(candidate) != CONTEXT_FIELDS or candidate['agc'] is not False:
             raise ValueError('workflow requires complete fixed-gain receiver context')
         require_fixed_gain(candidate)
+        if metadata.get('equalization') is not None:
+            raise ValueError('reference capture is equalized; use original raw measurements')
         if metadata.get('calibration') is not None:
             raise ValueError('capture is already calibrated')
         if require_complete and metadata.get('measurement_status') != 'complete':

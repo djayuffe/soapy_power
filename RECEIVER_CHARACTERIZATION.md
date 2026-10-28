@@ -245,3 +245,9 @@ Synthetic tests verify scale invariance, known Friis recovery, conditional
 covariance against an independent design matrix, correlated uncertainty,
 negative values, curvature, CW compression, context failures, capture provenance
 and CLI output protection. No physical SDR/LNA measurements were performed.
+
+## Optional relative PSD equalization
+
+See [EQUALIZATION.md](EQUALIZATION.md) for bounded measured-response shaping,
+its distinction from absolute power/NF calibration, and corrections to the
+room-correction report. This does not invert a terminated noise curve.

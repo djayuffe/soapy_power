@@ -86,7 +86,7 @@ def extract_context(path):
         candidate = metadata.get('context') if isinstance(metadata, dict) else None
         if not isinstance(candidate, dict) or set(candidate) != CONTEXT_FIELDS:
             raise ValueError('record does not contain a complete acquisition context')
-        if metadata.get('calibration') is not None or record['unit'] not in ('input power/Hz', 'dB(input power/Hz)'):
+        if metadata.get('equalization') is not None or metadata.get('calibration') is not None or record['unit'] not in ('input power/Hz', 'dB(input power/Hz)'):
             raise ValueError('extract calibration context from uncalibrated records')
         require_fixed_gain(candidate)
         if context is not None:
@@ -144,6 +144,15 @@ def parser():
     characterize.add_argument('-O', '--output', required=True)
     characterize.add_argument('--force', action='store_true')
     characterize.add_argument('--require-checks', action='store_true', help='save report, then return failure if any measured checks fail')
+    equalize = commands.add_parser('equalize', help='optional bounded relative PSD shaping from a measured power profile')
+    equalize.add_argument('records')
+    equalize.add_argument('--profile', required=True)
+    equalize.add_argument('--reference-rf-hz', type=float, required=True)
+    equalize.add_argument('--reference-baseband-hz', type=float, required=True)
+    equalize.add_argument('--regularization', type=float, default=0.001)
+    equalize.add_argument('--max-boost-db', type=float, default=12)
+    equalize.add_argument('-O', '--output', required=True)
+    equalize.add_argument('--force', action='store_true')
     return root
 
 
@@ -154,7 +163,11 @@ def main(argv=None):
         root.print_help()
         return 2
     try:
-        if args.command == 'characterize':
+        if args.command == 'equalize':
+            from soapypower.equalization import equalize_file
+            equalize_file(args.records, args.profile, args.output, args.reference_rf_hz,
+                          args.reference_baseband_hz, args.regularization, args.max_boost_db, args.force)
+        elif args.command == 'characterize':
             from soapypower.characterization import ReceiverCharacterization
             report = ReceiverCharacterization.from_manifest(args.manifest).report
             write_json(args.output, report, overwrite=args.force)

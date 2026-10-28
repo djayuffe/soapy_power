@@ -15,3 +15,4 @@ include BLADERF.md
 include ETTUS.md
 include NOISE_CALIBRATION_AUDIT.md
 include RECEIVER_CHARACTERIZATION.md
+include EQUALIZATION.md

@@ -192,3 +192,18 @@ Python 3.9 NumPy fallback. Backend-specific checks skip when unavailable.
 Wheel/sdist build, metadata validation and installed offline capture-to-report
 smoke checks pass. Legacy native-format binding failure is explicitly unknown.
 No physical receiver/LNA calibration or vector mismatch validation is claimed.
+
+## Version 1.10.0: bounded relative PSD equalization
+
+Reviewed the room-correction report, correcting its RBW/overlap, amplitude/power,
+source-temperature, phase-recovery and native-scaling assumptions. Added optional
+relative PSD shaping from a measured RF/baseband power profile, logarithmic
+Tikhonov weights with an explicit boost cap, residual-bias/provenance metadata,
+strict context/coverage checks and atomic streaming JSONL output. Reference
+workflows reject already equalized data. Absolute calibration and noise
+characterization semantics remain separate. See [EQUALIZATION.md](EQUALIZATION.md).
+
+Validation: 173 tests pass across NumPy, SciPy and FFTW on Python 3.12; the
+Python 3.9 NumPy fallback passes with unavailable-backend checks skipped.
+Wheel/sdist build, metadata checks and installed offline equalization pass.
+No physical RF, time-domain FIR or measured phase correction is claimed.

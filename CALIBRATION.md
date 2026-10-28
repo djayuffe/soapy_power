@@ -209,3 +209,9 @@ Noise-shape diagnostics do not replace measured power references.
 The separate [receiver/LNA workflow](RECEIVER_CHARACTERIZATION.md) fits measured
 source-temperature levels, checks CW/noise linearity and optionally propagates
 joint correlated uncertainty. Its report is distinct from a power profile.
+
+## Optional relative PSD equalization
+
+See [EQUALIZATION.md](EQUALIZATION.md) for bounded measured-response shaping,
+its distinction from absolute power/NF calibration, and corrections to the
+room-correction report. This does not invert a terminated noise curve.

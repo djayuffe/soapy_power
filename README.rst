@@ -392,3 +392,10 @@ Receiver and external-LNA characterization
 See `RECEIVER_CHARACTERIZATION.md <RECEIVER_CHARACTERIZATION.md>`_ for
 multi-temperature receiver/cascade fitting, CW validation and correlated
 uncertainty. Run ``soapy_power_calibration characterize --help``.
+
+Optional relative PSD equalization
+----------------------------------
+
+Use ``soapy_power_calibration equalize --help`` for bounded, opt-in shaping
+from a measured calibration profile. See `EQUALIZATION.md <EQUALIZATION.md>`_
+for regularization, residual bias and separation from absolute power calibration.
