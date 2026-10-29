@@ -1,5 +1,9 @@
 # SDR hardware characteristics and calibration choices
 
+[Assisted and automatic calibration](AUTO_CALIBRATION.md) can discover capabilities,
+collect references and validate a profile using guided prompts or an explicit
+source-control hook.
+
 This guide covers major SoapySDR receiver families and important architectural
 exceptions, reviewed against the linked vendor/driver documentation on
 2026-10-29. It is not an inventory of every commercial SDR or a claim that every

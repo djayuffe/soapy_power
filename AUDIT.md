@@ -271,3 +271,35 @@ after the range guard, about 72.3 versus 66.4 million input samples/s. This
 finite host-only measurement exposes the guard's scan cost; it is not an
 SDR throughput guarantee or a backend/platform comparison. Range inspection
 scans unique input once rather than revisiting overlapping FFT segments.
+
+## Version 1.13.0: capability-driven calibration assistant
+
+Added `assist` and `auto` with versioned configuration, actual accepted-rate and
+RX capability/readback checks, per-family guidance and explicit restrictions for
+unobservable hidden gain. Advertised automatic RX DC/IQ modes are selected
+dynamically; supported secondary AGC/test/bias settings are disabled and verified.
+Native TX/EEPROM/vendor self-calibration utilities are not invoked.
+
+The engine supports unattended declared-termination baselines, guided known-tone
+and hot/cold sessions, and explicit instrument-specific source hooks. Tone sessions
+check every grid point at all declared source levels, build from the middle level,
+then validate fresh holdouts at every level. Hot/cold sessions require independent
+linearity confirmation and validate fresh temperature-pair holdouts. RF-dependent
+source temperatures and path loss accept covered interpolation tables.
+
+The new-session evidence policy retains captures/manifests/events, detects input
+mutation, never replaces an existing session, checks hook acknowledgments/timeouts,
+attempts safe hook cleanup after failure, and publishes a profile only after
+measurement acceptance and receiver cleanup. Converter LO and IQ orientation use
+one RF-to-hardware mapping, covered in all four sign/conjugation combinations.
+See [AUTO_CALIBRATION.md](AUTO_CALIBRATION.md) for configuration, limits,
+physical prerequisites and the source-control protocol.
+
+Validation: 253 tests pass on Python 3.12.10 with NumPy 2.5.4, SciPy 1.18.1 and
+pyFFTW 0.15.1 for each FFT backend. The 24 new tests exercise real DSP with simulated
+SDR/source boundaries, successful baseline/tone/hot-cold sessions, compression,
+independent holdout failure, context drift, disconnection, control/readback failure,
+invalid geometry/input ceilings, hook protocol/timeout/mutation, evidence mutation,
+publication failure, converter mapping and prompt/source-change interruption cleanup.
+No physical SDR or RF source was used;
+manufacturer behavior and physical accuracy still require per-unit verification.

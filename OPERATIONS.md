@@ -1,5 +1,9 @@
 # Measurement and maintenance routines
 
+[Assisted and automatic calibration](AUTO_CALIBRATION.md) can discover capabilities,
+collect references and validate a profile using guided prompts or an explicit
+source-control hook.
+
 See the [complete calibration procedure](CALIBRATION_STEPS.md) and
 [hardware-family characteristics](SDR_DEVICE_GUIDE.md) for preparation, validation
 and conditions requiring new reference measurements.

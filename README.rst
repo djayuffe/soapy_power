@@ -20,6 +20,10 @@ memory use depend on FFT size, backend, thread count and the host system.
 Measurement and maintenance
 ---------------------------
 
+Use `AUTO_CALIBRATION.md <AUTO_CALIBRATION.md>`_ for capability discovery,
+guided calibration and automatic source-hook capture with measured acceptance
+and independent validation. ``assist --offline`` works without SDR bindings.
+
 See `RUNTIME_AUDIT.md <RUNTIME_AUDIT.md>`_ for timing, execution order,
 queue/failure behavior, numerical edge cases and soft real-time limitations.
 
@@ -39,7 +43,7 @@ antennas, measured tone and hot/cold calibration workflows.
 `REMEDIATION.md <REMEDIATION.md>`_ documents JSON v2, binary v3, exact targets
 and partial/timing/queue integrity policies.
 
-The offline ``soapy_power_calibration`` command provides ``context``, ``build``,
+The ``soapy_power_calibration`` command provides offline ``context``, ``build``,
 ``validate``, ``integrate``, ``baseline``, ``compare`` and ``from-captures`` routines without opening a radio. Run
 ``soapy_power_calibration --help`` for commands. Profiles are constructed from
 actual measured tone powers; nominal receiver gain is not a dBm calibration.

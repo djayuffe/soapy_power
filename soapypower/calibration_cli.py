@@ -1,4 +1,4 @@
-"""Offline profile construction, validation and band-power routines (no SDR)."""
+"""Calibration tools: offline analysis and explicit guided SDR acquisition."""
 import argparse
 import csv
 import hashlib
@@ -192,12 +192,23 @@ def parser():
     intervals.add_argument('--intervals', required=True)
     intervals.add_argument('-O', '--output', required=True)
     intervals.add_argument('--force', action='store_true')
+    assist = commands.add_parser('assist', help='discover capabilities and plan a calibration workflow')
+    assist.add_argument('configuration')
+    assist.add_argument('--offline', action='store_true', help='validate geometry and guidance without opening an SDR')
+    assist.add_argument('-O', '--output', required=True)
+    assist.add_argument('--force', action='store_true')
+    auto = commands.add_parser('auto', help='guided or source-hook automated capture, checks and profile construction')
+    auto.add_argument('configuration')
+    auto.add_argument('--directory', required=True, help='new session directory; never overwrite evidence')
+    auto.add_argument('--source-hook', help='explicit executable implementing the JSON source-state acknowledgment protocol')
+    auto.add_argument('--hook-timeout', type=float, default=30)
     return root
 
 
 def _input_snapshot(args):
     """One evidence policy for every file-producing calibration subcommand."""
     fields = {
+        'assist': ('configuration',),
         'context': ('records',), 'build': ('context','measurements'),
         'from-captures': ('manifest',), 'characterize': ('manifest',),
         'equalize': ('records','profile','usable_policy'),
@@ -244,7 +255,19 @@ def main(argv=None):
             snapshot.protect_output(path)
             snapshot.verify()
             _write_json(path, value, overwrite=overwrite, before_publish=snapshot.verify)
-        if args.command in ('overlap-fit','gain-compare','tone-audit','interval-audit'):
+        if args.command in ('assist','auto'):
+            from soapypower.auto_calibration import plan, run_session, SourceController
+            if args.command == 'assist':
+                report=plan(load_json(args.configuration),args.offline)
+                write_json(args.output,report,overwrite=args.force)
+            else:
+                from soapypower.auto_calibration import install_signal_handlers
+                install_signal_handlers()
+                controller=SourceController(args.source_hook,args.hook_timeout) if args.source_hook else None
+                report=run_session(args.configuration,args.directory,controller)
+                print(json.dumps({'status':report['status'],'directory':str(Path(args.directory).resolve()),
+                                  'absolute_profile_published':report['absolute_profile_published']},allow_nan=False))
+        elif args.command in ('overlap-fit','gain-compare','tone-audit','interval-audit'):
             protected = [getattr(args,'manifest',None),getattr(args,'iq',None),getattr(args,'intervals',None)]
             if getattr(args,'manifest',None):
                 document=load_json(args.manifest)
@@ -344,7 +367,9 @@ def main(argv=None):
                 output['record_number'] = number
                 output['time_start'] = record.get('time_start')
                 print(json.dumps(output, allow_nan=False, sort_keys=True))
-    except (ValueError, OSError, OverflowError) as error:
+    except KeyboardInterrupt:
+        root.exit(130,'Calibration interrupted; inspect the session report and verify source state.\n')
+    except (ValueError, OSError, OverflowError, RuntimeError, ImportError) as error:
         root.error(str(error))
     return 0
 

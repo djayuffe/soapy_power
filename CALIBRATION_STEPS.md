@@ -1,5 +1,9 @@
 # Calibration: complete measurement procedure
 
+[Assisted and automatic calibration](AUTO_CALIBRATION.md) can discover capabilities,
+collect references and validate a profile using guided prompts or an explicit
+source-control hook.
+
 Start here for the order of operations. Use the [device guide](SDR_DEVICE_GUIDE.md)
 for the controls and architecture of your receiver, [calibration reference](CALIBRATION.md)
 for manifest fields, and [radio theory](RADIO_THEORY.md) for estimator definitions.

@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "receiver": {
+    "device": "driver=rtlsdr,serial=REPLACE",
+    "sample_rate": 2400000,
+    "gain": 20.7,
+    "dc_correction": "auto",
+    "iq_correction": "auto"
+  },
+  "rf_hz": [
+    100000000,
+    101000000
+  ],
+  "baseband_hz": [
+    -200000,
+    200000
+  ],
+  "reference_baseband_hz": 200000,
+  "holdouts": [
+    {
+      "rf_hz": 100500000,
+      "baseband_hz": -100000
+    },
+    {
+      "rf_hz": 100500000,
+      "baseband_hz": 100000
+    }
+  ],
+  "physical_setup_confirmed": false,
+  "acquisition": {
+    "fft_bins": 4096,
+    "segments": 64,
+    "integration_width_hz": 20000,
+    "tune_delay": 0.1,
+    "settle_samples": 32768
+  },
+  "source": null,
+  "termination": {
+    "temperature_k": 293.15,
+    "source_ohms": 75,
+    "receiver_ohms": 50
+  }
+}

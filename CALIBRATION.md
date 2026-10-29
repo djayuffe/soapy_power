@@ -1,12 +1,17 @@
 # Practical SDR calibration: start simple and scale out
 
+[Assisted and automatic calibration](AUTO_CALIBRATION.md) can discover capabilities,
+collect references and validate a profile using guided prompts or an explicit
+source-control hook.
+
 Follow [the complete numbered procedure](CALIBRATION_STEPS.md) and consult the
 [SDR device-family guide](SDR_DEVICE_GUIDE.md) before selecting hardware settings.
 
 Use [OPERATIONS.md](OPERATIONS.md) for basic acquisition, [RADIO_THEORY.md](RADIO_THEORY.md)
 for the estimator and [REMEDIATION.md](REMEDIATION.md) for integrity/version changes.
-All new workflow commands work offline on JSON captures and never operate a
-source, switch RF connections or turn a bias tee on automatically.
+The analysis commands work offline on JSON captures. The explicit `assist` and
+`auto` commands add capability-driven preparation and guided/source-hook capture;
+see [AUTO_CALIBRATION.md](AUTO_CALIBRATION.md). They never enable a bias tee.
 
 ## Choose the simplest method that answers the question
 
@@ -100,7 +105,8 @@ Use fixed gains, no detrending or DC interpolation, and `--partial-policy reject
 Each file must contain repeated acquisitions of one tuned grid, not a sweeping
 scan. The default minimum is 32 complete Welch segments; this is a sample-amount
 gate, **not** an independent-average count or confidence bound. Capture multiple
-runs to check stability. Source switching and reconnection are manual: allow
+runs to check stability. In this manual workflow, source switching and reconnection
+are manual (the optional `auto` command supports explicit source hooks): allow
 settling, retain the same settings, and verify no overload/compression.
 
 The grid must have at least two RF frequencies and two baseband offsets and be
