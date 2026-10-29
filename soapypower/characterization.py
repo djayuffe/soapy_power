@@ -16,7 +16,7 @@ from soapypower.calibration_workflows import (
     BOLTZMANN, REFERENCE_K, DSP_FIELDS, _sha256, _check_coordinates,
     average_capture, band_summary)
 from soapypower.files import load_json
-from soapypower.numerics import finite, integer
+from soapypower.numerics import finite, integer, numeric_array
 
 
 def _vector(value, name, minimum=3, positive=True):
@@ -171,7 +171,7 @@ def propagate_joint_uncertainty(receiver_t, receiver_d, cascade_t, cascade_d, mo
     if len(center) > 512:
         raise ValueError('joint model supports at most 512 input quantities per cell')
     std = _vector(model['standard_uncertainties'], 'joint standard uncertainties', positive=False)
-    correlation = np.asarray(model['correlation'], dtype=float)
+    correlation = numeric_array(model['correlation'], 'joint correlation')
     n = len(center)
     if std.shape != center.shape or np.any(std < 0):
         raise ValueError('joint standard uncertainties must match inputs and be nonnegative')

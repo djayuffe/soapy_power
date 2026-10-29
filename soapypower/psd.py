@@ -286,7 +286,7 @@ class PSD:
             self._cancel_event.set()
         self._executor.shutdown(wait=True)
 
-    def _samples(self, samples):
+    def _samples(self, samples, own=False):
         samples = numpy.asarray(samples)
         if samples.ndim != 1 or samples.dtype.kind not in 'iufc':
             raise ValueError('samples must be a one-dimensional numeric IQ array')
@@ -297,7 +297,10 @@ class PSD:
                 warnings.warn('real PSD input is deprecated; choose input_format=real explicitly', DeprecationWarning, stacklevel=3)
         elif self._input_format == 'real':
             raise ValueError('real input mode requires an explicitly real floating array')
+        source = samples
         samples = numpy.asarray(samples, dtype=self._dtype)
+        if own and numpy.shares_memory(source, samples):
+            samples = samples.copy()
         if not numpy.isfinite(samples).all():
             raise ValueError('IQ samples must be finite')
         return samples
@@ -381,6 +384,8 @@ class PSD:
 
     def _submit(self, state, samples):
         submit = self._executor.submit_nowait if self._nonblocking else self._executor.submit
+        # Async entry points snapshot input during normalization. A dtype
+        # conversion already owns its data and needs no redundant copy.
         future = submit(self._accumulate, state, samples)
         with state['update_lock']:
             state['futures'].add(future)
@@ -391,7 +396,7 @@ class PSD:
         """Queue an independent record, with bounded backpressure."""
         with psd_state['input_lock']:
             self._check_open(psd_state, 'independent')
-            future = self._submit(psd_state, self._samples(samples_array))
+            future = self._submit(psd_state, self._samples(samples_array, own=True))
             psd_state['input_mode'] = 'independent'
             return future
 
@@ -403,7 +408,7 @@ class PSD:
         """
         with psd_state['input_lock']:
             self._check_open(psd_state, 'contiguous')
-            samples = self._samples(samples_array)
+            samples = self._samples(samples_array, own=True)
             if psd_state['tail'].size:
                 samples = numpy.concatenate((psd_state['tail'], samples))
             segments = max(0, 1 + (samples.size - self._bins) // self._step)

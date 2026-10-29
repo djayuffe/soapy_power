@@ -13,27 +13,15 @@ from pathlib import Path
 
 import numpy as np
 
-from soapypower.calibration import CONTEXT_FIELDS, _compare, require_fixed_gain
+from soapypower.calibration import CONTEXT_FIELDS, _compare, require_fixed_gain, require_reference_context
 from soapypower.calibration_workflows import (_sha256, _check_coordinates, average_capture,
                                              band_summary, DSP_FIELDS)
 from soapypower.files import load_json
-from soapypower.numerics import finite, integer
+from soapypower.numerics import finite, integer, numeric_array
 
 
 def require_observable_state(context):
-    require_fixed_gain(context)
-    for field in ('hardware','driver','antenna','sample_rate','bandwidth','gains','channel','corr_ppm'):
-        if context.get(field) is None:
-            raise ValueError('passive references require known '+field)
-    gains=context['gains']
-    if not isinstance(gains,dict) or not gains or any(not isinstance(name,str) or not name for name in gains):
-        raise ValueError('passive references require actual gain-register readbacks')
-    for name,value in gains.items():finite(value,'actual gain '+name)
-    finite(context['sample_rate'],'actual sample rate',positive=True)
-    finite(context['bandwidth'],'actual bandwidth',nonnegative=True)
-    finite(context['corr_ppm'],'frequency correction readback')
-    integer(context['channel'],'actual RX channel')
-    if context['sample_format']!='CF32':raise ValueError('passive capture requires known CF32 stream format')
+    require_reference_context(context)
 
 
 def _solve(signal_ids, positions, values_db, standard_db, anchor, huber=1.5):
@@ -63,9 +51,11 @@ def _solve(signal_ids, positions, values_db, standard_db, anchor, huber=1.5):
         raise ValueError('relative observations need finite dB values and positive standard errors')
     if float(sigma.max()/sigma.min()) > 1e12:
         raise ValueError('relative measurement weight range is ill-conditioned')
+    sigma_scale=float(sigma.min())
+    relative_precision=sigma_scale/sigma
     robust=np.ones(len(y));beta=None;inverse=None
     for iteration in range(50):
-        weight=np.sqrt(robust)/sigma
+        weight=np.sqrt(robust)*relative_precision
         matrix=design*weight[:,None]
         u,s,vt=np.linalg.svd(matrix,full_matrices=False)
         if len(s)!=n or s[-1] <= s[0]*1e-10:
@@ -81,14 +71,16 @@ def _solve(signal_ids, positions, values_db, standard_db, anchor, huber=1.5):
     else:
         raise ValueError('robust overlap solver did not converge')
     # Final covariance is explicitly conditional on final fixed Huber weights.
-    weight=np.sqrt(robust)/sigma
+    weight=np.sqrt(robust)*relative_precision
     matrix=design*weight[:,None]
     u,s,vt=np.linalg.svd(matrix,full_matrices=False)
     inverse=(vt.T/s)@u.T;beta=inverse@(y*weight)
-    covariance=(inverse*robust[None,:])@inverse.T
+    parameter_std=sigma_scale*np.linalg.norm(inverse*np.sqrt(robust)[None,:],axis=1)
+    if not np.isfinite(parameter_std).all() or np.any(parameter_std>np.finfo(float).max/1.96):
+        raise ValueError('conditional overlap uncertainty exceeds float64 range')
     residual=y-design@beta
     response=[0.0 if k==anchor else float(beta[position_col[k]]) for k in knots]
-    std=[0.0 if k==anchor else math.sqrt(max(0,float(covariance[position_col[k],position_col[k]]))) for k in knots]
+    std=[0.0 if k==anchor else float(parameter_std[position_col[k]]) for k in knots]
     return {'baseband_hz':knots,'response_db':response,'conditional_standard_db':std,
             'conditional_interval_95_db':[[v-1.96*s,v+1.96*s] for v,s in zip(response,std)],
             'residual_db':residual.tolist(),'robust_weights':robust.tolist(),
@@ -243,7 +235,7 @@ class RelativeIFCalibration:
         if not isinstance(ctx,dict) or set(ctx)!=CONTEXT_FIELDS:raise ValueError('relative profile needs complete context')
         require_observable_state(ctx)
         if profile['processing']!={'detrend':None}:raise ValueError('relative profiles require raw undetrended measurements')
-        x=np.asarray(profile['baseband_hz'],dtype=float);y=np.asarray(profile['response_db'],dtype=float);rf=np.asarray(profile['rf_range_hz'],dtype=float)
+        x=numeric_array(profile['baseband_hz'],'relative IF axis');y=numeric_array(profile['response_db'],'relative response');rf=numeric_array(profile['rf_range_hz'],'relative RF domain')
         if (x.ndim!=1 or len(x)<2 or y.shape!=x.shape or not np.isfinite(x).all() or not np.isfinite(y).all()
                 or np.any(np.diff(x)<=0) or rf.shape!=(2,) or not np.isfinite(rf).all() or rf[0]>=rf[1]):
             raise ValueError('invalid relative response domain')

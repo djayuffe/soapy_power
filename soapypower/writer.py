@@ -4,6 +4,7 @@ import os, sys, logging, struct, collections, io, threading, math, concurrent.fu
 
 import numpy
 import hashlib
+import copy
 from soapypower.files import loads_json
 from soapypower.records import validate_record
 
@@ -63,6 +64,12 @@ class BaseWriter:
 
     def write_async(self, psd_data_or_future, time_start, time_stop, samples, metadata=None):
         """Write PSD of one frequncy hop (asynchronously in another thread)"""
+        # Deferred PSD futures/callables intentionally resolve in write order.
+        # Immediate producer-owned arrays and metadata must be snapshots.
+        if not hasattr(psd_data_or_future, 'result'):
+            psd_data_or_future = tuple(numpy.array(array, copy=True) for array in psd_data_or_future)
+        if not callable(metadata):
+            metadata = copy.deepcopy(metadata)
         return self._submit(self.write, psd_data_or_future, time_start, time_stop, samples, metadata)
 
     def write_next(self):
@@ -349,9 +356,21 @@ class SoapyPowerBinV3Format:
         self.max_payload_bytes = integer(max_payload_bytes, 'payload limit', 16)
         self.max_metadata_bytes = integer(max_metadata_bytes, 'metadata limit', 2)
 
+    @staticmethod
+    def _check_payload(record, power):
+        if power.ndim != 1 or len(power) != len(record['power']):
+            raise ValueError('v3 payload shape disagrees with record')
+        zeros = set(record['zero_power_bins'])
+        logarithmic = record['unit'] in ('dBm/Hz', 'dB(input power/Hz)')
+        expected = numpy.array([(-numpy.inf if logarithmic and i in zeros else numpy.nan)
+                                if value is None else value for i, value in enumerate(record['power'])], dtype=float)
+        if not numpy.array_equal(power, expected, equal_nan=True):
+            raise ValueError('v3 payload values or missing/zero classification disagree with record')
+
     def write(self, stream, record, power):
         validate_record(record)
         power = numpy.asarray(power, dtype='<f8')
+        self._check_payload(record, power)
         header = dict(record)
         del header['power']
         header['binary_version'] = 3
@@ -393,7 +412,9 @@ class SoapyPowerBinV3Format:
         if numpy.isposinf(values).any():
             raise ValueError('invalid infinite v3 power')
         record['power'] = [float(x) if numpy.isfinite(x) else None for x in values]
-        return validate_record(record)
+        validate_record(record)
+        self._check_payload(record, values)
+        return record
 
 
 class SoapyPowerBinV3Writer(JsonWriter):

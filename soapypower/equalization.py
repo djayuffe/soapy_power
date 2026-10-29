@@ -12,7 +12,7 @@ import numpy as np
 from soapypower.calibration import PowerCalibration, require_fixed_gain
 from soapypower.calibration_workflows import _sha256
 from soapypower.files import write_json_lines
-from soapypower.numerics import finite, integer
+from soapypower.numerics import finite, integer, numeric_array
 from soapypower.records import read_records, validate_record
 
 
@@ -24,7 +24,7 @@ def relative_inverse(correction_db, reference_correction_db, regularization=0.00
     dimensionless relative power, not dB. Lambda=0 is the capped direct inverse.
     Computation stays logarithmic to avoid overflow in deep notches.
     """
-    offsets = np.asarray(correction_db, dtype=float)
+    offsets = numeric_array(correction_db, 'correction offsets')
     if offsets.ndim != 1 or not len(offsets) or not np.isfinite(offsets).all():
         raise ValueError('correction offsets must be a nonempty finite vector')
     reference = finite(reference_correction_db, 'reference correction dB')
@@ -238,11 +238,14 @@ def equalize_record(record, calibration, reference_rf_hz, reference_baseband_hz,
 
 def equalize_file(records, profile, output, reference_rf_hz, reference_baseband_hz,
                   regularization=0.001, max_boost_db=12, overwrite=False,
-                  mode='regularized', usable_policy=None):
+                  mode='regularized', usable_policy=None, evidence_snapshot=None):
     """Atomic bounded-memory JSONL transform; attenuation target spans all hops."""
     destination = Path(output).resolve()
     if destination in (Path(records).resolve(), Path(profile).resolve()):
         raise ValueError('equalization output must differ from source records and profile')
+    from soapypower.files import EvidenceSnapshot
+    snapshot = evidence_snapshot or EvidenceSnapshot([records,profile])
+    snapshot.protect_output(output)
     from soapypower.passive_response import load_response_profile
     calibration = load_response_profile(profile)
     source_hash = _sha256(records)
@@ -263,6 +266,7 @@ def equalize_file(records, profile, output, reference_rf_hz, reference_baseband_
             if mode == 'attenuation-only':
                 result['metadata']['equalization']['normalization_scope'] = 'whole_file'
             yield result
+        snapshot.verify()
         if _sha256(records) != source_hash:
             raise ValueError('source records changed during equalization')
-    write_json_lines(output, transformed(), overwrite=overwrite)
+    write_json_lines(output, transformed(), overwrite=overwrite, before_publish=snapshot.verify)

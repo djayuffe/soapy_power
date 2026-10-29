@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 
 from soapypower.calibration import PowerCalibration, CONTEXT_FIELDS, _compare, require_fixed_gain
-from soapypower.files import load_json, write_json
+from soapypower.files import load_json, write_json as _write_json, EvidenceSnapshot
 from soapypower.numerics import finite
 from soapypower.records import read_records, integrate_record
 
@@ -195,6 +195,43 @@ def parser():
     return root
 
 
+def _input_snapshot(args):
+    """One evidence policy for every file-producing calibration subcommand."""
+    fields = {
+        'context': ('records',), 'build': ('context','measurements'),
+        'from-captures': ('manifest',), 'characterize': ('manifest',),
+        'equalize': ('records','profile','usable_policy'),
+        'smooth-profile': ('profile','model','holdouts'),
+        'validate-response': ('profile','holdouts'),
+        'overlap-fit': ('manifest',), 'gain-compare': ('manifest',),
+        'tone-audit': ('iq',), 'interval-audit': ('iq','intervals'),
+    }.get(args.command, ())
+    snapshot = EvidenceSnapshot()
+    documents = []
+    for field in fields:
+        name = getattr(args,field,None)
+        if name is not None:
+            snapshot.add(name)
+            if field in ('manifest','holdouts'):
+                documents.append(name)
+    def captures(node, root):
+        if isinstance(node,list):
+            for child in node:captures(child,root)
+        elif isinstance(node,dict):
+            for key,value in node.items():
+                if key in ('capture','on','off','cold','hot','reference','observed') and isinstance(value,str):
+                    snapshot.add(root/value)
+                elif isinstance(value,(dict,list)):
+                    captures(value,root)
+    for name in documents:
+        document = load_json(name)
+        if isinstance(document,dict):
+            captures(document.get('cells',[]),Path(name).resolve().parent)
+    output = getattr(args,'output',None)
+    if output is not None:snapshot.protect_output(output)
+    return snapshot
+
+
 def main(argv=None):
     root = parser()
     args = root.parse_args(argv)
@@ -202,6 +239,11 @@ def main(argv=None):
         root.print_help()
         return 2
     try:
+        snapshot = _input_snapshot(args)
+        def write_json(path, value, overwrite=False):
+            snapshot.protect_output(path)
+            snapshot.verify()
+            _write_json(path, value, overwrite=overwrite, before_publish=snapshot.verify)
         if args.command in ('overlap-fit','gain-compare','tone-audit','interval-audit'):
             protected = [getattr(args,'manifest',None),getattr(args,'iq',None),getattr(args,'intervals',None)]
             if getattr(args,'manifest',None):
@@ -237,7 +279,7 @@ def main(argv=None):
                 raise ValueError('equalization output must not replace its usable-band policy')
             policy = load_json(args.usable_policy) if args.usable_policy else None
             equalize_file(args.records, args.profile, args.output, args.reference_rf_hz,
-                          args.reference_baseband_hz, damping, args.max_boost_db, args.force, args.mode, policy)
+                          args.reference_baseband_hz, damping, args.max_boost_db, args.force, args.mode, policy, evidence_snapshot=snapshot)
         elif args.command in ('smooth-profile', 'validate-response'):
             # Derived artifacts must never replace the measured source or any
             # manifest/model/capture evidence, even with explicit --force.

@@ -8,8 +8,8 @@ import tempfile
 
 import numpy as np
 
-from soapypower.calibration import PowerCalibration, CONTEXT_FIELDS, _compare, require_fixed_gain
-from soapypower.files import load_json
+from soapypower.calibration import PowerCalibration, CONTEXT_FIELDS, _compare, require_fixed_gain, require_reference_context
+from soapypower.files import load_json, EvidenceSnapshot
 from soapypower.numerics import finite, integer
 from soapypower.records import read_records, integrate_record
 
@@ -71,6 +71,7 @@ def noise_solution(cold_density, hot_density, cold_k, hot_k, min_y_db=0.5):
 
 def average_capture(path, min_segments=1, require_complete=False):
     """Segment-weighted linear mean; only a single consistent tuned grid per file."""
+    snapshot = EvidenceSnapshot([path])
     count, mean, first, context, dsp = 0, None, None, None, None
     minimum = integer(min_segments, 'minimum segments', 1)
     for record in read_records(path):
@@ -85,6 +86,8 @@ def average_capture(path, min_segments=1, require_complete=False):
             raise ValueError('reference capture is equalized; use original raw measurements')
         if metadata.get('calibration') is not None:
             raise ValueError('capture is already calibrated')
+        if require_complete:
+            require_reference_context(candidate)
         if require_complete and metadata.get('measurement_status') != 'complete':
             raise ValueError('reference capture must explicitly report complete acquisition')
         if metadata.get('measurement_status', 'complete') != 'complete':
@@ -123,6 +126,7 @@ def average_capture(path, min_segments=1, require_complete=False):
     first['zero_power_bins'] = np.flatnonzero(mean == 0).tolist()
     first['metadata']['segment_count'] = count
     first['capture_sha256'] = _sha256(path)
+    snapshot.verify()
     return first
 
 

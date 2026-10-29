@@ -8,6 +8,7 @@ from simplespectral import zeros
 
 from soapypower import psd, writer
 from soapypower.frontend import Frontend
+from soapypower.calibration import _compare
 from soapypower.integrity import ContinuityTracker, shifted
 from soapypower.numerics import crop_bins, finite, integer
 
@@ -472,6 +473,9 @@ class SoapyPower:
                     if status:
                         raise RuntimeError('SDR stream activation failed: {}'.format(status))
         settled_samples = self._settle(tuned_at)
+        if not math.isclose(finite(self.device.sample_rate, 'actual sample rate', positive=True),
+                            self._psd._sample_rate, rel_tol=1e-12, abs_tol=1e-9):
+            raise RuntimeError('SDR sample rate changed after DSP setup')
         actual_freq = finite(self.device.freq, 'actual device frequency')
         if not math.isclose(actual_freq, freq, rel_tol=0, abs_tol=self._psd.bin_width * 1e-6):
             logger.warning('Requested center %.9g Hz; device tuned %.9g Hz. Output uses actual tuning.',
@@ -504,7 +508,7 @@ class SoapyPower:
             if not count:
                 break
             self._acquired_samples += count
-            self._psd.update_contiguous_async(state, self._buffer[:count].copy())
+            self._psd.update_contiguous_async(state, self._buffer[:count])
         acquired = self._acquired_samples
         status = ('complete' if acquired == self._target_samples else
                   'partial_cancelled' if _shutdown else 'partial_deadline' if self._cancelled() else
@@ -536,9 +540,20 @@ class SoapyPower:
         if self._acquired_samples < self._bins:
             # A cancelled partial hop has no full FFT and cannot yield a PSD.
             return None, start, stop
-        if self._calibration is not None:
-            # A mode/gain/rate change during acquisition invalidates this hop.
-            self._calibration.validate_context(self.measurement_context())
+        if not math.isclose(finite(self.device.sample_rate, 'actual sample rate', positive=True),
+                            self._psd._sample_rate, rel_tol=1e-12, abs_tol=1e-9):
+            raise RuntimeError('SDR sample rate changed during acquisition')
+        if not math.isclose(finite(self.device.freq, 'actual device frequency'),actual_freq,
+                            rel_tol=0,abs_tol=self._psd.bin_width*1e-6):
+            raise RuntimeError('SDR tuning changed during acquisition')
+        if context is not None:
+            final_context = self.measurement_context()
+            if self._calibration is not None:
+                self._calibration.validate_context(final_context)
+            elif context['agc'] is False:
+                # Raw JSON is also used as future calibration evidence.
+                # Never label an internally changed fixed state as one context.
+                _compare(context, final_context, 'fixed acquisition context')
         future = self._psd.result_async(state)
         logger.debug('Acquired %d samples at %.9g Hz in %.3f s',
                      self._acquired_samples, actual_freq, time.monotonic() - t_freq)

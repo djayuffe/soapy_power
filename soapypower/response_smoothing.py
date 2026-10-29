@@ -11,15 +11,15 @@ import numpy as np
 from soapypower.calibration import PowerCalibration
 from soapypower.calibration_workflows import _sha256
 from soapypower.files import load_json
-from soapypower.numerics import finite
+from soapypower.numerics import finite, numeric_array
 from soapypower.response_validation import validate_holdout, response_sha256
 
 
 def smooth_row(baseband_hz, correction_db, standard_db, strength,
                reference_baseband_hz, breakpoints_hz=(), protected_hz=()):
-    x = np.asarray(baseband_hz, dtype=float)
-    y = np.asarray(correction_db, dtype=float)
-    sigma = np.asarray(standard_db, dtype=float)
+    x = numeric_array(baseband_hz, 'smoothing baseband')
+    y = numeric_array(correction_db, 'correction offsets')
+    sigma = numeric_array(standard_db, 'smoothing standard errors')
     if (x.ndim != 1 or len(x) < 3 or len(x) > 512 or y.shape != x.shape or sigma.shape != x.shape
             or not np.isfinite(x).all() or not np.isfinite(y).all() or not np.isfinite(sigma).all()
             or not np.isfinite(np.diff(x)).all() or np.any(np.diff(x) <= 0) or np.any(sigma <= 0)):
@@ -28,8 +28,8 @@ def smooth_row(baseband_hz, correction_db, standard_db, strength,
     reference = finite(reference_baseband_hz, 'reference baseband')
     if not x[0] <= reference <= x[-1]:
         raise ValueError('reference outside smoothing grid')
-    breaks = np.asarray(breakpoints_hz, dtype=float)
-    protected = np.asarray(protected_hz, dtype=float)
+    breaks = numeric_array(breakpoints_hz, 'smoothing breakpoints')
+    protected = numeric_array(protected_hz, 'protected knots')
     if (breaks.ndim != 1 or protected.ndim != 1 or not np.isfinite(breaks).all()
             or not np.isfinite(protected).all() or len(np.unique(breaks)) != len(breaks)
             or np.any(breaks <= x[0]) or np.any(breaks >= x[-1])):
@@ -98,7 +98,7 @@ def smooth_profile(calibration, model_path, holdout_manifest):
         raise ValueError('smoothing requires explicit independent-knot standard-error assumption')
     profile = calibration.profile
     x = profile['baseband_hz']
-    sigma = np.asarray(model['standard_uncertainty_db'], dtype=float)
+    sigma = numeric_array(model['standard_uncertainty_db'], 'smoothing standard errors')
     original = np.array(profile['baseband_correction_db']) + np.array(profile['points'])[:,1,None]
     if sigma.shape != original.shape:
         raise ValueError('smoothing standard errors must match RF-by-baseband grid')

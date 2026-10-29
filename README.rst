@@ -412,3 +412,9 @@ Passive reference diagnostics
 See `PASSIVE_REFERENCES.md <PASSIVE_REFERENCES.md>`_ for overlapping IF
 response fitting, gain-state comparisons and selected-IQ diagnostics.
 These are relative/diagnostic tools, not public-signal absolute calibration.
+
+Execution and integration audit
+-------------------------------
+
+See `EXECUTION_AUDIT.md <EXECUTION_AUDIT.md>`_ for v1.12.1 fixes, regression
+checks, async ownership and source-evidence publication contracts.

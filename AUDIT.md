@@ -237,3 +237,13 @@ the Python 3.9 NumPy fallback (unavailable-backend checks skip). Package builds,
 metadata checks and installed offline command workflows pass. Channel-width
 and known-gain-readback gates prevent unsupported point-response/fixed-state
 claims. No physical public-band/SDR or standards-decoder certification is claimed.
+
+## Version 1.12.1: execution and integration audit
+
+[EXECUTION_AUDIT.md](EXECUTION_AUDIT.md) records fixes for async input ownership,
+source-evidence overwrite/mutation protection, raw fixed-state acquisition
+verification, known reference readbacks, processing-contract validation,
+nested context comparisons, malformed numerical containers, relative-fit
+uncertainty scaling and strict v3 missing/zero payload semantics. The expanded
+219-test backend matrix and 10000-case fractional-integration audit pass.
+Physical RF certification and complete uncertainty remain measurement tasks.

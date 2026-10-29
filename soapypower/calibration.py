@@ -10,7 +10,7 @@ import math
 
 import numpy
 
-from soapypower.numerics import finite, integer
+from soapypower.numerics import finite, integer, numeric_array
 from soapypower.files import load_json
 from soapypower.uncertainty import evaluate_budget
 
@@ -27,6 +27,11 @@ def _compare(expected, actual, path='context'):
             raise ValueError('calibration {} fields do not match'.format(path))
         for key, value in expected.items():
             _compare(value, actual[key], path + '.' + key)
+    elif isinstance(expected, (list, tuple)):
+        if type(expected) is not type(actual) or len(expected) != len(actual):
+            raise ValueError('calibration mismatch: {}'.format(path))
+        for index, (left, right) in enumerate(zip(expected, actual)):
+            _compare(left, right, path + '[{}]'.format(index))
     elif isinstance(expected, bool) or isinstance(actual, bool):
         if type(expected) is not type(actual) or expected != actual:
             raise ValueError('calibration mismatch: {}'.format(path))
@@ -46,6 +51,27 @@ def require_fixed_gain(context):
     for name in ('digital_agc', 'if_agc', 'testmode'):
         if str(settings.get(name, 'false')).strip().lower() not in ('false', '0', 'off'):
             raise ValueError('calibration requires ' + name + ' disabled with known readback')
+
+
+def require_reference_context(context):
+    """Known fixed-state frontend readbacks required for measured references."""
+    if not isinstance(context, dict) or set(context) != CONTEXT_FIELDS:
+        raise ValueError('reference requires complete acquisition context')
+    require_fixed_gain(context)
+    for field in ('hardware','driver','antenna','sample_rate','bandwidth','gains','channel','corr_ppm'):
+        if context[field] is None:
+            raise ValueError('reference requires known ' + field)
+    finite(context['sample_rate'],'reference sample rate',positive=True)
+    finite(context['bandwidth'],'reference bandwidth',nonnegative=True)
+    finite(context['corr_ppm'],'reference frequency correction')
+    integer(context['channel'],'reference RX channel')
+    gains=context['gains']
+    if context['sample_format'] != 'CF32' or not isinstance(gains,dict) or not gains:
+        raise ValueError('reference requires CF32 and actual gain readbacks')
+    for name,value in gains.items():
+        if not isinstance(name,str) or not name:
+            raise ValueError('gain readback names must be nonempty strings')
+        finite(value,'actual gain ' + name)
 
 
 class PowerCalibration:
@@ -81,7 +107,7 @@ class PowerCalibration:
             raise ValueError('calibration requires CF32 input and actual gain readback')
         for value in context['gains'].values():
             finite(value, 'calibration gain')
-        require_fixed_gain(context)
+        require_reference_context(context)
         if 'measured_at' in profile and (not isinstance(profile['measured_at'], str) or not profile['measured_at'].strip()):
             raise ValueError('measured_at must be a nonempty date/time string')
         if 'measurements_sha256' in profile:
@@ -97,8 +123,8 @@ class PowerCalibration:
         if (points.ndim != 2 or points.shape[1] != 2 or points.shape[0] < 2 or
                 not numpy.isfinite(points).all() or not numpy.all(numpy.diff(points[:, 0]) > 0)):
             raise ValueError('calibration points must be finite with strictly increasing RF frequencies')
-        baseband = numpy.asarray(profile['baseband_hz'], dtype=numpy.float64)
-        corrections = numpy.asarray(profile['baseband_correction_db'], dtype=numpy.float64)
+        baseband = numeric_array(profile['baseband_hz'], 'baseband axis')
+        corrections = numeric_array(profile['baseband_correction_db'], 'baseband corrections')
         reference_bb = finite(profile['reference_baseband_hz'], 'reference baseband frequency')
         if (baseband.ndim != 1 or baseband.size < 2 or not numpy.isfinite(baseband).all() or
                 not numpy.all(numpy.diff(baseband) > 0) or
@@ -113,6 +139,9 @@ class PowerCalibration:
             if not math.isclose(numpy.interp(reference_bb, baseband, row), 0, abs_tol=1e-9):
                 raise ValueError('baseband correction must be zero at the reference offset for every RF point')
         self._baseband, self._bb_corrections, self._reference_bb = baseband.copy(), corrections.copy(), reference_bb
+        processing = profile.get('processing', {'detrend': None})
+        if not isinstance(processing, dict) or set(processing) != {'detrend'} or processing['detrend'] not in (None, 'constant'):
+            raise ValueError('invalid calibration processing contract')
         # Validate every nested value as strict JSON, including the supplied context.
         encoded = json.dumps(profile, sort_keys=True, allow_nan=False, separators=(',', ':'))
         self._profile_id = hashlib.sha256(encoded.encode('utf-8')).hexdigest()

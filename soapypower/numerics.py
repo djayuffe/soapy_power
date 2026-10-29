@@ -38,3 +38,11 @@ def crop_bins(bins, fraction):
     if bins - count < 2:
         raise ValueError('crop/overlap must retain at least two bins')
     return count
+
+
+def numeric_array(value, name):
+    """Normalize malformed numerical containers into a concise validation error."""
+    try:
+        return numpy.asarray(value, dtype=numpy.float64)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError('{} must be a numeric array'.format(name)) from None
