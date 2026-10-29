@@ -315,7 +315,7 @@ class ReceiverCharacterization:
                             raise ValueError('CW levels require only input_dbm, on and off')
                         on, off = capture_summary(level.get('on')), capture_summary(level.get('off'))
                         net = on['power'] - off['power']
-                        if net <= 0 or (off['power'] > 0 and 10*math.log10(net/off['power']) < 10):
+                        if net <= 0 or (off['power'] > 0 and 10*(math.log10(net)-math.log10(off['power'])) < 10):
                             raise ValueError('CW net power must exceed baseline by at least 10 dB')
                         pins.append(finite(level.get('input_dbm'), 'known reference-plane CW dBm'))
                         powers.append(net)

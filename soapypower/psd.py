@@ -54,7 +54,7 @@ class PSD:
     update/update_async average independent records. update_contiguous_async
     preserves segment alignment across reads of one uninterrupted stream.
     Finalize a state with result_async or wait_for_result before starting another
-    measurement. Buffer ownership passes to asynchronous calls until completion.
+    measurement. Asynchronous calls snapshot producer-owned input arrays.
     """
     def __init__(self, bins, sample_rate, fft_window='hann', fft_overlap=0.5,
                  crop_factor=0, log_scale=True, remove_dc=False, detrend=None,
@@ -319,12 +319,31 @@ class PSD:
         # Normalize before squaring/summing. This avoids intermediate overflow
         # when the final mean density is representable but raw FFT power is not.
         fft_scale = (1 / math.sqrt(self._window_scale)) / math.sqrt(segments)
+        # Inspect unique input once, not the overlapping segment view. Finite
+        # input can overflow the FFT/mean before PSD normalization. Only scale
+        # near the dtype limit; powers of two preserve ordinary-range behavior.
+        peak = max(abs(float(samples.real.min())), abs(float(samples.real.max())),
+                   abs(float(samples.imag.min())), abs(float(samples.imag.max())))
+        range_limit = numpy.finfo(samples.real.dtype).max / (4 * self._bins)
+        extreme = peak > range_limit
         for start in range(0, segments, batch_size):
             if self._cancel_event.is_set():
                 raise concurrent.futures.CancelledError()
             batch = views[start:start + batch_size]
+            if extreme:
+                # Scale rows independently: a large constant removed by
+                # detrending must not underflow another row's small signal.
+                row_peak = numpy.maximum(numpy.max(numpy.abs(batch.real), axis=-1),
+                                         numpy.max(numpy.abs(batch.imag), axis=-1))
+                exponents = numpy.where(row_peak > range_limit,
+                                        numpy.frexp(row_peak)[1], 0)[:, None]
+                normalized = numpy.empty_like(batch)
+                numpy.ldexp(batch.real, -exponents, out=normalized.real)
+                numpy.ldexp(batch.imag, -exponents, out=normalized.imag)
+                batch = normalized
             if self._detrend:
-                batch = batch - batch.mean(axis=-1, keepdims=True)
+                mean = batch.mean(axis=-1, keepdims=True, dtype=numpy.complex128)
+                batch = batch - mean.astype(batch.dtype, copy=False)
             batch = batch * window
             if self._iq_conjugate:
                 numpy.conjugate(batch, out=batch)
@@ -338,6 +357,9 @@ class PSD:
             real = numpy.asarray(transformed.real, dtype=numpy.float64) * fft_scale
             imag = numpy.asarray(transformed.imag, dtype=numpy.float64) * fft_scale
             with numpy.errstate(over='ignore', invalid='ignore'):
+                if extreme:
+                    real = numpy.ldexp(real, exponents)
+                    imag = numpy.ldexp(imag, exponents)
                 power = numpy.square(real) + numpy.square(imag)
                 total += power.sum(axis=0, dtype=numpy.float64)
         if not numpy.isfinite(total).all():

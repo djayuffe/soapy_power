@@ -247,3 +247,27 @@ nested context comparisons, malformed numerical containers, relative-fit
 uncertainty scaling and strict v3 missing/zero payload semantics. The expanded
 219-test backend matrix and 10000-case fractional-integration audit pass.
 Physical RF certification and complete uncertainty remain measurement tasks.
+
+## Version 1.12.2: timing, flow and numerical range audit
+
+[RUNTIME_AUDIT.md](RUNTIME_AUDIT.md) records the reviewed execution order and
+soft real-time boundaries. Fixed premature settling-clock origin, delayed
+background output-failure propagation, finite-input FFT/detrending overflow
+and tone SNR division overflow. Ten deterministic regression tests reproduce
+the timing/order and numerical cases. No physical SDR was used.
+
+Validation on macOS arm64: 229 tests pass for each NumPy, SciPy and FFTW backend
+with Python 3.12.10, NumPy 2.5.4, SciPy 1.18.1 and pyFFTW 0.15.1. The Python
+3.9.6 / NumPy 1.26.2 fallback passes the same 229 tests with two optional-backend
+skips. A seeded 100000-interval integration check against exact rational widths
+passes with maximum error 0 ULP. These are finite software checks; real device
+latency, sustained throughput, RF accuracy and analog corner cases require
+hardware verification.
+
+A local default-backend microbenchmark (1048576 complex64 input samples,
+4096-bin Hann, 50% overlap, default double precision, one DSP worker; median
+of eight warmed synchronous updates) measured 14.50 ms before and 15.79 ms
+after the range guard, about 72.3 versus 66.4 million input samples/s. This
+finite host-only measurement exposes the guard's scan cost; it is not an
+SDR throughput guarantee or a backend/platform comparison. Range inspection
+scans unique input once rather than revisiting overlapping FFT segments.

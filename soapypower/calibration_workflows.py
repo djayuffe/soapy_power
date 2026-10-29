@@ -224,10 +224,10 @@ def build_manifest(path):
             on, off = summaries['on']['power'], summaries['off']['power']
             power = on - off
             threshold = finite(manifest.get('min_snr_db', 10), 'minimum tone SNR dB', nonnegative=True)
-            if power <= 0 or (off > 0 and 10 * math.log10(power / off) < threshold):
+            if power <= 0 or (off > 0 and 10 * (math.log10(power) - math.log10(off)) < threshold):
                 raise ValueError('net tone power is nonpositive or below required SNR')
             input_dbm = finite(cell.get('input_dbm'), 'known source input dBm') - finite(cell.get('path_loss_db', 0), 'tone path loss', nonnegative=True)
-            result = {'net_raw_power': power, 'snr_db': 10 * math.log10(power / off) if off else None}
+            result = {'net_raw_power': power, 'snr_db': 10 * (math.log10(power) - math.log10(off)) if off else None}
         else:
             model = thermal_reference(cell.get('cold_temperature_k'), cell.get('source_ohms'), cell.get('receiver_ohms'))
             eta = model['ideal_resistive_transfer']

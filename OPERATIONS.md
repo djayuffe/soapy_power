@@ -199,3 +199,12 @@ call or promise real-time completion.
 See [CALIBRATION.md](CALIBRATION.md) for terminated baseline/antenna comparisons
 and manifest-driven measured calibration; [REMEDIATION.md](REMEDIATION.md) lists
 the current integrity, timing, exact-target and versioned-output contracts.
+
+## Timing and output-failure behavior
+
+Minimum tune delay begins after tuning, gain/correction programming and any
+stream reactivation return. It is separate from sample discard and lock checks.
+Acquisition checks recorded output failures at packet boundaries. The run
+deadline cannot interrupt a driver/backend call or stalled output write already
+in progress, and shutdown may drain work after that deadline. See the
+[timing and numerical audit](RUNTIME_AUDIT.md) for the full execution contract.

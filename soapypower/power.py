@@ -352,6 +352,8 @@ class SoapyPower:
                             raise
 
     def _cancelled(self):
+        if self._writer is not None:
+            self._writer.check_error()
         return _shutdown or (self._deadline is not None and time.monotonic() >= self._deadline)
 
     def _read_chunk(self, output):
@@ -450,7 +452,6 @@ class SoapyPower:
         self._read_tail = numpy.empty(0, dtype=numpy.complex64)
         self._next_sample_time = None
         self._reset_packet_state()
-        tuned_at = time.monotonic()
         if self.device.freq != freq or (self._tune_args and not self._tune_args_applied):
             if self._reset_stream:
                 status = self.device.device.deactivateStream(self.device.stream)
@@ -472,7 +473,9 @@ class SoapyPower:
                     status = self.device.device.activateStream(self.device.stream)
                     if status:
                         raise RuntimeError('SDR stream activation failed: {}'.format(status))
-        settled_samples = self._settle(tuned_at)
+        # Settling starts after all synchronous tuning/correction operations,
+        # including stream reactivation; their latency is not settling time.
+        settled_samples = self._settle(time.monotonic())
         if not math.isclose(finite(self.device.sample_rate, 'actual sample rate', positive=True),
                             self._psd._sample_rate, rel_tol=1e-12, abs_tol=1e-9):
             raise RuntimeError('SDR sample rate changed after DSP setup')

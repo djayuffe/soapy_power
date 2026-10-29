@@ -87,9 +87,15 @@ class BaseWriter:
                 if self._write_error is None:
                     self._write_error = error
 
+    def check_error(self):
+        """Propagate a background failure at producer packet boundaries."""
+        with self._error_lock:
+            error = self._write_error
+        if error is not None:
+            raise error
+
     def _submit(self, fn, *args):
-        if self._write_error is not None:
-            raise self._write_error
+        self.check_error()
         submit = self._executor.submit_nowait if self.nonblocking else self._executor.submit
         future = submit(fn, *args)
         future.add_done_callback(self._record_error)

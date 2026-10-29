@@ -20,6 +20,9 @@ memory use depend on FFT size, backend, thread count and the host system.
 Measurement and maintenance
 ---------------------------
 
+See `RUNTIME_AUDIT.md <RUNTIME_AUDIT.md>`_ for timing, execution order,
+queue/failure behavior, numerical edge cases and soft real-time limitations.
+
 Start with `CALIBRATION_STEPS.md <CALIBRATION_STEPS.md>`_ for the complete
 measurement sequence and `SDR_DEVICE_GUIDE.md <SDR_DEVICE_GUIDE.md>`_ for
 architecture, gain, DC/IQ, filtering, impedance and clock considerations by family.

@@ -76,7 +76,7 @@ def validate_holdout(calibration, manifest_path):
             hashes[name] = capture['capture_sha256']
         net = summaries['on']['power'] - summaries['off']['power']
         off = summaries['off']['power']
-        if net <= 0 or (off > 0 and 10 * math.log10(net / off) < min_snr):
+        if net <= 0 or (off > 0 and 10 * (math.log10(net) - math.log10(off)) < min_snr):
             raise ValueError('holdout tone has insufficient net SNR')
         offset = float(calibration.offsets_db([rf], [bb])[0])
         predicted = 10 * math.log10(net) + offset
