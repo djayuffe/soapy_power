@@ -20,6 +20,10 @@ memory use depend on FFT size, backend, thread count and the host system.
 Measurement and maintenance
 ---------------------------
 
+Start with `CALIBRATION_STEPS.md <CALIBRATION_STEPS.md>`_ for the complete
+measurement sequence and `SDR_DEVICE_GUIDE.md <SDR_DEVICE_GUIDE.md>`_ for
+architecture, gain, DC/IQ, filtering, impedance and clock considerations by family.
+
 See `OPERATIONS.md <OPERATIONS.md>`_ for receiver bring-up, architecture/DC
 choices, physical calibration and recurring reference checks.
 `RADIO_THEORY.md <RADIO_THEORY.md>`_ defines the mathematical contracts;

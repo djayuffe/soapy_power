@@ -1,5 +1,8 @@
 # Practical SDR calibration: start simple and scale out
 
+Follow [the complete numbered procedure](CALIBRATION_STEPS.md) and consult the
+[SDR device-family guide](SDR_DEVICE_GUIDE.md) before selecting hardware settings.
+
 Use [OPERATIONS.md](OPERATIONS.md) for basic acquisition, [RADIO_THEORY.md](RADIO_THEORY.md)
 for the estimator and [REMEDIATION.md](REMEDIATION.md) for integrity/version changes.
 All new workflow commands work offline on JSON captures and never operate a
@@ -59,7 +62,7 @@ soapy_power -d driver=rtlsdr -f 100M -r 2M -b 4096 -g 20.7 -n 256 -u 4 \
   --partial-policy reject -l -F json -O terminated.jsonl
 soapy_power_calibration baseline terminated.jsonl \
   --temperature-k 293.15 --source-ohms 75 --receiver-ohms 50 \
-  --start-hz 99900000 --stop-hz 100100000
+  --start-hz 100100000 --stop-hz 100200000
 ```
 
 Change frequency, supported rate/gain and temperature to actual values. Avoid DC,
@@ -69,7 +72,7 @@ new output filename:
 
 ```sh
 soapy_power_calibration compare terminated.jsonl antenna.jsonl \
-  --start-hz 99900000 --stop-hz 100100000
+  --start-hz 100100000 --stop-hz 100200000
 ```
 
 This reports relative integrated power and signed excess raw power. A negative

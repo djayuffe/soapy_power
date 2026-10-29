@@ -1,5 +1,9 @@
 # Measurement and maintenance routines
 
+See the [complete calibration procedure](CALIBRATION_STEPS.md) and
+[hardware-family characteristics](SDR_DEVICE_GUIDE.md) for preparation, validation
+and conditions requiring new reference measurements.
+
 These procedures complement [RADIO_THEORY.md](RADIO_THEORY.md), which defines
 normalization, frequency orientation, DC handling and the calibration model.
 Keep raw captures and reference measurements: a passing software test does not

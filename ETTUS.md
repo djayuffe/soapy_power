@@ -1,5 +1,9 @@
 # Ettus / USRP calibration
 
+See the [complete calibration procedure](CALIBRATION_STEPS.md) and
+[hardware-family characteristics](SDR_DEVICE_GUIDE.md) for preparation, validation
+and conditions requiring new reference measurements.
+
 Use matching UHD and SoapyUHD installations. Discover actual capabilities before
 selecting channels, antennas, clock sources or sensors:
 

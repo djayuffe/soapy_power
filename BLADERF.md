@@ -1,5 +1,9 @@
 # bladeRF receiver calibration
 
+See the [complete calibration procedure](CALIBRATION_STEPS.md) and
+[hardware-family characteristics](SDR_DEVICE_GUIDE.md) for preparation, validation
+and conditions requiring new reference measurements.
+
 Both bladeRF x40/x115 and bladeRF 2.0 micro can use the measured tone, hot/cold,
 known-NF and terminated-baseline workflows in [CALIBRATION.md](CALIBRATION.md).
 They operate on Soapy CF32 samples and actual receiver context; they do not infer
@@ -34,7 +38,7 @@ soapy_power -d driver=bladerf,serial=YOUR_SERIAL -C 0 -A RX \
   --settle-samples 32768 --partial-policy reject -l -F json -O terminated.jsonl
 soapy_power_calibration baseline terminated.jsonl \
   --temperature-k 293.15 --source-ohms 50 --receiver-ohms 50 \
-  --start-hz 914900000 --stop-hz 915100000
+  --start-hz 915100000 --stop-hz 915200000
 ```
 
 Use actual termination temperature and impedances. A single terminator measures
