@@ -303,3 +303,25 @@ invalid geometry/input ceilings, hook protocol/timeout/mutation, evidence mutati
 publication failure, converter mapping and prompt/source-change interruption cleanup.
 No physical SDR or RF source was used;
 manufacturer behavior and physical accuracy still require per-unit verification.
+
+## Local USB scan verification, 2026-11-15
+
+The explicit `--reopen-stream` and `--deadline-policy finish-hop` controls were
+verified on a B200mini over USB 3 using UHD 4.10.0.0, SoapySDR 0.8.1 and
+SoapyUHD 0.4.2 on macOS arm64 / Python 3.13.7. A native-CLI 60-second
+400–500 MHz check produced 1,532 complete, timestamp-verified spectra and exited
+normally. Four short alternate-LO checks produced another 379 complete spectra.
+A subsequent 600-second 100–200 MHz run produced 15,236 complete spectra,
+5,078 full sweeps and one partial final sweep, with a median sweep interval
+of 117.6 ms. All saved records had verified within-hop continuity and full
+hardware timestamp coverage. Reopened streams do not establish continuity
+between hops. Absolute power, antenna response, compression and RF settling
+accuracy were not calibrated with physical references.
+
+The current 261-test suite passed independently on NumPy, SciPy and FFTW
+(one backend-specific skip on each of NumPy and SciPy). New regressions cover
+stream lifecycle, complete-hop deadlines, cancellation and streaming heatmap
+aggregation. The plotting example was also run against saved hardware captures;
+its help, shell syntax, source-distribution contents and `git diff --check` were
+checked. Results describe this local setup, not an independent cross-platform
+CI run. Large raw captures are kept outside the repository.

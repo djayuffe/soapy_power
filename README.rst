@@ -429,3 +429,27 @@ Execution and integration audit
 
 See `EXECUTION_AUDIT.md <EXECUTION_AUDIT.md>`_ for v1.12.1 fixes, regression
 checks, async ownership and source-evidence publication contracts.
+
+USB hopping and elapsed deadlines
+--------------------------------
+
+``--reopen-stream`` closes the current RX stream before each hop, applies tuning,
+fixed gain and corrections while stopped, and opens a fresh stream before the
+settling/discard/lock checks. It also applies to repeated measurements at the
+same frequency and supports ``--tune-args``. This can avoid queued end-of-burst
+packets and overflows during USB USRP retuning. It takes precedence over
+``--reset-stream`` when both are selected. Default streaming behavior is unchanged.
+
+``--deadline-policy finish-hop`` checks elapsed time between hops, finishing the
+current acquisition before stopping. The default ``interrupt`` retains the
+existing within-hop deadline behavior and partial-data policy. Finishing a hop
+can exceed the requested duration by its remaining tune/settle/acquisition time;
+blocking driver calls and writer draining can add latency. SIGINT/SIGTERM,
+output errors, settling timeouts and timestamp/overflow checks remain active.
+Metadata records ``deadline_policy`` and ``stream_reopened_per_hop``. A time limit
+can leave a final sweep incomplete even when every saved hop is complete.
+
+Runnable USB USRP capture and streaming heatmap examples are in
+`examples/ettus <examples/ettus/README.md>`_. They include ten-minute
+100–200 MHz, 400–500 MHz and 44–1000 MHz surveys, with explicit receiver
+selection and plotting/measurement limitations.

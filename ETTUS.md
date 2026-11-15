@@ -90,3 +90,20 @@ release; software tests exercise simulated device boundaries and real FFTs.
 References: [UHD frontend calibration](https://files.ettus.com/manual/page_calibration.html),
 [UHD power calibration](https://files.ettus.com/manual/page_power.html),
 [SoapyUHD implementation](https://github.com/pothosware/SoapyUHD/blob/master/SoapyUHDDevice.cpp).
+
+## USB scan lifecycle
+
+On a USB 3 B200mini, fully reopening the RX stream between hops avoided stale
+END_BURST packets from deactivate/reactivate and overflows while retuning an
+active stream. Use the native CLI controls instead of external method patches:
+
+```sh
+soapy_power -d 'driver=uhd,type=b200,serial=REPLACE' -f 400M:500M \
+  --reopen-stream --deadline-policy finish-hop --require-timestamps -F json -e 60
+```
+
+Choose the actual channel, antenna, rate, gain, buffers and settling parameters
+for your unit. This example demonstrates lifecycle controls, not an absolute
+power calibration. Reopening also works with tuning arguments. Each new stream
+gets an independent continuity tracker; no continuity across retunes is claimed.
+The final hop completes at the elapsed deadline, but a final sweep may be partial.

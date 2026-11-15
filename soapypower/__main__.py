@@ -287,6 +287,11 @@ def setup_argument_parser():
     device_title.add_argument('--reset-stream', action='store_true',
                               help='reset streaming after changing frequency (to avoid artifacts)')
 
+    device_title.add_argument('--reopen-stream', action='store_true',
+                              help='close and reopen the RX stream for every hop, including repeated tunes')
+    device_title.add_argument('--deadline-policy', choices=['interrupt', 'finish-hop'], default='interrupt',
+                              help='time limit behavior: interrupt acquisition or finish the current hop; signals still interrupt')
+
     crop_title = parser.add_argument_group('Crop')
     crop_group = crop_title.add_mutually_exclusive_group()
     crop_group.add_argument('-o', '--overlap', metavar='PERCENT', type=float, default=0,
@@ -520,6 +525,7 @@ def main():
             fft_window=args.fft_window, fft_overlap=args.fft_overlap / 100, log_scale=not args.linear,
             remove_dc=args.remove_dc, detrend=args.detrend if args.detrend != 'none' else None,
             lnb_lo=args.lnb_lo, tune_delay=args.tune_delay, reset_stream=args.reset_stream,
+            reopen_stream=args.reopen_stream, deadline_policy=args.deadline_policy,
             base_buffer_size=args.buffer_size, max_buffer_size=args.max_buffer_size,
             max_threads=args.max_threads, max_queue_size=args.max_queue_size,
             precision=args.precision, iq_conjugate=args.iq_conjugate, lnb_high_side=args.lnb_high_side,

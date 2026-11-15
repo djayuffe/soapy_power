@@ -254,7 +254,7 @@ class SoapyPower:
               dc_mask_width=0, dc_offset=0, calibration=None, fft_threads=1, partial_policy=None, acquisition_rounding='exact',
               settle_samples=0, lock_sensor=None, lock_timeout=2.0, timestamp_tolerance_samples=0.25,
               require_timestamps=False, workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False,
-              reference_lock_sensor=None):
+              reference_lock_sensor=None, reopen_stream=False):
         """Prepare samples buffer and start streaming samples from device"""
         bins = integer(bins, 'bins', 2)
         repeats = integer(repeats, 'repeats', 1)
@@ -305,6 +305,7 @@ class SoapyPower:
             )
             self._tune_delay = tune_delay
             self._reset_stream = reset_stream
+            self._reopen_stream = bool(reopen_stream)
             self._psd = psd.PSD(bins, self.device.sample_rate, fft_window=fft_window, fft_overlap=fft_overlap,
                                 crop_factor=crop_factor, log_scale=log_scale, remove_dc=remove_dc, detrend=detrend,
                                 lnb_lo=lnb_lo, max_threads=max_threads, max_queue_size=max_queue_size or 32,
@@ -452,8 +453,13 @@ class SoapyPower:
         self._read_tail = numpy.empty(0, dtype=numpy.complex64)
         self._next_sample_time = None
         self._reset_packet_state()
-        if self.device.freq != freq or (self._tune_args and not self._tune_args_applied):
-            if self._reset_stream:
+        if self._reopen_stream:
+            # A new stream avoids queued END_BURST packets and buffers captured
+            # while UHD is retuning. Never reopen after a failed tuning call.
+            self.device.stop_stream()
+            self._burst_ended = False
+        if self._reopen_stream or self.device.freq != freq or (self._tune_args and not self._tune_args_applied):
+            if self._reset_stream and not self._reopen_stream:
                 status = self.device.device.deactivateStream(self.device.stream)
                 if status:
                     raise RuntimeError('SDR stream deactivation failed: {}'.format(status))
@@ -469,10 +475,12 @@ class SoapyPower:
                 self._apply_gain()
                 self._frontend.apply_corrections()
             finally:
-                if self._reset_stream:
+                if self._reset_stream and not self._reopen_stream:
                     status = self.device.device.activateStream(self.device.stream)
                     if status:
                         raise RuntimeError('SDR stream activation failed: {}'.format(status))
+        if self._reopen_stream:
+            self.device.start_stream(buffer_size=self._base_buffer_size)
         # Settling starts after all synchronous tuning/correction operations,
         # including stream reactivation; their latency is not settling time.
         settled_samples = self._settle(time.monotonic())
@@ -522,6 +530,7 @@ class SoapyPower:
                                     target_samples=self._target_samples, acquired_samples=acquired,
                                     completion_fraction=acquired / self._target_samples,
                                     acquisition_rounding=self._acquisition_rounding,
+                                    stream_reopened_per_hop=self._reopen_stream,
                                     end_burst_seen=self._burst_ended,
                                     terminal_packet_fully_processed=self._burst_ended and not self._read_tail.size,
                                     full_burst_received=None,
@@ -569,8 +578,11 @@ class SoapyPower:
               dc_mask_width=0, dc_offset=0, calibration=None, fft_threads=1, partial_policy=None,
               acquisition_rounding='exact', settle_samples=0, lock_sensor=None, lock_timeout=2.0,
               timestamp_tolerance_samples=0.25, require_timestamps=False,
-              workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False, reference_lock_sensor=None):
+              workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False, reference_lock_sensor=None,
+              reopen_stream=False, deadline_policy='interrupt'):
         """Sweep spectrum using frequency hopping"""
+        if deadline_policy not in ('interrupt', 'finish-hop'):
+            raise ValueError('deadline policy must be interrupt or finish-hop')
         runs = integer(runs, 'runs')
         time_limit = finite(time_limit or 0, 'time_limit', nonnegative=True)
         overlap = self.nearest_overlap(overlap, bins)
@@ -590,7 +602,7 @@ class SoapyPower:
                 bins, repeats, base_buffer_size, max_buffer_size,
                 fft_window=fft_window, fft_overlap=fft_overlap, crop_factor=overlap if crop else 0,
                 log_scale=log_scale, remove_dc=remove_dc, detrend=detrend, lnb_lo=lnb_lo,
-                tune_delay=tune_delay, reset_stream=reset_stream,
+                tune_delay=tune_delay, reset_stream=reset_stream, reopen_stream=reopen_stream,
                 max_threads=max_threads, max_queue_size=max_queue_size,
                 precision=precision, iq_conjugate=iq_conjugate, lnb_high_side=lnb_high_side,
                 dc_mask_width=dc_mask_width, dc_offset=dc_offset, calibration=calibration, fft_threads=fft_threads,
@@ -613,7 +625,13 @@ class SoapyPower:
                     if self._cancelled():
                         break
                     # Tune to new frequency, acquire samples and compute Power Spectral Density
-                    psd_future, acq_time_start, acq_time_stop = self.psd(freq)
+                    deadline = self._deadline
+                    if deadline_policy == 'finish-hop':
+                        self._deadline = None
+                    try:
+                        psd_future, acq_time_start, acq_time_stop = self.psd(freq)
+                    finally:
+                        self._deadline = deadline
 
                     # Write PSD to stdout (in another thread)
                     if psd_future is not None:
@@ -621,6 +639,7 @@ class SoapyPower:
                                      context=self._last_context, integrity=dict(self._last_integrity)):
                             result = handler.measurement_metadata(state)
                             result.update(integrity)
+                            result['deadline_policy'] = deadline_policy
                             count = result['segment_count']
                             result['processed_samples'] = ((count - 1) * (result['fft_bins'] - result['overlap_samples']) + result['fft_bins']) if count else 0
                             result['unprocessed_fft_tail_samples'] = result['acquired_samples'] - result['processed_samples']

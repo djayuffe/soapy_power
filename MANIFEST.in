@@ -23,3 +23,4 @@ include CALIBRATION_STEPS.md
 include SDR_DEVICE_GUIDE.md
 include RUNTIME_AUDIT.md
 include AUTO_CALIBRATION.md
+recursive-include examples/ettus *.sh *.py *.md
