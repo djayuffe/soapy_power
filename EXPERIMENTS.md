@@ -7,7 +7,17 @@ Evidence levels (see [MEASUREMENT_ROADMAP.md](MEASUREMENT_ROADMAP.md)):
 - A `run` session on a real receiver is **hardware-observed, relative and
   uncalibrated** (`data_source: acquired`). It yields no dBm, noise figure,
   linearity or traceability. `calibrated` is always `false` here.
-- No physical session has been run with this code yet.
+- First hardware session (2026-11-15, B200mini 30B2A32, macOS, Homebrew UHD + SoapyUHD,
+  antenna on RX2, 20 dB, 4 × 30 s, no generator): all required checks passed.
+  Repeatability σ 0.12 dB; IF response fully identified (1 component, 424/424 slots,
+  redundancy 12); independent holdout refit agreed within 0.058 dB RMS (max 0.20 dB);
+  median level drift between sessions −0.08 dB. The response ripples about ±0.5 dB
+  inside ±14 MHz and rises to +1.5–1.9 dB at ±20 MHz. With an antenna, most cells sit at
+  the receiver's own floor, so this `G` is the IF shape of the displayed floor (noise
+  shaping and gain together), which is what flattens a survey; it is not a pure gain
+  response. Applying it reduced the apparent dispersion only 3.08 → 3.05 dB: that
+  dispersion is dominated by time variation of real signals between hop visits.
+  Settling and image rejection were not measured (no generator).
 
 ## Model being validated
 
