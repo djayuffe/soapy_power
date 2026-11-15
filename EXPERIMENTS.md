@@ -1,0 +1,132 @@
+# Automated 100–300 MHz experiments, instrument control and model validation
+
+Evidence levels (see [MEASUREMENT_ROADMAP.md](MEASUREMENT_ROADMAP.md)):
+
+- `soapy_power_experiment dry-run` and the unit tests are **software verification**
+  against a simulated rig with known truth. Their reports say `data_source: simulated`.
+- A `run` session on a real receiver is **hardware-observed, relative and
+  uncalibrated** (`data_source: acquired`). It yields no dBm, noise figure,
+  linearity or traceability. `calibrated` is always `false` here.
+- No physical session has been run with this code yet.
+
+## Model being validated
+
+Per RF cell `c` seen by hop `h` at baseband offset `f`: `D[c,h] = S[c] + G[f] + e` (dB).
+`S` is the unknown received level (a nuisance parameter), `G` the relative IF response
+of one fixed receiver state. Overlapping hops identify `G` up to one constant **per
+connected component** of the cell/IF-slot graph. A perfectly periodic hop grid splits
+the IF axis into unlinked cosets. In the synthetic test one 7 MHz grid leaves 35
+components and only 4 of 140 slots identified relative to the anchor. A second grid
+shifted by half a hop links all 140 slots (max error vs truth < 0.1 dB). The suite
+therefore always scans two interleaved grids, A and B. Slots outside the anchor's
+component are reported as `null`, never as numbers.
+
+The fit is an exact weighted least-squares solve (rows eliminated analytically,
+column Schur complement solved with a minimum-norm solve) inside a Huber IRLS loop with
+a robust residual scale. Baseband offsets come from each record's
+`metadata.frequency_grid.rf_origin_hz` and `frequency_sign`, so converter-LO and
+IQ-conjugation mappings are honoured. Records without a frequency grid fall back to the
+coverage midpoint, which is half a bin off for even FFTs; the report lists which was used.
+Interpolated `estimated_bins` (DC) are never treated as measurements.
+
+Validation never reuses the fitted data:
+
+- **IF response:** fitted on the `fit` trials and refitted independently on the
+  `holdout` trials, taken later. It passes when the fit is fully identified, the
+  gauge-free RMS disagreement is at most 0.25 dB, and applying the fit to the holdout
+  does not raise the apparent RF dispersion beyond the response's own estimation noise.
+  A flat receiver passes with no improvement. A changed receiver fails.
+- **Settling:** the model `|e(t)| = A·exp(−t/τ)` is fitted on even-indexed delays, and
+  the chosen delay (with 1.25× margin) is verified on the odd-indexed delays. It fails
+  if the model says the reference (longest delay) itself has not settled to 1/10 of
+  the tolerance.
+- **Image rejection** (informational): estimated per hop from the settling tone and
+  its mirror at `2·origin − tone`, with the local floor subtracted. Floor-limited hops
+  give only a lower bound. An RF-fixed signal at one hop's image frequency biases that
+  hop only, so the median is robust.
+
+## Workflow
+
+```sh
+soapy_power_experiment dry-run /tmp/dry            # whole pipeline vs simulated rig, ~7 s
+soapy_power --detect
+soapy_power_experiment plan 'driver=uhd,type=b200,serial=SERIAL' -O suite.json
+soapy_power_experiment run suite.json session-001  # antenna only: grid A/B fit + holdout
+soapy_power_experiment analyze session-001         # exit 0 only if all required checks pass
+
+# With a SCPI generator (adds the settling sweep and image estimate):
+soapy_power_experiment plan 'driver=uhd,type=b200,serial=SERIAL' -O suite-tone.json \
+    --tone-dbm -40 --tone-mhz 200 --max-receiver-input-dbm -20 --path-loss-db 1.0
+export SCPI_SOURCE_CONFIG=$PWD/scpi_source.json
+soapy_power_experiment run suite-tone.json session-002 --source-hook tools/scpi_source_hook.py
+```
+
+Trials:
+
+- `grid-{a,b}-{fit,holdout}`: 100–300 MHz. Grid A has 29 hops of 6.986 MHz (1022 of 8192
+  bins retained at 87.5244140625 % overlap). Grid B starts half a hop lower and has
+  30 hops. The acquisition policy is the same as `examples/ettus/scan.sh`.
+- `settle-<N>ms`: tone ON. Each scans the tone ±(28 MHz + 2 hops) with
+  `--settle-samples 0` and tune delay 0–200 ms. The reference is the longest delay. Only
+  the survey's 7 MHz retune steps with stream reopen are characterised.
+
+Hop centres reproduce `SoapyPower.freq_plan` exactly; the test compares the two directly.
+Every generated argument vector is parsed by the real CLI parser in the tests.
+
+`ledger.json` records, per attempt: argv, timing, stderr tail, record count, SHA-256 and
+the source acknowledgment (including the hook's readback and config hash). Failed and
+interrupted attempts are kept, and a failed attempt is retried under a new file name.
+When retries run out, the session aborts. The source is returned to OFF on every exit
+path, and the ledger records the final source state. `analyze` refuses incomplete
+ledgers and any file whose SHA-256 changed. It writes `analysis.json` and
+`if_response.json`, with `validated` true only when the holdout check passed.
+
+`plan --tone-dbm` refuses to run without a declared receiver input ceiling and path
+loss, and refuses tones above that ceiling.
+
+`calibration-config` writes a validated tone-method config for
+`soapy_power_calibration auto` (9 RF points 100–300 MHz × ±5/±10 MHz, interior
+holdouts). Levels, ceiling, path loss, certificate and reference plane are mandatory
+arguments. `physical_setup_confirmed` stays `false` until you edit it.
+
+## Instrument control
+
+`soapypower/instruments.py` talks SCPI over raw TCP (port 5025) with no extra
+dependencies.
+
+- `max_dbm`, `min_hz` and `max_hz` are mandatory and are checked before any RF is enabled.
+- Sequence: `*CLS` on connect, RF OFF, frequency, level, `*OPC?`, read both back
+  (level also against `max_dbm`), error queue, RF ON, `OUTP?` back, error queue.
+- Any failure turns RF OFF. If that cannot be verified either, the error reports both
+  causes.
+- Only `on` and `off` are supported. An RF-off generator port is not a characterised
+  termination or noise-source cold state, so `cold`, `hot` and `terminated` are
+  refused; those need a dedicated hook.
+- Command strings can be overridden per instrument (`commands` in the config).
+
+`tools/scpi_source_hook.py` implements the `SourceController` hook protocol used by both
+`soapy_power_experiment run` and `soapy_power_calibration auto`:
+
+- The controller hashes the hook executable. The hook returns the SHA-256 of its JSON
+  config, and the controller now keeps the hook's extra reply fields (`reply`) with
+  each event.
+- A wrong instrument identity closes the link without sending further commands.
+- Run the hook with the interpreter that has soapy_power installed, via its shebang or a
+  one-line `exec /path/to/python tools/scpi_source_hook.py` wrapper.
+
+## Pass rules
+
+| Check | Method | Required |
+|---|---|---|
+| `repeatability` | even/odd pass halves, robust σ of cell differences (includes RF environment) | σ ≤ 0.5 dB |
+| `if_fit` | robust exact additive fit; component count | one component |
+| `if_holdout` | independent refit on later acquisitions | RMS ≤ 0.25 dB, dispersion not inflated |
+| `settling` | exponential fit, held-out delay verification | tolerance 0.1 dB |
+| `image_rejection` | tone vs mirror per hop, floor subtracted | informational |
+| context | fixed gain, no AGC, constant receiver context; no tune args with DC mask | input refused otherwise |
+
+Not covered: absolute power, noise figure, compression/IIP3/SFDR, RF-fixed versus
+IF-fixed spur attribution on real hardware, and large-retune settling. Strong broadcast
+signals in 100–300 MHz (FM, DAB) can drive the receiver nonlinear; then `G` depends on
+`S` and the additive model is violated. Use lower gain, or a terminated input for the
+IF-response trials.

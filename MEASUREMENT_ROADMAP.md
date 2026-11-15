@@ -190,6 +190,8 @@ These are work packages, **not claims of implemented or calibrated behavior**.
    repeatable on/off and hot/cold grids, reserve holdouts and reject failed
    profiles. Source hooks, builders and acceptance checks already exist; a real
    reference chain has not been connected in these antenna-only sessions.
+   [EXPERIMENTS.md](EXPERIMENTS.md) adds a 100–300 MHz orchestrator, a SCPI
+   generator hook and held-out model checks; so far it is verified in simulation only.
    A further proposed optimization is coarse analog-LO stepping with FFT or
    polyphase channelization inside each instantaneous band, where the backend
    exposes the necessary controls. This can reduce retuning overhead; it cannot

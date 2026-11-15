@@ -327,7 +327,9 @@ class SourceController:
         if not isinstance(ack,dict) or ack.get('confirmed') is not True:raise ValueError('source hook must confirm applied state')
         for key,value in request.items():
             if type(ack.get(key)) is not type(value) or ack.get(key)!=value:raise ValueError('source hook acknowledgment mismatch: '+key)
-        return dict(request,confirmed=True,mode='hook',hook_sha256=self.hook_sha256)
+        # Keep the hook's own evidence (readback, instrument identity, config hash) with the event.
+        extra={key:value for key,value in ack.items() if key not in request and key!='confirmed'}
+        return dict(request,confirmed=True,mode='hook',hook_sha256=self.hook_sha256,reply=extra)
 
 
 def run_session(config_path, directory, controller=None, factory=None):

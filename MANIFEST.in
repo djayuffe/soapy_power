@@ -26,3 +26,4 @@ include AUTO_CALIBRATION.md
 recursive-include examples/ettus *.sh *.py *.md
 include MEASUREMENT_ROADMAP.md
 recursive-include examples/ettus/results *.png
+include EXPERIMENTS.md

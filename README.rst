@@ -397,6 +397,15 @@ controls. `NOISE_CALIBRATION_AUDIT.md <NOISE_CALIBRATION_AUDIT.md>`_ contains
 the colored Mermaid workflow and offline complex IQ noise analysis. Run
 ``soapy_power_noise_audit --help`` for the diagnostic CLI.
 
+Automated experiments and instrument control
+--------------------------------------------
+
+``soapy_power_experiment`` plans, runs and analyses interleaved-grid surveys
+(default 100–300 MHz) with fit/holdout separation, tune-settling sweeps and a
+SCPI CW-generator hook (``tools/scpi_source_hook.py``). ``soapy_power_experiment
+dry-run DIR`` exercises the whole pipeline against a simulated rig. Results are
+relative and uncalibrated; see `EXPERIMENTS.md <EXPERIMENTS.md>`_.
+
 Receiver and external-LNA characterization
 ------------------------------------------
 
@@ -431,7 +440,7 @@ See `EXECUTION_AUDIT.md <EXECUTION_AUDIT.md>`_ for v1.12.1 fixes, regression
 checks, async ownership and source-evidence publication contracts.
 
 USB hopping and elapsed deadlines
---------------------------------
+---------------------------------
 
 ``--reopen-stream`` closes the current RX stream before each hop, applies tuning,
 fixed gain and corrections while stopped, and opens a fresh stream before the
@@ -461,7 +470,7 @@ uses redundant hops to avoid relying on DC/filter-edge samples. Raw peak output
 remains available; these display operations do not establish a power calibration.
 
 RF validity, calibration and the missing measurements
----------------------------------------------------
+-----------------------------------------------------
 
 `MEASUREMENT_ROADMAP.md <MEASUREMENT_ROADMAP.md>`_ distinguishes transport
 integrity, RF-state validity, relative artefact suppression and traceable
