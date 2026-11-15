@@ -33,6 +33,10 @@ def aggregate(path, start_hz, stop_hz, bins=4096, time_bin=1.0, edge_fraction=.1
             raise ValueError('incomplete acquisition in input')
         if m.get('continuity') != 'verified':
             raise ValueError('input lacks verified hardware continuity')
+        context = m.get('context', {})
+        if ((mode == 'weighted-mean' or dc_mask_width_hz)
+                and isinstance(context, dict) and context.get('tune_args')):
+            raise ValueError('fusion/center exclusion with tuning arguments requires a measured LO/DSP mapping; this example supports default zero-offset tuning')
         if mode == 'weighted-mean':
             context = m.get('context')
             gains = context.get('gains') if isinstance(context, dict) else None
@@ -113,6 +117,7 @@ def aggregate(path, start_hz, stop_hz, bins=4096, time_bin=1.0, edge_fraction=.1
                    frequency_cell_hz=step, time_cell_seconds=time_bin,
                    aggregation=('maximum PSD' if mode == 'peak' else 'taper/duration weighted linear PSD mean')+' per cell, assigned by hop host start time',
                    mode=mode, dc_mask_width_hz=dc_mask_width_hz, edge_fraction=edge_fraction,
+                   exclusion_reference='displayed RF origin; not physical LO readback',
                    observed_fraction=float(np.isfinite(result).mean()),
                    units='dB(input power/Hz), uncalibrated')
     return result, np.linspace(start_hz, stop_hz, bins+1), time_edges, summary
@@ -128,7 +133,7 @@ def main():
     parser.add_argument('--edge-fraction', type=float, default=.12)
     parser.add_argument('--mode', choices=['peak', 'weighted-mean'], default='peak')
     parser.add_argument('--dc-mask-width-hz', type=float, default=0,
-                        help='exclude this full RF width around each hop LO; requires sufficient hop overlap')
+                        help='exclude this full RF width around the displayed center in a validated zero-offset setup; requires overlap')
     parser.add_argument('-O', '--output-prefix', type=Path, required=True)
     args = parser.parse_args()
     paths = [Path(str(args.output_prefix)+suffix) for suffix in ('.png', '.npz', '.json')]

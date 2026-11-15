@@ -107,3 +107,51 @@ Weighted fusion requires an observable fixed-gain context and rejects AGC or
 changes to receiver identity/path, gain, rate, bandwidth, clock, correction,
 format or tuning-argument context. It must not merge arbitrary receiver states
 into an apparently leveled spectrum. Peak mode remains available for raw review.
+
+## Five-minute full-range LO/edge comparison
+
+For the manufacturer's published RF span, use a new output filename:
+
+```sh
+SDR_OVERLAP_PERCENT=87.5244140625 ./examples/ettus/scan.sh 70M:6000M 300 full-specified.jsonl
+```
+
+The hardware experiment used the wider **driver-accepted** 42–6008 MHz span;
+42–70 MHz and 6000–6008 MHz are outside the manufacturer's published 70 MHz–6 GHz
+operating range. Streaming there does not establish specified sensitivity or
+accuracy. To reproduce the experimental acquisition geometry explicitly:
+
+```sh
+SDR_OVERLAP_PERCENT=87.5244140625 ./examples/ettus/scan.sh 42M:6008M 300 full-extended.jsonl
+python examples/ettus/heatmap.py full-extended.jsonl --start-mhz 42 --stop-mhz 6008 \
+  --bins 8192 --time-bin 60 --edge-fraction .12 --mode peak -O full-broad-peaks
+python examples/ettus/heatmap.py full-extended.jsonl --start-mhz 42 --stop-mhz 6008 \
+  --bins 8192 --time-bin 60 --edge-fraction .25 --dc-mask-width-hz 500000 \
+  --mode peak -O full-centre-reduced-peaks
+python examples/ettus/heatmap.py full-extended.jsonl --start-mhz 42 --stop-mhz 6008 \
+  --bins 8192 --time-bin 60 --edge-fraction .25 --dc-mask-width-hz 500000 \
+  --mode weighted-mean -O full-centre-reduced-mean
+```
+
+The exact overlap retains 1022 of 8192 planning bins per hop: 6.986328125 MHz
+spacing and 854 hops for 42–6008 MHz. Last planned center is 6004.831 MHz, inside
+the driver's bound. A literal 87.5% plan would put the last center beyond that
+bound. With 70–6000 MHz, the chosen grid uses 849 hops and centers inside that
+published span. Frequency plans still require live device validation.
+
+Use sufficiently long time cells: the measured dense full-range sweep interval
+was 35.85 s, versus 7.64 s for the earlier fast survey. The example's minute cells
+are not simultaneous observations and do not guarantee interception of short
+bursts. Both comparison peak views use the same new data and estimator; the
+mean is provided separately. No real RF-fixed line is automatically labelled a
+birdie or deleted. The center mask is for the tested default zero-offset tuning;
+fusion/masking with unverified tuning arguments is rejected because physical LO
+and displayed baseband origin need not coincide.
+
+See [the measured comparison](results/full-range-clean-5min.png),
+[the LO detail](results/full-range-lo-detail.png),
+[the compact result record](results/full-range-clean-5min.json), and the
+[measurement roadmap](../../MEASUREMENT_ROADMAP.md) for terminology, missing
+measurements and the calibration ladder. Raw data and individual IQ samples are
+not part of the repository example. The JSONL files record uncalibrated PSD;
+they are not continuous complex-IQ recordings.

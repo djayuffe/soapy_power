@@ -459,3 +459,15 @@ linear-power overlap fusion and an explicit LO exclusion width. The
 `2.4 GHz example <examples/ettus/README.md#smoother-24-ghz-display-with-redundant-overlapping-hops>`_
 uses redundant hops to avoid relying on DC/filter-edge samples. Raw peak output
 remains available; these display operations do not establish a power calibration.
+
+RF validity, calibration and the missing measurements
+---------------------------------------------------
+
+`MEASUREMENT_ROADMAP.md <MEASUREMENT_ROADMAP.md>`_ distinguishes transport
+integrity, RF-state validity, relative artefact suppression and traceable
+calibration. It documents the five-minute full-range comparison, remaining
+LO/DC/lock/DSP/overlap questions, physical references and a practical calibration
+ladder. A low residual line contrast is not an amplitude-accuracy specification.
+The driver-accepted 42–6008 MHz experiments extend beyond Ettus's published
+70 MHz–6 GHz RF operating range; successful streaming does not certify those
+outer frequencies. See the roadmap's primary-source references and scope notes.

@@ -1,0 +1,63 @@
+{
+  "experiment": "Five-minute dense full-range PSD survey and same-capture center/edge exclusion comparison",
+  "acquisition_commit": "15a80dac016fe3829574850aa7bbf732eed9f2b5",
+  "hardware_family": "B200mini, USB 3, RX2",
+  "requested_duration_seconds": 300,
+  "sampled_span_mhz": [
+    42,
+    6008
+  ],
+  "manufacturer_published_rf_span_mhz": [
+    70,
+    6000
+  ],
+  "outside_published_span_is_experimental": true,
+  "sample_rate_hz": 56000000.0,
+  "fft_bins": 8192,
+  "fft_bin_spacing_hz": 6835.9375,
+  "hann_enbw_hz": 10253.90625,
+  "fixed_gain_db": 20,
+  "hop_spacing_hz": 6986328.125,
+  "hop_overlap_percent": 87.5244140625,
+  "hops_per_sweep": 854,
+  "minimum_settle_seconds": 0.02,
+  "settle_discard_samples": 32768,
+  "integration_requested_seconds": 0.005,
+  "records": 7137,
+  "complete_sweeps": 8,
+  "partial_final_hops": 305,
+  "median_sweep_seconds": 35.851926500000005,
+  "all_saved_records_complete_and_timestamp_verified": true,
+  "display_time_cell_seconds": 60,
+  "display_frequency_cell_hz": 728271.484375,
+  "centre_exclusion_full_width_hz": 500000,
+  "retained_if_half_width_hz": 14000000.0,
+  "lo_contrast_metrics": {
+    "raw-peaks": {
+      "center_region_ghz": [
+        3,
+        5.9
+      ],
+      "centers_compared": 415,
+      "median_center_minus_flanks_db": 11.389030456542969,
+      "p95_center_minus_flanks_db": 12.262794494628904
+    },
+    "clean-peaks": {
+      "center_region_ghz": [
+        3,
+        5.9
+      ],
+      "centers_compared": 415,
+      "median_center_minus_flanks_db": 0.21435546875,
+      "p95_center_minus_flanks_db": 0.4965148925781247
+    }
+  },
+  "metric_scope": "signed display-density contrast; not dBc, SFDR, amplitude accuracy or uncertainty",
+  "comparison_uses_identical_capture_and_peak_estimator": true,
+  "full_display_cell_observation_fraction": 1.0,
+  "extra_lo_following_masks_accepted": 0,
+  "power_units": "dB(input power/Hz), uncalibrated",
+  "raw_psd_in_repository": false,
+  "individual_iq_preserved": false,
+  "physical_calibration_references_used": false
+}

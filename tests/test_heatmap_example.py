@@ -100,3 +100,17 @@ class HeatmapExampleTests(unittest.TestCase):
         self.write([r])
         with self.assertRaisesRegex(ValueError, 'fixed-gain'):
             aggregate(self.path, 100e6+1, 100e6+3, bins=2, mode='weighted-mean')
+
+    def test_weighted_fusion_rejects_unverified_lo_dsp_offset_mapping(self):
+        r = self.record()
+        r['metadata']['context']['tune_args'] = {'OFFSET': '1000000'}
+        self.write([r])
+        with self.assertRaisesRegex(ValueError, 'LO/DSP mapping'):
+            aggregate(self.path, 100e6+1, 100e6+3, bins=2, mode='weighted-mean')
+
+    def test_center_mask_rejects_unverified_lo_dsp_offset_mapping(self):
+        r = self.record()
+        r['metadata']['context']['tune_args'] = {'OFFSET': '1000000'}
+        self.write([r])
+        with self.assertRaisesRegex(ValueError, 'LO/DSP mapping'):
+            aggregate(self.path, 100e6, 100e6+4, bins=4, dc_mask_width_hz=1)

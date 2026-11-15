@@ -348,3 +348,29 @@ changed receiver context. The 267-test suite passed on NumPy, SciPy and FFTW
 (one backend-specific skip on each of NumPy and SciPy). Full-file CLI output
 matched the analysis matrix exactly. No absolute/relative gain profile was
 inferred from unknown Wi-Fi traffic, and no source powers were invented.
+
+
+## Dense full-range same-capture comparison, 2026-11-15
+
+A 300-second 42–6008 MHz driver-accepted survey used 8192 FFT bins, 56 MS/s,
+1022 retained planning bins (6.986328125 MHz hop spacing), 854 hops and a
+35.85-second median sweep interval. All 7,137 saved PSD records were complete
+and timestamp-verified. There were eight full sweeps and a partial final sweep.
+The published RF operating span is 70 MHz–6 GHz; the extended endpoints are
+experimental and successful streaming does not establish specified RF accuracy.
+
+The same records were compared as broad-IF peaks and central-IF peaks with a
+500 kHz full-width displayed-centre exclusion. All one-minute display cells had
+observations. At 415 LO positions in 3–5.9 GHz, the signed median displayed
+centre-to-flank density contrast fell from 11.389 to 0.214 dB; the upper 95th
+percentile fell from 12.263 to 0.497 dB. These are display metrics, not amplitude
+uncertainty, integrated spur power, dBc or SFDR. No additional off-centre IF
+feature met recurrence thresholds in all three disjoint RF domains.
+
+The heatmap example now rejects fusion/centre masking with unverified tuning
+arguments: displayed RF origin need not equal physical LO under offset tuning.
+The 269-test suite passed on each of NumPy, SciPy and FFTW (one backend-specific
+skip on each of NumPy and SciPy). The full-range recipe, compact result and
+small comparison figures are included; raw captures are not. The measurement
+roadmap distinguishes implemented, tested, physically observed and proposed
+capabilities and lists the physical references needed for stronger claims.
