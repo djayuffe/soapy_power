@@ -67,3 +67,43 @@ assigned by host start time; rows do not imply simultaneous whole-band reception
 Missing cells remain blank, and percentile color limits can saturate strong peaks.
 DC/LO spurs, images, antenna response and compression can still affect results.
 Validate these with known physical references before relying on absolute power.
+
+## Smoother 2.4 GHz display with redundant overlapping hops
+
+With an antenna alone, gain calibration cannot be inferred from a busy Wi-Fi
+spectrum or an assumed flat noise floor. A more conservative relative display
+uses extra overlap, a restricted central IF band and a smooth weight, retaining
+all original spectra:
+
+```sh
+SDR_OVERLAP_PERCENT=87.5 ./examples/ettus/scan.sh 2400M:2500M 120 wifi-refined.jsonl
+python examples/ettus/heatmap.py wifi-refined.jsonl \
+  --start-mhz 2400 --stop-mhz 2500 --edge-fraction 0.25 \
+  --dc-mask-width-hz 500000 --mode weighted-mean -O wifi-refined-mean
+python examples/ettus/heatmap.py wifi-refined.jsonl \
+  --start-mhz 2400 --stop-mhz 2500 --mode peak -O wifi-refined-raw-peaks
+```
+
+At 56 MS/s, 87.5% overlap gives a 7 MHz hop. The central half of each native
+spectrum is retained in the mean view (±14 MHz); the central 500 kHz **full
+width** is excluded around each hop LO. Neighboring hops supply real RF samples
+in that interval from offsets away from their own DC and filter edges. Those
+samples are acquired at different times: a short signal occurring only in a
+masked acquisition can be absent from the reduced view. Inspect raw peaks and
+original evidence as well. Coverage is not reconstructed or interpolated when
+no unmasked observation exists.
+
+The weighted mode averages linear PSD, using the normalized quartic IF taper
+`(1 - (offset / retained_half_width)^2)^2` and actual integration duration.
+Calculation uses log-sum-exp to avoid exponentiation overflow/underflow; it is
+not an average of dB values. The output NPZ uses `mean_density_db` for this mode
+and `peak_density_db` for peak mode. The JSON records masks, mode, edge exclusion
+and observed coverage. It does not contain a calibration profile. This changes
+the sampling/aggregation, without subtracting a guessed baseline or boosting a
+frequency-dependent curve. It cannot certify analog passband flatness, SNR,
+linearity or absolute dBm. Additional hops reduce the revisit speed.
+
+Weighted fusion requires an observable fixed-gain context and rejects AGC or
+changes to receiver identity/path, gain, rate, bandwidth, clock, correction,
+format or tuning-argument context. It must not merge arbitrary receiver states
+into an apparently leveled spectrum. Peak mode remains available for raw review.

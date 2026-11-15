@@ -325,3 +325,26 @@ aggregation. The plotting example was also run against saved hardware captures;
 its help, shell syntax, source-distribution contents and `git diff --check` were
 checked. Results describe this local setup, not an independent cross-platform
 CI run. Large raw captures are kept outside the repository.
+
+## Relative overlap-display refinement, 2026-11-15
+
+Antenna-only B200mini comparisons exercised 25%, 75% and 87.5% hop overlap,
+including a lower-gain check and independent 120-second capture. All 7,700
+saved acquisitions passed completeness and timestamp-continuity checks.
+The final 87.5% configuration used 15 hops, 56 MS/s, 8192 FFT bins, fixed
+20 dB gain and the central ±14 MHz for display fusion, excluding a 500 kHz
+full-width region around each LO. Its median sweep interval was 0.582 s.
+
+Comparing the same final raw captures, mean-density contrast around two LOs
+in the observed low-activity 2485–2498 MHz interval fell from 3.31/3.71 dB
+to 0.026/-0.067 dB against local flanks. Spectral P95–P05 variation there
+fell from 0.489 to 0.313 dB. These are conditional display metrics, not
+calibrated passband accuracy or a known thermal-noise reference. The
+parameters were chosen before the final control capture. Raw peak evidence
+was retained because sequential masked samples can miss short transmissions.
+
+The normalized linear-PSD weighted mean uses log-sum-exp and rejects AGC or
+changed receiver context. The 267-test suite passed on NumPy, SciPy and FFTW
+(one backend-specific skip on each of NumPy and SciPy). Full-file CLI output
+matched the analysis matrix exactly. No absolute/relative gain profile was
+inferred from unknown Wi-Fi traffic, and no source powers were invented.

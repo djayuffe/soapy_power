@@ -453,3 +453,9 @@ Runnable USB USRP capture and streaming heatmap examples are in
 `examples/ettus <examples/ettus/README.md>`_. They include ten-minute
 100–200 MHz, 400–500 MHz and 44–1000 MHz surveys, with explicit receiver
 selection and plotting/measurement limitations.
+
+The heatmap example also offers ``--mode weighted-mean`` with normalized
+linear-power overlap fusion and an explicit LO exclusion width. The
+`2.4 GHz example <examples/ettus/README.md#smoother-24-ghz-display-with-redundant-overlapping-hops>`_
+uses redundant hops to avoid relying on DC/filter-edge samples. Raw peak output
+remains available; these display operations do not establish a power calibration.
