@@ -79,7 +79,8 @@ Usage
                        [--timestamp-tolerance-samples TIMESTAMP_TOLERANCE_SAMPLES]
                        [--require-timestamps]
                        [--workspace-budget WORKSPACE_BUDGET]
-                       [--allow-estimated-dc] [--calibration JSON]
+                       [--allow-estimated-dc] [--skip-driver-teardown]
+                       [--calibration JSON]
                        [--dc-mask-width HZ] [--dc-offset HZ]
                        [--precision {single,double}] [--iq-conjugate] [-l] [-R]
                        [-D {none,constant}]
@@ -231,6 +232,11 @@ Usage
                             application FFT workspace bytes per worker; excludes
                             driver/input queues and backend cache
       --allow-estimated-dc
+      --skip-driver-teardown
+                            after the measurement and output are closed, exit
+                            with the measurement status without running SDR
+                            driver destructors (UHD on macOS can abort in USB
+                            teardown after a complete run)
       --calibration JSON    measured, settings-matched power calibration profile;
                             output dBm/Hz or mW/Hz
       --dc-mask-width HZ    exclude this baseband DC/spur bandwidth as NaN

@@ -107,3 +107,12 @@ for your unit. This example demonstrates lifecycle controls, not an absolute
 power calibration. Reopening also works with tuning arguments. Each new stream
 gets an independent continuity tracker; no continuity across retunes is claimed.
 The final hop completes at the elapsed deadline, but a final sweep may be partial.
+
+On macOS (Homebrew UHD, SoapyUHD module, B200mini 30B2A32, 2026-11-15) one of three
+30 s scans completed normally and two aborted *after* the measurement: the sweep
+finished, the writer closed every record (`complete`/`verified`, newline-terminated),
+then UHD's libusb transport threw `uhd::usb_error ... LIBUSB_ERROR_NO_DEVICE` while the
+SoapySDR device was being destroyed at interpreter exit, giving SIGABRT (status -6).
+`--skip-driver-teardown` exits with the measurement's own status once the output is
+closed and skips driver destructors; a real error is still printed and still fails
+the run. `soapy_power_experiment` passes it for every scan.

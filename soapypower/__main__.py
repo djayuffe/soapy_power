@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os, sys, logging, argparse, re, shutil, textwrap, math
+import os, sys, logging, argparse, re, shutil, textwrap, math, traceback
 
 from soapypower import writer
 from soapypower.version import __version__
@@ -333,6 +333,9 @@ def setup_argument_parser():
     other_title.add_argument('--workspace-budget', type=int, default=64 * 1024**2,
                              help='application FFT workspace bytes per worker; excludes driver/input queues and backend cache')
     other_title.add_argument('--allow-estimated-dc', action='store_true')
+    other_title.add_argument('--skip-driver-teardown', action='store_true',
+                             help='after the measurement and output are closed, exit with the measurement status without '
+                                  'running SDR driver destructors (UHD on macOS can abort in USB teardown after a complete run)')
     other_title.add_argument('--calibration', metavar='JSON',
                              help='measured, settings-matched power calibration profile; output dBm/Hz or mW/Hz')
     other_title.add_argument('--dc-mask-width', type=float_with_multiplier, default=0, metavar='HZ',
@@ -542,6 +545,40 @@ def main():
         if args.debug:
             raise
         parser.error('Measurement failed: {}'.format(error))
+    finally:
+        if args.skip_driver_teardown:
+            exit_without_driver_teardown(sys.exc_info()[1])
+
+
+def exit_status(error):
+    """Process status for an exception in flight (None = success), as the interpreter would report it."""
+    if error is None:
+        return 0
+    if isinstance(error, SystemExit):
+        code = error.code
+        if code is None:
+            return 0
+        return code if isinstance(code, int) else 1
+    if isinstance(error, KeyboardInterrupt):
+        return 130
+    return 1
+
+
+def exit_without_driver_teardown(error, _exit=os._exit):
+    """Report, flush and leave without interpreter finalization (no SDR driver destructors).
+
+    Only reached after SoapyPower.sweep() has stopped streaming and closed the output
+    writer, so every record is already on disk. The exit status is the measurement's own.
+    """
+    if error is not None and not isinstance(error, SystemExit):
+        traceback.print_exception(type(error), error, error.__traceback__)
+    logging.shutdown()
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except (OSError, ValueError):
+            pass
+    _exit(exit_status(error))
 
 
 

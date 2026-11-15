@@ -59,7 +59,11 @@ def hop_plan(start_hz, stop_hz, rate_hz=RATE_HZ, bins=BINS, overlap_percent=OVER
 def scan_argv(device, start_hz, stop_hz, seconds, output, antenna='RX2', gain_db=20.0,
               rate_hz=RATE_HZ, bins=BINS, overlap_percent=OVERLAP_PERCENT, integration_s=0.005,
               tune_delay_s=0.02, settle_samples=32768, executable='soapy_power'):
-    """Acquisition policy of examples/ettus/scan.sh as an argument vector."""
+    """Acquisition policy of examples/ettus/scan.sh as an argument vector.
+
+    --skip-driver-teardown: the run's status is decided once the output is closed; UHD's
+    macOS USB teardown can otherwise abort (SIGABRT) a complete measurement.
+    """
     rate = '{:.6f}'.format(rate_hz)
     return [executable, '-d', device, '-A', antenna, '-C', '0',
             '-f', '{:.6f}:{:.6f}'.format(start_hz, stop_hz), '-e', '{:g}'.format(seconds),
@@ -69,7 +73,7 @@ def scan_argv(device, start_hz, stop_hz, seconds, output, antenna='RX2', gain_db
             '--tune-delay', '{:g}'.format(tune_delay_s), '--settle-samples', str(int(settle_samples)),
             '--lock-sensor', 'lo_locked', '--reopen-stream', '--deadline-policy', 'finish-hop',
             '--require-timestamps', '--partial-policy', 'reject', '--no-pyfftw',
-            '--precision', 'single', '--max-threads', '4', '--max-queue-size', '4']
+            '--precision', 'single', '--max-threads', '4', '--max-queue-size', '4', '--skip-driver-teardown']
 
 
 def calibration_config(device, levels_dbm, max_receiver_input_dbm, path_loss_db, reference,

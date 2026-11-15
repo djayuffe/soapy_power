@@ -351,6 +351,22 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual((args.tune_delay, args.settle_samples, args.overlap), (0.005, 0, ex.OVERLAP_PERCENT))
         for flag in ('--require-timestamps', '--partial-policy', '--lock-sensor', '--reopen-stream'):
             self.assertIn(flag, argv)
+        self.assertTrue(args.skip_driver_teardown)
+
+    def test_skip_driver_teardown_exits_with_the_measurement_status(self):
+        from soapypower import __main__ as cli
+        self.assertEqual([cli.exit_status(e) for e in (None, SystemExit(None), SystemExit(2), SystemExit('x'),
+                                                       KeyboardInterrupt(), RuntimeError('x'))], [0, 0, 2, 1, 130, 1])
+        codes = []
+        with mock.patch('sys.stderr', new_callable=io.StringIO) as err:
+            cli.exit_without_driver_teardown(None, codes.append)
+            cli.exit_without_driver_teardown(SystemExit(2), codes.append)
+            try:
+                raise ValueError('late failure')
+            except ValueError as error:
+                cli.exit_without_driver_teardown(error, codes.append)
+        self.assertEqual(codes, [0, 2, 1])
+        self.assertIn('late failure', err.getvalue())  # a real error is never swallowed
 
 
 class SuiteTests(unittest.TestCase):
