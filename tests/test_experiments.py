@@ -470,12 +470,70 @@ class RunTests(unittest.TestCase):
             ex.run_suite(ex.default_suite('d'), temp, None)
 
 
+class InputComparisonTests(unittest.TestCase):
+    def test_excess_regions_and_floor_summary(self):
+        rf = [100e6 + 1e5 * (i + .5) for i in range(50)]
+        level = [-130.0] * 50
+        level[10] = level[11] = -120.0
+        level[30] = -126.0
+        regions = mv.excess_regions(rf, level, -130.0, 3.0, 1e5)
+        self.assertEqual([(r['cells'], round(r['peak_excess_db'])) for r in regions], [(2, 10), (1, 4)])
+        self.assertAlmostEqual(regions[0]['start_hz'], 101e6)
+        floor = mv.floor_summary({'rf_hz': rf, 'median_db': level, 'cell_hz': 1e5})
+        self.assertEqual(floor['floor_median_db'], -130.0)
+        self.assertEqual(len(floor['internal_features']), 2)
+
+    def session(self, root, name, input_kind, environment, seed):
+        rig = ex.SimulatedRig(environment=environment, seed=seed)
+        suite = ex.default_suite('driver=simulated', input_kind=input_kind)
+        directory = Path(root) / name
+        ex.run_suite(suite, directory, rig.source, rig.runner, data_source='simulated')
+        report = ex.analyze(directory)
+        self.assertTrue(report['passed'])
+        self.assertEqual(report['input'], input_kind)
+        return directory, report
+
+    def test_compare_separates_internal_from_external_features(self):
+        internal = [(200.0e6, 15.0)]
+        external = [(226.05e6, 25.0), (105.55e6, 12.0)]
+        with tempfile.TemporaryDirectory() as temp:
+            term, report = self.session(temp, 'term', 'terminated', internal, 1)
+            ant, _ = self.session(temp, 'ant', 'antenna', internal + external, 2)
+            floor = report['checks']['terminated_floor']
+            self.assertFalse(floor['gating'])
+            self.assertTrue(any(abs(r['peak_hz'] - 200e6) < 1.5e5 for r in floor['internal_features']))
+            result = ex.compare(term, ant)
+            ext = [r['peak_hz'] for r in result['external']]
+            for hz, _ in external:
+                self.assertTrue(any(abs(p - hz) < 1.5e5 for p in ext), (hz, ext))
+            self.assertFalse(any(abs(p - 200e6) < 1.5e5 for p in ext))  # the internal spur is not external
+            spur = [r for r in result['internal'] if abs(r['peak_hz'] - 200e6) < 1.5e5]
+            self.assertEqual(len(spur), 1)
+            self.assertLess(abs(spur[0]['antenna_minus_terminated_db']), 1.0)
+            self.assertLess(result['if_response_agreement']['rms_db'], .1)
+            self.assertLess(abs(result['antenna_minus_terminated_median_db']), .2)
+            self.assertTrue((term / 'comparison-ant.json').is_file())
+            with self.assertRaisesRegex(ValueError, 'declared inputs'):
+                ex.compare(ant, term)
+
+    def test_input_declaration_is_validated(self):
+        with self.assertRaisesRegex(ValueError, 'input must be'):
+            ex.default_suite('d', input_kind='dummy-load-maybe')
+        with self.assertRaisesRegex(ValueError, 'terminated input cannot'):
+            ex.default_suite('d', input_kind='terminated', tone_dbm=-40.0, max_receiver_input_dbm=-20.0, path_loss_db=0)
+        suite = ex.default_suite('d', input_kind='terminated', antenna='TX/RX')
+        self.assertEqual(suite['input'], {'kind': 'terminated', 'port': 'TX/RX', 'declared_by': 'operator'})
+
+
 class CliTests(unittest.TestCase):
     def test_plan_calibration_config_and_errors(self):
         with tempfile.TemporaryDirectory() as temp:
             suite = Path(temp) / 'suite.json'
             self.assertEqual(ex.main(['plan', 'driver=uhd', '-O', str(suite), '--tone-dbm', '-40',
                                       '--max-receiver-input-dbm', '-20', '--path-loss-db', '1']), 0)
+            terminated = Path(temp) / 'term.json'
+            self.assertEqual(ex.main(['plan', 'driver=uhd', '-O', str(terminated), '--input', 'terminated']), 0)
+            self.assertEqual(json.loads(terminated.read_text())['input']['kind'], 'terminated')
             self.assertEqual(json.loads(suite.read_text())['kind'], 'experiment_suite')
             config = Path(temp) / 'cal.json'
             self.assertEqual(ex.main(['calibration-config', 'driver=uhd', '-O', str(config), '--levels-dbm', '-60',

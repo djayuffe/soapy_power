@@ -99,6 +99,65 @@ loss, and refuses tones above that ceiling.
 holdouts). Levels, ceiling, path loss, certificate and reference plane are mandatory
 arguments. `physical_setup_confirmed` stays `false` until you edit it.
 
+## Terminated input: internal versus external features
+
+With a 50 Ω termination on the receive port, every RF cell sees the same thermal
+input. The additive model then holds without a changing environment. Whatever still
+rises above the floor is generated in the receiver or host.
+
+```sh
+soapy_power_experiment plan 'driver=uhd,type=b200,serial=SERIAL' -O suite-term.json --input terminated
+soapy_power_experiment run suite-term.json session-term
+soapy_power_experiment analyze session-term        # adds an informational terminated_floor check
+soapy_power_experiment compare session-term session-antenna
+```
+
+`--input` (antenna | terminated) is the operator's declaration of what is connected.
+The software cannot check it, but it is stored in the suite, the analysis and
+`cell_levels.json`. A terminated suite refuses a settling tone.
+
+`analyze` writes `cell_levels.json`: the IF-corrected median, 10th and 90th percentile
+per 100 kHz cell, the holdout median, and the receiver context signature.
+
+`compare` requires two passed sessions with the same data source and receiver context,
+declared terminated and antenna. It reports:
+
+- **External:** cells where the antenna session exceeds the terminated level by more
+  than 3 dB. These signals arrive at the port.
+- **Internal:** features above the terminated floor itself, generated in the receiver
+  or host. `antenna_minus_terminated_db` near 0 means the antenna feature at that
+  frequency is this internal one.
+- **IF response agreement:** how closely the two sessions' IF responses match. With
+  the antenna mostly at the receiver floor, they should agree.
+
+## macOS hardware runner (launchd)
+
+`tools/macos_runner/` runs sessions on a Mac whose shell an assistant or a remote job
+cannot reach directly, for example when the SDR is on the Mac's USB.
+
+```sh
+bash tools/macos_runner/install.sh                      # once: launchd agent + probe
+tools/macos_runner/queue.sh probe --wait 120            # Python/SoapySDR/module matrix + B200 serial
+tools/macos_runner/queue.sh setup --wait 170            # sessions/.venv-* with numpy scipy simplesoapy simplespectral
+tools/macos_runner/queue.sh scan --input terminated --wait 600
+bash tools/macos_runner/uninstall.sh
+```
+
+- **Requests:** XML property lists in `sessions/queue/` with only `mode`,
+  `scan_seconds`, `gain_db`, `antenna` and `input`, validated by the runner. The
+  runner copied to `~/Library/Application Support/` executes nothing from a request.
+  It starts `tools/macos_runner/run_session.sh` from the checkout, which runs the
+  checkout's Python anyway. Status, logs and sessions are written to `sessions/`
+  (git-ignored).
+- **Stack discovery:** `run_session.sh` tries each Python interpreter (plus Homebrew,
+  `/usr/local` and MacPorts `site-packages`) with each SoapySDR module directory until
+  one enumerates exactly one B200. It drops an inherited `PYTHONPATH`, since another
+  Python version's site-packages breaks imports. `setup` adds missing packages to a
+  dedicated venv (`--system-site-packages`) and never to a system Python.
+- **Environment:** `install.sh` snapshots PATH and UHD/SoapySDR variables into the
+  agent. `DYLD_*` variables are passed as `SPR_DYLD_*`, because SIP strips them when
+  `/bin/bash` starts.
+
 ## Instrument control
 
 `soapypower/instruments.py` talks SCPI over raw TCP (port 5025) with no extra

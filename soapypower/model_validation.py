@@ -402,6 +402,91 @@ def repeatability(store, max_sigma_db=None, min_cells=8):
     return result
 
 
+# ------------------------------------------------------------------- cell levels
+
+def cell_levels(store, response=None, if_bin_hz=None, max_if_hz=None):
+    """Per-RF-cell level across every hop/IF position that saw the cell (dB).
+
+    With a fitted relative IF response the observations are corrected first, so the
+    median is an estimate of S[c] up to the response's single gauge constant.
+    """
+    if_bin_hz = if_bin_hz or store.cell
+    max_if_hz = max_if_hz or store.max_if or if_bin_hz
+    matrix, _ = _design(store, store.medians(), if_bin_hz, max_if_hz)
+    if response is not None:
+        matrix = apply_if_response(matrix, response)
+    seen = np.isfinite(matrix).any(axis=1)
+    out = {k: np.full(store.cells, np.nan) for k in ('median_db', 'p10_db', 'p90_db')}
+    if seen.any():
+        rows = matrix[seen]
+        out['median_db'][seen] = np.nanmedian(rows, axis=1)
+        out['p10_db'][seen] = np.nanpercentile(rows, 10, axis=1)
+        out['p90_db'][seen] = np.nanpercentile(rows, 90, axis=1)
+    result = {'rf_hz': store.cell_center(np.arange(store.cells)).tolist(), 'cell_hz': store.cell,
+              'observations': np.isfinite(matrix).sum(axis=1).tolist(), 'if_corrected': response is not None}
+    result.update({k: _nan_list(v) for k, v in out.items()})
+    return result
+
+
+def excess_regions(rf_hz, level_db, reference_db, threshold_db=3.0, cell_hz=None):
+    """Contiguous cells where level - reference exceeds the threshold, strongest first."""
+    rf = np.asarray(rf_hz, dtype=float)
+    excess = _array(level_db) - (_array(reference_db) if np.ndim(reference_db) else float(reference_db))
+    above = np.isfinite(excess) & (excess > threshold_db)
+    cell = cell_hz or (float(np.median(np.diff(rf))) if rf.size > 1 else 0.0)
+    edges = np.flatnonzero(np.diff(np.concatenate([[0], above.astype(int), [0]])))
+    regions = []
+    for start, stop in zip(edges[::2], edges[1::2] - 1):
+        peak = start + int(np.nanargmax(excess[start:stop + 1]))
+        regions.append({'start_hz': float(rf[start] - cell / 2), 'stop_hz': float(rf[stop] + cell / 2),
+                        'peak_hz': float(rf[peak]), 'peak_excess_db': float(excess[peak]),
+                        'cells': int(stop - start + 1)})
+    return sorted(regions, key=lambda r: -r['peak_excess_db'])
+
+
+def floor_summary(levels, spur_threshold_db=3.0):
+    """Terminated-input view: floor level, flatness across RF and internal features above it."""
+    level = _array(levels['median_db'])
+    ok = np.isfinite(level)
+    if ok.sum() < 8:
+        return {'status': 'insufficient_cells'}
+    floor = float(np.median(level[ok]))
+    return {'status': 'measured', 'floor_median_db': floor,
+            'flatness_p5_p95_db': float(np.percentile(level[ok], 95) - np.percentile(level[ok], 5)),
+            'spur_threshold_db': spur_threshold_db,
+            'internal_features': excess_regions(levels['rf_hz'], level, floor, spur_threshold_db, levels['cell_hz']),
+            'scope': 'receiver floor with the declared termination; relative, uncalibrated'}
+
+
+def compare_inputs(terminated, antenna, threshold_db=3.0):
+    """Classify features by comparing a terminated-input session with an antenna session.
+
+    Each argument: {'levels': cell_levels(...), 'response': fit_if_response(...)}.
+    external: antenna exceeds the terminated level for the same cells (RF arriving at the port).
+    internal: present above the terminated floor itself (receiver/host generated);
+    antenna_minus_terminated_db near 0 means the antenna feature is that internal one.
+    """
+    t, a = terminated['levels'], antenna['levels']
+    if t['rf_hz'] != a['rf_hz']:
+        raise ValueError('sessions use different RF cell grids')
+    tl, al = _array(t['median_db']), _array(a['median_db'])
+    external = excess_regions(t['rf_hz'], al, tl, threshold_db, t['cell_hz'])
+    floor = floor_summary(t, threshold_db)
+    internal = []
+    for region in floor.get('internal_features', []):
+        i = int(np.argmin(np.abs(np.asarray(t['rf_hz']) - region['peak_hz'])))
+        internal.append(dict(region, antenna_minus_terminated_db=None if not np.isfinite(al[i] - tl[i]) else float(al[i] - tl[i])))
+    both = np.isfinite(tl) & np.isfinite(al)
+    result = {'threshold_db': threshold_db, 'external': external, 'internal': internal,
+              'terminated_floor': {k: v for k, v in floor.items() if k != 'internal_features'},
+              'antenna_minus_terminated_median_db': float(np.median(al[both] - tl[both])) if both.any() else None,
+              'cells_compared': int(both.sum()),
+              'scope': 'relative levels from one fixed receiver state; uncalibrated'}
+    if terminated.get('response') and antenna.get('response'):
+        result['if_response_agreement'] = compare_responses(terminated['response'], antenna['response'])
+    return result
+
+
 # ------------------------------------------------------------------------- settling
 
 def fit_settling(delays_s, error_db, noise_floor_db=0.05):

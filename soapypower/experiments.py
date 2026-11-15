@@ -35,6 +35,7 @@ BINS = 8192
 OVERLAP_PERCENT = 87.5244140625  # exactly 1022 of 8192 bins retained per hop
 DEFAULT_DELAYS_S = (0.0, 0.002, 0.005, 0.01, 0.02, 0.04, 0.08, 0.2)
 ACCEPTANCE = {'max_repeat_sigma_db': 0.5, 'max_if_disagreement_db': 0.25, 'settling_tolerance_db': 0.1}
+INPUTS = ('antenna', 'terminated')
 
 
 # ----------------------------------------------------------------- geometry/commands
@@ -111,16 +112,23 @@ def calibration_config(device, levels_dbm, max_receiver_input_dbm, path_loss_db,
 
 def default_suite(device, tone_rf_hz=200e6, tone_dbm=None, max_receiver_input_dbm=None, path_loss_db=None,
                   delays_s=DEFAULT_DELAYS_S, scan_seconds=60.0, settle_seconds=20.0, antenna='RX2',
-                  gain_db=20.0, overlap_percent=OVERLAP_PERCENT, band_hz=BAND_HZ, settle_samples=32768):
+                  gain_db=20.0, overlap_percent=OVERLAP_PERCENT, band_hz=BAND_HZ, settle_samples=32768,
+                  input_kind='antenna'):
     """Interleaved shifted hop grids (A, B), later holdout repeats, optional settling sweep.
 
     Grid B starts half a hop lower. A perfectly periodic grid identifies the IF
     response only up to one constant per IF coset; the second grid links them.
     Settling trials scan a window around the tone with --settle-samples 0, so the
     tune delay (plus the lock wait) is the only settling control being varied.
+    input_kind is the operator's declaration of what is connected to the port
+    ('antenna' or 'terminated'); the software cannot verify it.
     """
     if not isinstance(device, str) or not device:
         raise ValueError('device selector must be a nonempty string')
+    if input_kind not in INPUTS:
+        raise ValueError('input must be one of: ' + ', '.join(INPUTS))
+    if input_kind == 'terminated' and tone_dbm is not None:
+        raise ValueError('a terminated input cannot also receive a settling tone')
     start, stop = finite(band_hz[0], 'band start', positive=True), finite(band_hz[1], 'band stop', positive=True)
     if stop <= start:
         raise ValueError('band must be ascending')
@@ -161,7 +169,8 @@ def default_suite(device, tone_rf_hz=200e6, tone_dbm=None, max_receiver_input_db
                  source={'state': 'on', 'rf_hz': tone_rf_hz, 'level_dbm': tone_dbm})
     return {'version': 1, 'kind': 'experiment_suite', 'device': device, 'band_hz': [start, stop],
             'geometry': {k: v for k, v in geometry.items() if k != 'centers_hz'}, 'tone_rf_hz': tone_rf_hz,
-            'source_limits': limits, 'trials': trials, 'acceptance': dict(ACCEPTANCE)}
+            'source_limits': limits, 'trials': trials, 'acceptance': dict(ACCEPTANCE),
+            'input': {'kind': input_kind, 'port': antenna, 'declared_by': 'operator'}}
 
 
 def _sha256(path):
@@ -290,7 +299,8 @@ def analyze(directory, cell_hz=100e3, dc_mask_hz=500e3, edge_fraction=0.12, tone
     options = dict(edge_fraction=edge_fraction, dc_mask_hz=dc_mask_hz)
     by_role = lambda role: [files[i] for i in files if trials[i]['role'] == role]
     simulated = ledger['data_source'] == 'simulated'
-    report = {'kind': 'experiment_analysis', 'version': 1, 'data_source': ledger['data_source'],
+    input_kind = suite.get('input', {}).get('kind', 'unspecified')
+    report = {'kind': 'experiment_analysis', 'version': 1, 'data_source': ledger['data_source'], 'input': input_kind,
               'evidence_level': 'simulation: software verification only' if simulated
               else 'hardware-observed: relative, uncalibrated', 'calibrated': False,
               'ledger_sha256': _sha256(directory / 'ledger.json'), 'checks': {}, 'required': []}
@@ -316,6 +326,14 @@ def analyze(directory, cell_hz=100e3, dc_mask_hz=500e3, edge_fraction=0.12, tone
             'response_se_db': fit['response_se_db'], 'anchor_if_hz': fit['anchor_if_hz'],
             'receiver_context_signature': fit_store.signature,
             'validated': bool(checks['if_holdout'].get('passed'))}, overwrite=True)
+        levels = mv.cell_levels(fit_store, fit['response_db'])
+        write_json(directory / 'cell_levels.json', dict(
+            levels, kind='cell_levels', version=1, calibrated=False, data_source=ledger['data_source'],
+            input=input_kind, receiver_context_signature=fit_store.signature,
+            holdout_median_db=mv.cell_levels(test_store, fit['response_db'])['median_db'] if holdout_files else None),
+            overwrite=True)
+        if input_kind == 'terminated':
+            checks['terminated_floor'] = dict(mv.floor_summary(levels), gating=False)
     settle = {trials[i]['tune_delay_s']: files[i] for i in files if trials[i]['role'] == 'settling'}
     if settle:
         tone = suite['tone_rf_hz']
@@ -331,17 +349,55 @@ def analyze(directory, cell_hz=100e3, dc_mask_hz=500e3, edge_fraction=0.12, tone
     return report
 
 
+def _session(directory):
+    directory = Path(directory)
+    analysis = load_json(directory / 'analysis.json')
+    levels = load_json(directory / 'cell_levels.json')
+    response = load_json(directory / 'if_response.json')
+    if analysis.get('kind') != 'experiment_analysis' or levels.get('kind') != 'cell_levels':
+        raise ValueError('not an analysed experiment session: {}'.format(directory))
+    return analysis, levels, response
+
+
+def compare(terminated_dir, antenna_dir, output=None, threshold_db=3.0):
+    """Classify features as external (arrive at the port) or internal (present when terminated).
+
+    Both sessions must be analysed, from the same data source and the same receiver
+    context (driver, serial, gains, rate, port ...); their declared inputs must be
+    'terminated' and 'antenna'. The IF responses of the two sessions are compared too.
+    """
+    ta, tl, tr = _session(terminated_dir)
+    aa, al, ar = _session(antenna_dir)
+    if (ta['input'], aa['input']) != ('terminated', 'antenna'):
+        raise ValueError('declared inputs are {!r} and {!r}; expected terminated and antenna'.format(ta['input'], aa['input']))
+    if ta['data_source'] != aa['data_source']:
+        raise ValueError('cannot compare simulated with acquired sessions')
+    if tl['receiver_context_signature'] != al['receiver_context_signature']:
+        raise ValueError('receiver context differs between the sessions')
+    for name, analysis in (('terminated', ta), ('antenna', aa)):
+        if not analysis['passed']:
+            raise ValueError('{} session did not pass its own checks'.format(name))
+    result = mv.compare_inputs({'levels': tl, 'response': tr}, {'levels': al, 'response': ar}, threshold_db)
+    result.update(kind='input_comparison', version=1, calibrated=False, data_source=ta['data_source'],
+                  terminated_session=str(terminated_dir), antenna_session=str(antenna_dir))
+    output = Path(output) if output else Path(terminated_dir) / 'comparison-{}.json'.format(Path(antenna_dir).name)
+    write_json(output, result, overwrite=True)
+    return result
+
+
 # ----------------------------------------------------------------------- dry-run rig
 
 class SimulatedRig:
     """Receiver + CW source simulator with known truth for a full pipeline dry run."""
 
     def __init__(self, truth_if=None, tau_s=0.008, amplitude_db=1.5, image_rejection_db=35.0,
-                 tone_above_floor_db=50.0, fail_first=False):
+                 tone_above_floor_db=50.0, fail_first=False, environment=(), seed=0):
         import numpy as np
         self.truth = truth_if or (lambda f: -1.2 * (f / 14e6) ** 2 + .25 * np.sin(2 * np.pi * f / 5e6))
         self.tau, self.amplitude, self.irr, self.tone_db = tau_s, amplitude_db, image_rejection_db, tone_above_floor_db
         self.fail_first = fail_first
+        self.environment = list(environment)  # always-present RF-fixed (rf_hz, dB above floor)
+        self.seed = int(seed)
         self.source_state = {'state': 'off'}
         self.calls = []
 
@@ -355,14 +411,14 @@ class SimulatedRig:
             self.fail_first = False
             return {'returncode': 3, 'seconds': 0.0, 'stderr_tail': 'simulated failure'}
         plan = hop_plan(trial['start_hz'], trial['stop_hz'], overlap_percent=trial['overlap_percent'])
-        tones, scale, bins, passes = [], 1.0, 1024, 4
+        tones, scale, bins, passes = list(self.environment), 1.0, 1024, 4
         if self.source_state['state'] == 'on':
-            tones = [(self.source_state['rf_hz'], self.tone_db)]
+            tones = [(self.source_state['rf_hz'], self.tone_db)]  # settling trials: the tone alone
             scale = 10 ** (-self.amplitude * math.exp(-trial['tune_delay_s'] / self.tau) / 10)
             bins, passes = 4096, 2
         mv.synthetic_scan(output, trial['start_hz'], trial['stop_hz'], hop_hz=plan['hop_hz'], bins=bins,
                           passes=passes, if_response=self.truth, tones=tones, tone_scale=scale,
-                          image_rejection_db=self.irr, seed=zlib.crc32(trial['id'].encode()),
+                          image_rejection_db=self.irr, seed=zlib.crc32('{}/{}'.format(self.seed, trial['id']).encode()),
                           offset_hz=plan['centers_hz'][0] - trial['start_hz'] - plan['hop_hz'] / 2)
         return {'returncode': 0, 'seconds': 0.0, 'stderr_tail': ''}
 
@@ -370,15 +426,35 @@ class SimulatedRig:
 # ------------------------------------------------------------------------------- CLI
 
 def _summary(report):
-    lines = ['{} ({})'.format('PASSED' if report['passed'] else 'FAILED', report['evidence_level'])]
+    lines = ['{} ({}; input: {})'.format('PASSED' if report['passed'] else 'FAILED', report['evidence_level'],
+                                        report.get('input', 'unspecified'))]
     for name, check in report['checks'].items():
         mark = 'required' if name in report['required'] else 'info'
         keys = ('sigma_db', 'identifiable_components', 'median_redundancy', 'agreement', 'improvement_db',
-                'delay_s', 'status', 'median_image_rejection_db', 'min_lower_bound_db')
+                'delay_s', 'status', 'median_image_rejection_db', 'min_lower_bound_db',
+                'floor_median_db', 'flatness_p5_p95_db')
         detail = {k: check[k] for k in keys if k in check}
         if 'agreement' in detail:
             detail['agreement'] = detail['agreement'].get('rms_db')
+        if check.get('internal_features') is not None:
+            detail['internal_features'] = len(check['internal_features'])
         lines.append('  {:<16} {:<8} {:<5} {}'.format(name, mark, str(check.get('passed', '-')), json.dumps(detail)))
+    return '\n'.join(lines)
+
+
+def _comparison_summary(result):
+    mhz = lambda hz: '{:.2f}'.format(hz / 1e6)
+    lines = ['antenna - terminated: median {:+.2f} dB over {} cells; IF responses differ {:.3f} dB RMS'.format(
+        result['antenna_minus_terminated_median_db'], result['cells_compared'],
+        result.get('if_response_agreement', {}).get('rms_db') or float('nan')),
+        'external (arrive at the port, > {:g} dB above the terminated level):'.format(result['threshold_db'])]
+    lines += ['  {}-{} MHz  peak {} MHz  +{:.1f} dB'.format(mhz(r['start_hz']), mhz(r['stop_hz']), mhz(r['peak_hz']),
+                                                         r['peak_excess_db']) for r in result['external'][:15]]
+    lines.append('internal (present with the termination):')
+    lines += ['  {}-{} MHz  peak {} MHz  +{:.1f} dB over floor; antenna-terminated {}'.format(
+        mhz(r['start_hz']), mhz(r['stop_hz']), mhz(r['peak_hz']), r['peak_excess_db'],
+        'n/a' if r['antenna_minus_terminated_db'] is None else '{:+.1f} dB'.format(r['antenna_minus_terminated_db']))
+        for r in result['internal'][:15]] or ['  none']
     return '\n'.join(lines)
 
 
@@ -398,6 +474,8 @@ def main(argv=None):
     a.add_argument('--path-loss-db', type=float, help='generator-to-receiver loss (required with --tone-dbm)')
     a.add_argument('--antenna', default='RX2')
     a.add_argument('--gain', type=float, default=20.0)
+    a.add_argument('--input', choices=INPUTS, default='antenna',
+                   help='what is connected to the port (operator declaration)')
     b = sub.add_parser('run', help='execute a suite with real hardware')
     b.add_argument('suite')
     b.add_argument('directory', help='new session directory')
@@ -416,6 +494,11 @@ def main(argv=None):
     d.add_argument('--reference-plane', required=True)
     d.add_argument('--antenna', default='RX2')
     d.add_argument('--gain', type=float, default=20.0)
+    f = sub.add_parser('compare', help='terminated vs antenna session: internal vs external features')
+    f.add_argument('terminated')
+    f.add_argument('antenna')
+    f.add_argument('-O', '--output')
+    f.add_argument('--threshold-db', type=float, default=3.0)
     e = sub.add_parser('dry-run', help='full pipeline against a simulated rig (no hardware)')
     e.add_argument('directory', help='new session directory')
     args = p.parse_args(argv)
@@ -423,7 +506,8 @@ def main(argv=None):
         if args.cmd == 'plan':
             suite = default_suite(args.device, args.tone_mhz * 1e6, args.tone_dbm, args.max_receiver_input_dbm,
                                   args.path_loss_db, scan_seconds=args.scan_seconds, antenna=args.antenna,
-                                  gain_db=args.gain, band_hz=(args.start_mhz * 1e6, args.stop_mhz * 1e6))
+                                  gain_db=args.gain, band_hz=(args.start_mhz * 1e6, args.stop_mhz * 1e6),
+                                  input_kind=args.input)
             write_json(args.output, suite)
             return 0
         if args.cmd == 'calibration-config':
@@ -441,6 +525,10 @@ def main(argv=None):
             install_signal_handlers()
             ledger = run_suite(suite, args.directory, controller, retries=args.retries, executable=args.soapy_power)
             return 0 if ledger['status'] == 'completed' else 1
+        if args.cmd == 'compare':
+            result = compare(args.terminated, args.antenna, args.output, args.threshold_db)
+            print(_comparison_summary(result))
+            return 0
         if args.cmd == 'analyze':
             report = analyze(args.directory)
             print(_summary(report))
