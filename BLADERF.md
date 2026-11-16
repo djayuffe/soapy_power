@@ -78,9 +78,10 @@ of the syntax for already measured coefficients is
 calibration values for your unit.
 
 Requests are capability checked, applied before calibration preflight and after
-retunes, and checked against readback. For the `bladerf` driver, DC and IQ
-readback comparisons allow its respective normalized 1/2048 and 1/4096
-quantization. Driver errors still fail acquisition: advertised support alone
+retunes, and checked against readback. For the `bladerf` driver, IQ readback
+comparisons allow its normalized 1/4096 quantization; DC allows 1/2048, except on
+bladeRF1 (x40/x115), whose LMS6002D DC controls have sign + 6 bits: readback steps
+are 1/64. Driver errors still fail acquisition: advertised support alone
 does not guarantee every board/firmware combination accepts a control. Other
 drivers use a strict readback tolerance.
 
@@ -128,3 +129,12 @@ Primary references:
 - [Nuand gain stages and device checks](https://github.com/Nuand/bladeRF/wiki/Getting-Started%3A-Verifying-Basic-Device-Operation)
 - [Nuand calibration commands](https://github.com/Nuand/bladeRF/blob/master/host/utilities/bladeRF-cli/src/cmd/doc/interactive-help.md)
 - [libbladeRF gain calibration API](https://www.nuand.com/libbladeRF-doc/v2.6.0/group___f_n___c_a_l.html)
+
+## bladeRF1 + XB-200 surveys and per-center DC
+
+[tools/bladerf](tools/bladerf/README.md) holds a measured x40 + XB-200 survey pipeline
+(42–3800 MHz, stage gains with a live headroom guard) and a per-center DC calibration.
+A DC value measured at one frequency does not carry over to frequencies tens of MHz away:
+on 2026-11-16, nearest-anchor reuse left a median residual of 0.028 (normalized IQ),
+and the dense per-center calibration brought it to 0.0026.
+

@@ -76,16 +76,43 @@ gains the survey will use:
 it uses the nearest-anchor rule: same gains, same XB domain, a validated anchor within
 150 MHz. When nothing matches, DC is zero.
 
-## Why dense DC
+## Why dense DC, and what it achieved (2026-11-16, same antenna and LMS state)
 
-The 2026-11-16 15:24 UTC survey (v2 profile, 19 validated anchors) improved the residual DC by
-10–15 dB below 1.2 GHz, compared with the 14:39 UTC survey. Above 1.2 GHz it made it
-5–8 dB *worse*: at 2–3.8 GHz the median |mean| was 0.050–0.057 against 0.018–0.027.
-At the 32 centers where both runs used the same DC value, the residual did not change
-(< 1 dB across 45 minutes), so the regression comes from the anchor values, not drift. An
-anchor is valid at its own frequency only. The origin bin is excluded from fused spectra
-(±250 kHz), so this does not bias the survey spectrum. It does take ADC headroom and corrupt
-IQ captures near the LO.
+The 15:24 UTC survey (v2 profile, 19 validated anchors) improved residual DC by 10–15 dB
+below 1.2 GHz compared with the 14:39 UTC survey, but made it 5–8 dB *worse* above 1.2 GHz.
+At the 32 centers where both runs used the same DC value, the residual stayed within 1 dB
+over 45 minutes. So the anchor values caused the regression, not drift: an anchor is
+right only at its own frequency.
+
+| Run (UTC) | DC values | Hops in 300 s | Residual \|mean\| per center, median / p90 | Origin-bin spike, median per hop |
+|---|---|---:|---:|---:|
+| v2 15:24 | 19 anchors | 3852 | 0.0280 / 0.108 | 32.7 dB |
+| v3 16:20 | dense, one verified step | 3733 | 0.0027 / 0.0120 | 9.1 dB |
+| v4 16:34 | dense, second Newton step | 3748 | 0.0027 / 0.0095 | 8.9 dB |
+| v5 16:42 | v4 table + live calibration after gain backoff | 3689 | 0.0026 / 0.0085 | 8.8 dB |
+
+- The calibration took 330–345 s. 1014 of 1074 centers were accepted. The local Jacobian is well
+  conditioned (median condition number 1.1, max 1.8).
+- Median change from v2 to v5 per band: 42–237 MHz −9 dB, 237–600 MHz −27 dB,
+  0.6–1.2 GHz −5 dB, 1.2–2 GHz −23 dB, 2–2.8 GHz −23 dB, 2.8–3.8 GHz −20 dB.
+  976 centers improved by more than 3 dB and 14 got worse.
+- Above 2 GHz the result is at the DAC limit. 89–92 % of centers lie within half a code on
+  both controls, because RXVGA2 at 48–54 dB amplifies one 1/64 step to about 0.016.
+- At 700–960 MHz, strong GSM/LTE signals push the guard to lower gains. Some centers there
+  do not verify: the residual returns to 0.004–0.02 whatever the control setting. This
+  includes the 910–917 MHz IQ captures, which stay at 0.004. The cause is probably
+  signal-dependent DC (second-order intermodulation), which no static value can cancel.
+  This is not verified.
+- No side effects: the gain-referenced floor (20th percentile ±7 MHz) changed by
+  −0.05 dB median, maximum |I|,|Q| ≤ 0.848 in every run, and there were no settle
+  retries. Throughput was 12.3–12.5 against 12.8 hops/s (−3 to −4 %). The v5 figure
+  includes 15 live calibrations.
+- The 13 IQ captures off the grid now calibrate too. At 1.8, 2.44 and 3.5 GHz the residual
+  went from 0.020/0.031/0.020 to 0.0007/0.0022/0.0049.
+
+The origin bin (±250 kHz) is excluded from fused spectra either way. The gain is ADC
+headroom, clean single-hop and IQ data near the LO, and a correct record of which
+correction was applied (`bladerf_dc_source`: dense, dense-live, anchor or none).
 
 ## Not covered
 

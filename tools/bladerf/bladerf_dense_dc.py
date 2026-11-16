@@ -114,11 +114,13 @@ def calibrate_center(receiver, center, gains, base_dc, iq, quality, iterations=2
     vq = receiver_quality(receiver.hop(center, gains, solved['dc'])[2])
     record('verify', solved['dc'], vq)
     verified = complex(vq['mean_i'], vq['mean_q'])
-    ok = headroom_ok(vq) and accept_verified(abs(m0), abs(verified))
+    headroom = headroom_ok(vq)
+    ok = headroom and accept_verified(abs(m0), abs(verified))
     row.update(solved, verified_mean=[verified.real, verified.imag], verified_max_component=vq['max_component'],
                accepted=bool(ok), quantization_bound=quantization_bound(solved['jacobian']))
     if not ok:
-        row['reason'] = 'verification did not confirm the solved value'
+        row['reason'] = ('verification capture failed headroom' if not headroom
+                         else 'verification did not confirm the solved value')
         return row
     row['normalized_dc'] = solved['dc']
     if iterations > 1 and abs(verified) > 1.5 * row['quantization_bound']:
