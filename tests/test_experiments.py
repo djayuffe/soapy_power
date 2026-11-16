@@ -482,6 +482,13 @@ class InputComparisonTests(unittest.TestCase):
         floor = mv.floor_summary({'rf_hz': rf, 'median_db': level, 'cell_hz': 1e5})
         self.assertEqual(floor['floor_median_db'], -130.0)
         self.assertEqual(len(floor['internal_features']), 2)
+        self.assertNotIn('intermittent_cells', floor)
+        p90 = [-129.5] * 50
+        p90[40:44] = [-124.0] * 4  # bursts: median stays at the floor, p90 rises
+        floor = mv.floor_summary({'rf_hz': rf, 'median_db': [-130.0] * 50, 'p90_db': p90, 'cell_hz': 1e5})
+        self.assertEqual(floor['internal_features'], [])
+        self.assertEqual(floor['intermittent_cells'], 4)
+        self.assertAlmostEqual(floor['intermittent_features'][0]['peak_excess_db'], 5.5)
 
     def session(self, root, name, input_kind, environment, seed):
         rig = ex.SimulatedRig(environment=environment, seed=seed)
@@ -512,6 +519,7 @@ class InputComparisonTests(unittest.TestCase):
             self.assertLess(abs(spur[0]['antenna_minus_terminated_db']), 1.0)
             self.assertLess(result['if_response_agreement']['rms_db'], .1)
             self.assertLess(abs(result['antenna_minus_terminated_median_db']), .2)
+            self.assertEqual(result['internal_intermittent'], [])  # the simulator has no bursts
             self.assertTrue((term / 'comparison-ant.json').is_file())
             with self.assertRaisesRegex(ValueError, 'declared inputs'):
                 ex.compare(ant, term)

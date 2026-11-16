@@ -443,7 +443,7 @@ def _summary(report):
         mark = 'required' if name in report['required'] else 'info'
         keys = ('sigma_db', 'identifiable_components', 'median_redundancy', 'agreement', 'improvement_db',
                 'delay_s', 'status', 'median_image_rejection_db', 'min_lower_bound_db',
-                'floor_median_db', 'flatness_p5_p95_db')
+                'floor_median_db', 'flatness_p5_p95_db', 'intermittent_cells')
         detail = {k: check[k] for k in keys if k in check}
         if 'agreement' in detail:
             detail['agreement'] = detail['agreement'].get('rms_db')
@@ -466,6 +466,11 @@ def _comparison_summary(result):
         mhz(r['start_hz']), mhz(r['stop_hz']), mhz(r['peak_hz']), r['peak_excess_db'],
         'n/a' if r['antenna_minus_terminated_db'] is None else '{:+.1f} dB'.format(r['antenna_minus_terminated_db']))
         for r in result['internal'][:15]] or ['  none']
+    floor = result['terminated_floor']
+    lines.append('intermittent with the termination (p90-median spread > typical + {:g} dB): {} cells'.format(
+        result['threshold_db'], floor.get('intermittent_cells', 'n/a')))
+    lines += ['  {}-{} MHz  peak {} MHz  +{:.1f} dB'.format(mhz(r['start_hz']), mhz(r['stop_hz']), mhz(r['peak_hz']),
+                                                         r['peak_excess_db']) for r in result.get('internal_intermittent', [])[:8]]
     return '\n'.join(lines)
 
 

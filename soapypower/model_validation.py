@@ -451,20 +451,35 @@ def floor_summary(levels, spur_threshold_db=3.0):
     if ok.sum() < 8:
         return {'status': 'insufficient_cells'}
     floor = float(np.median(level[ok]))
-    return {'status': 'measured', 'floor_median_db': floor,
-            'flatness_p5_p95_db': float(np.percentile(level[ok], 95) - np.percentile(level[ok], 5)),
-            'spur_threshold_db': spur_threshold_db,
-            'internal_features': excess_regions(levels['rf_hz'], level, floor, spur_threshold_db, levels['cell_hz']),
-            'scope': 'receiver floor with the declared termination; relative, uncalibrated'}
+    result = {'status': 'measured', 'floor_median_db': floor,
+              'flatness_p5_p95_db': float(np.percentile(level[ok], 95) - np.percentile(level[ok], 5)),
+              'spur_threshold_db': spur_threshold_db,
+              'internal_features': excess_regions(levels['rf_hz'], level, floor, spur_threshold_db, levels['cell_hz']),
+              'scope': 'receiver floor with the declared termination; relative, uncalibrated'}
+    p90 = _array(levels['p90_db']) if levels.get('p90_db') is not None else None
+    if p90 is not None and np.isfinite(p90).sum() >= 8:
+        # Intermittent content: the median hides bursts that the 90th percentile over
+        # hop/IF visits still shows. A steady spur raises both, so the measure is the
+        # within-cell spread p90 - median against the typical spread of a quiet cell.
+        spread = p90 - level
+        reference = float(np.nanmedian(spread))
+        regions = excess_regions(levels['rf_hz'], spread, reference, spur_threshold_db, levels['cell_hz'])
+        result.update(typical_p90_minus_median_db=reference,
+                      intermittent_cells=int(np.sum(np.isfinite(spread) & (spread - reference > spur_threshold_db))),
+                      intermittent_features=regions[:20])
+    return result
 
 
 def compare_inputs(terminated, antenna, threshold_db=3.0):
     """Classify features by comparing a terminated-input session with an antenna session.
 
     Each argument: {'levels': cell_levels(...), 'response': fit_if_response(...)}.
-    external: antenna exceeds the terminated level for the same cells (RF arriving at the port).
-    internal: present above the terminated floor itself (receiver/host generated);
+    external: antenna median exceeds the terminated median for the same cells.
+    internal: steady features above the terminated floor itself (receiver/host generated);
     antenna_minus_terminated_db near 0 means the antenna feature is that internal one.
+    internal_intermittent: bursts present with the termination (p90 - median spread above
+    the typical spread); with an unshielded load these may also be local pickup, so they
+    are reported separately from steady internal spurs.
     """
     t, a = terminated['levels'], antenna['levels']
     if t['rf_hz'] != a['rf_hz']:
@@ -476,9 +491,17 @@ def compare_inputs(terminated, antenna, threshold_db=3.0):
     for region in floor.get('internal_features', []):
         i = int(np.argmin(np.abs(np.asarray(t['rf_hz']) - region['peak_hz'])))
         internal.append(dict(region, antenna_minus_terminated_db=None if not np.isfinite(al[i] - tl[i]) else float(al[i] - tl[i])))
+    intermittent = []
+    tp, ap = (_array(t['p90_db']) if t.get('p90_db') is not None else None,
+              _array(a['p90_db']) if a.get('p90_db') is not None else None)
+    for region in floor.get('intermittent_features', []):
+        i = int(np.argmin(np.abs(np.asarray(t['rf_hz']) - region['peak_hz'])))
+        delta = None if ap is None or not np.isfinite(ap[i] - tp[i]) else float(ap[i] - tp[i])
+        intermittent.append(dict(region, antenna_p90_minus_terminated_p90_db=delta))
     both = np.isfinite(tl) & np.isfinite(al)
     result = {'threshold_db': threshold_db, 'external': external, 'internal': internal,
-              'terminated_floor': {k: v for k, v in floor.items() if k != 'internal_features'},
+              'internal_intermittent': intermittent,
+              'terminated_floor': {k: v for k, v in floor.items() if k not in ('internal_features', 'intermittent_features')},
               'antenna_minus_terminated_median_db': float(np.median(al[both] - tl[both])) if both.any() else None,
               'cells_compared': int(both.sum()),
               'scope': 'relative levels from one fixed receiver state; uncalibrated'}
