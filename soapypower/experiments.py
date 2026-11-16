@@ -475,9 +475,9 @@ def _summary(report):
         if 'after_mixing_mask' in check:
             detail['after_mixing_mask'] = check['after_mixing_mask']
         if name == 'spurious_responses':
-            detail = {'excess_observations': check.get('excess_observations'),
-                      'rf_fixed_concentration': round(check.get('rf_fixed_concentration') or 0, 3),
-                      'identified': ['n={order} s={sign:+d} unique={unique_events} src {src}'.format(
+            detail = {'rounds': [r['excess_observations'] for r in check.get('rounds', [])],
+                      'masked_observations': check.get('masked_observations'),
+                      'identified': ['n={order} s={sign:+d} events={attributed_events} src {src}'.format(
                           src='/'.join('{:.1f}'.format(f / 1e6) for f in h['top_sources_hz'][:3]), **h)
                           for h in check.get('identified', [])]}
         lines.append('  {:<16} {:<8} {:<5} {}'.format(name, mark, str(check.get('passed', '-')), json.dumps(detail)))

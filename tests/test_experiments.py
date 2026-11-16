@@ -576,7 +576,7 @@ class MixingResponseTests(unittest.TestCase):
             report = ex.analyze(Path(temp) / 's')
             spurs = report['checks']['spurious_responses']
             self.assertFalse(spurs['gating'])
-            self.assertTrue(any(h['order'] == 3 and h['sign'] == 1 for h in spurs['identified']), spurs['hypotheses'][:3])
+            self.assertTrue(any(h['order'] == 3 and h['sign'] == 1 for h in spurs['identified']), spurs['rounds'])
             self.assertFalse(any(h['kind'] == 'rf' for h in spurs['identified']))
             levels = json.loads((Path(temp) / 's' / 'cell_levels.json').read_text())
             rf = np.array(levels['rf_hz'])

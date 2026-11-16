@@ -464,7 +464,7 @@ def observation_residuals(store, response, levels):
     axis = np.asarray(response['if_axis_hz'], dtype=float)
     step, half = axis[1] - axis[0], (len(axis) - 1) // 2
     centers = store.cell_center(np.arange(store.cells))
-    parts = {k: [] for k in ('lo_hz', 'if_hz', 'rf_hz', 'residual_db', 'hop_key')}
+    parts = {k: [] for k in ('lo_hz', 'if_hz', 'rf_hz', 'residual_db', 'hop_key', 'cell')}
     for key, hop in store.hops.items():
         slots = np.rint((centers - hop['center']) / step).astype(int) + half
         valid = (slots >= 0) & (slots < len(axis))
@@ -478,59 +478,56 @@ def observation_residuals(store, response, levels):
             parts['rf_hz'].append(centers[ok])
             parts['residual_db'].append(r[ok])
             parts['hop_key'].append(np.full(ok.size, key))
+            parts['cell'].append(ok)
     return {k: np.concatenate(v) if v else np.array([]) for k, v in parts.items()}
 
 
 def mixing_hypotheses(lo_hz, if_hz, orders=(1, 3, 5, 7), bin_hz=0.5e6, min_los=3, min_events=50):
     """Which mixing law explains a set of excess observations?
 
-    Each hypothesis maps an observation to a source frequency f = n*LO - s*IF:
-    (n=1, s=-1) is an ordinary RF-fixed signal, (n=1, s=+1) its IQ image, odd n > 1
-    the LO-harmonic responses of a direct-conversion mixer. Under the true law,
-    observations made with different LO settings land on the same source frequency;
-    under a wrong law each LO lands elsewhere. A source bin is supported when at least
-    `min_los` distinct LO settings contribute. A non-RF law is identified when it
-    explains at least `min_events` observations that the RF-fixed law does not.
+    Each law maps an observation to a source frequency f = n*LO - s*IF: (n=1, s=-1)
+    is an ordinary RF-fixed signal, (n=1, s=+1) its IQ image, odd n > 1 the LO-harmonic
+    responses of a direct-conversion mixer. Under the true law, observations made with
+    different LO settings land on the same source frequency. Each observation is
+    attributed to the law under which its source bin collects the most distinct LO
+    settings (at least `min_los`); ties go to the RF-fixed law, so real signals are
+    never explained away. A non-RF law is identified with >= `min_events` attributions.
     """
     lo = np.asarray(lo_hz, dtype=float)
     iff = np.asarray(if_hz, dtype=float)
     if lo.size < min_events:
         return {'status': 'too_few_events', 'events': int(lo.size), 'hypotheses': []}
     lo_id = np.unique(np.rint(lo), return_inverse=True)[1].reshape(-1)
-    laws = [(n, sign) for n in orders for sign in (-1, 1)]
-    explained, details = {}, {}
+    laws = [(1, -1)] + [(n, sign) for n in orders for sign in (-1, 1) if (n, sign) != (1, -1)]
+    bins_all, support = [], []
     for n, sign in laws:
         bins = np.rint((n * lo - sign * iff) / bin_hz).astype(np.int64)
         pairs = np.unique(np.stack([bins, lo_id]), axis=1)
         values, los = np.unique(pairs[0], return_counts=True)
-        supported = values[los >= min_los]
-        hit = np.isin(bins, supported)
-        explained[(n, sign)] = hit
-        details[(n, sign)] = (bins, supported, dict(zip(values.tolist(), los.tolist())))
-    rf_hit = explained[(1, -1)]
+        bins_all.append(bins)
+        support.append(los[np.searchsorted(values, bins)])
+    support = np.vstack(support)
+    best = np.argmax(support, axis=0)  # first maximum: the RF-fixed law wins ties
+    strong = support[best, np.arange(lo.size)] >= min_los
     result = []
-    for n, sign in laws:
-        hit = explained[(n, sign)]
-        bins, supported, los = details[(n, sign)]
-        kind = 'rf' if (n, sign) == (1, -1) else ('image' if n == 1 else 'harmonic')
-        unique = hit if kind == 'rf' else hit & ~rf_hit
-        counts = np.bincount(np.searchsorted(supported, bins[hit]), minlength=supported.size) if supported.size else np.array([])
+    for index, (n, sign) in enumerate(laws):
+        kind = 'rf' if index == 0 else ('image' if n == 1 else 'harmonic')
+        mine = strong & (best == index)
+        values, counts = np.unique(bins_all[index][mine], return_counts=True)
         bands = []
-        for value in np.sort(supported):
+        for value in values:
             if bands and value - bands[-1][1] <= 1:
                 bands[-1][1] = value
             else:
                 bands.append([value, value])
-        busiest = supported[np.argsort(-counts)[:6]] if supported.size else []
-        result.append({'order': n, 'sign': sign, 'kind': kind, 'explained_events': int(hit.sum()),
-                       'unique_events': int(unique.sum()), 'concentration': float(hit.mean()),
-                       'max_distinct_los': int(max(los.values())) if los else 0,
+        result.append({'order': n, 'sign': sign, 'kind': kind, 'attributed_events': int(mine.sum()),
+                       'share': float(mine.mean()), 'max_distinct_los': int(support[index].max()),
                        'source_bands_hz': [[float((x - .5) * bin_hz), float((y + .5) * bin_hz)] for x, y in bands],
-                       'top_sources_hz': [float(v * bin_hz) for v in busiest],
-                       'identified': bool(kind != 'rf' and unique.sum() >= min_events)})
-    result.sort(key=lambda h: (-h['identified'], -h['unique_events']))
-    return {'status': 'tested', 'events': int(lo.size), 'bin_hz': bin_hz, 'min_los': min_los,
-            'min_events': min_events, 'rf_fixed_concentration': float(rf_hit.mean()), 'hypotheses': result}
+                       'top_sources_hz': [float(v * bin_hz) for v in values[np.argsort(-counts)[:6]]],
+                       'identified': bool(kind != 'rf' and mine.sum() >= min_events)})
+    result.sort(key=lambda h: (-h['identified'], -h['attributed_events']))
+    return {'status': 'tested', 'events': int(lo.size), 'bin_hz': bin_hz, 'min_los': min_los, 'min_events': min_events,
+            'unexplained_events': int((~strong).sum()), 'hypotheses': result}
 
 
 def mixing_mask(store, hypotheses, guard_hz=0.25e6):
@@ -551,22 +548,49 @@ def mixing_mask(store, hypotheses, guard_hz=0.25e6):
     return masks
 
 
-def spurious_responses(store, response, levels, threshold_db=6.0, **options):
-    """Identify LO-harmonic/image responses and return the corrected cell levels."""
-    obs = observation_residuals(store, response, levels)
-    hot = obs['residual_db'] > threshold_db
-    tested = mixing_hypotheses(obs['lo_hz'][hot], obs['if_hz'][hot], **options)
-    identified = [h for h in tested['hypotheses'] if h.get('identified')]
-    report = dict(tested, threshold_db=threshold_db, observations=int(obs['lo_hz'].size),
-                  excess_observations=int(hot.sum()), identified=identified,
-                  scope='mixing-law fit of excess observations; source frequencies are inferred, not measured')
-    if not identified:
+def spurious_responses(store, response, levels, threshold_db=6.0, iterations=4, **options):
+    """Identify LO-harmonic/image responses, mask them and re-estimate the cell levels.
+
+    Excess is first measured against levels that the responses themselves inflate, so
+    only the strongest are found; the identification is repeated against the masked
+    levels until the mask stops growing. Returns (report, masked levels or None).
+    """
+    mask, current, identified, rounds = {}, levels, {}, []
+    for _ in range(iterations):
+        obs = observation_residuals(store, response, current)
+        hot = obs['residual_db'] > threshold_db
+        for key, cells in mask.items():
+            hot &= ~((obs['hop_key'] == key) & cells[obs['cell']])
+        tested = mixing_hypotheses(obs['lo_hz'][hot], obs['if_hz'][hot], **options)
+        rounds.append({'excess_observations': int(hot.sum()),
+                       'identified': [(h['order'], h['sign'], h['attributed_events']) for h in tested['hypotheses'] if h['identified']]})
+        grew = False
+        for h in tested['hypotheses']:
+            if not h['identified']:
+                continue
+            key = (h['order'], h['sign'])
+            if key not in identified:
+                identified[key] = {k: h[k] for k in ('order', 'sign', 'kind', 'top_sources_hz')}
+                identified[key].update(source_bands_hz=[], attributed_events=0, identified=True)
+            law = identified[key]
+            law['attributed_events'] = max(law['attributed_events'], h['attributed_events'])
+            new = [band for band in h['source_bands_hz'] if band not in law['source_bands_hz']]
+            if new:
+                law['source_bands_hz'] = sorted(law['source_bands_hz'] + new)
+                grew = True
+        if not grew:
+            break
+        mask = mixing_mask(store, list(identified.values()))
+        current = cell_levels(store, response['response_db'], exclude=mask)
+    laws = sorted(identified.values(), key=lambda h: -h['attributed_events'])
+    report = {'status': 'tested', 'threshold_db': threshold_db, 'rounds': rounds, 'identified': laws,
+              'first_round': tested if len(rounds) == 1 else None,
+              'scope': 'mixing-law attribution of excess observations; source frequencies are inferred, not measured'}
+    if not laws:
         return report, None
-    mask = mixing_mask(store, identified)
-    masked = cell_levels(store, response['response_db'], exclude=mask)
     report['masked_observations'] = int(sum(int(m.sum()) for m in mask.values()))
     report['masked_hops'] = len(mask)
-    return report, masked
+    return report, current
 
 
 def floor_summary(levels, spur_threshold_db=3.0):
