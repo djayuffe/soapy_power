@@ -28,13 +28,32 @@ Evidence levels (see [MEASUREMENT_ROADMAP.md](MEASUREMENT_ROADMAP.md)):
   `compare` classifies every steady antenna feature as external (DAB 219–230 MHz up to
   +24 dB, 200.05 MHz +14.6 dB, 237–269 MHz +9.5 dB, FM 105.65 MHz +13 dB). DAB
   vanishes with the termination, so port leakage is at least ~24 dB down. The
-  termination still shows intermittent content above 237 MHz in 137 cells (p90 up to
-  ~6 dB over the typical spread). Its source is local to the setup (board, USB or
-  host) rather than leakage of the antenna signals, but it is not identified.
-  Fixed-tune baseline captures (`soapy_power_calibration baseline`, 50 Ω/50 Ω,
-  temperature assumed 295 K, not measured) agree with the suite floor within 0.5 dB at
-  110–230 MHz; the 270 MHz tune averages 5–10 dB higher because its linear mean
-  includes those bursts. Continuous 100 ms blocks at 56 MS/s overflowed intermittently,
+  termination still showed intermittent content above 237 MHz in 137 cells (p90 up to
+  ~6 dB over the typical spread). An earlier version of this file called it local to
+  the setup; that was wrong. It is not intermittent in time and not generated in the
+  host: it follows the LO, not the RF. Per hop it appears with probability ≈1 at the
+  same baseband offsets, and the offsets move by three or five times the LO step. The
+  receiver's switching mixer responds at odd LO harmonics, so strong signals far above
+  300 MHz leak into the B200's 3rd and 5th harmonic responses (see *Harmonic mixing
+  responses* below). `spurious_responses` attributes 18 811 excess observations to
+  `IF = 3·LO − f` with f in 762–821 MHz (LTE 700/800 downlink), 515 to
+  `IF = f − 3·LO` with f in 482–488 MHz (DVB-T), and 472 to `IF = f − 5·LO` with f in
+  811–818 MHz (LTE 800). Masking those 8 660 observations (52 hops) removes all 137
+  intermittent cells, and the terminated floor stays −135.3 dB with 0.47 dB flatness.
+  These signals still reach the mixer with the resistor on RX2; the coupling path
+  (unshielded resistor, board or USB cable) is not identified.
+  With the antenna the same analysis finds LTE 800 (3rd, 20 759 observations),
+  GSM 900 (5th, 3 417, 933–940 MHz) and DVB-T (3rd, 2 822, around 484 and 563 MHz).
+  After masking, `compare` keeps 19 of 20 external features and reports no internal or
+  internal-intermittent features (20 before). The broad 237–269 MHz hump is real
+  external RF, not a mixing response: all 12 LOs that cover 250 MHz see the same
+  −127 to −128 dB there, against −135.3 dB terminated, and a harmonic response cannot
+  sit at a fixed RF across that many LOs. A low-pass filter at or below 300 MHz in
+  front of RX2 removes the harmonic responses physically. Fixed-tune baseline captures
+  (`soapy_power_calibration baseline`, 50 Ω/50 Ω, temperature assumed 295 K, not
+  measured) agree with the suite floor within 0.5 dB at 110–230 MHz; the 270 MHz tune
+  averages 5–10 dB higher because its linear mean includes the 3rd-harmonic LTE
+  response (3 × 270 = 810 MHz). Continuous 100 ms blocks at 56 MS/s overflowed intermittently,
   so baseline captures use 5 ms blocks with the stream reopened. One load cannot
   separate gain from noise figure: absolute scale still needs a known tone, two noise
   temperatures, or a known noise figure.
@@ -150,6 +169,35 @@ declared terminated and antenna. It reports:
 - **IF response agreement:** how closely the two sessions' IF responses match. With
   the antenna mostly at the receiver floor, they should agree.
 
+## Harmonic mixing responses
+
+A direct-conversion receiver also responds near odd LO harmonics. A source at `f`
+appears at baseband offset `IF` when `f = n·LO − s·IF` for order `n` (1, 3, 5, 7) and
+sign `s = ±1`; `n = 1, s = −1` is the RF-fixed law (an ordinary signal), `n = 1, s = +1`
+the IQ image. In a stepped survey each law draws a different line in the (LO, IF)
+plane, so a source that is seen from several LOs identifies its law, even though one
+hop alone cannot tell it apart from an RF signal.
+
+`analyze` runs `spurious_responses` on every session (informational, never gating):
+
+1. Residual of each observation against its cell level; observations more than 6 dB
+   above it are *excess*.
+2. `mixing_hypotheses`: for each law, the implied source frequency of every excess
+   observation is binned (0.5 MHz). An observation's support under a law is the number
+   of distinct LOs that land in the same source bin. Each observation goes to the law
+   with the most support (at least 3 LOs); the RF-fixed law wins ties, so ordinary
+   signals are never reattributed. A law needs at least 50 observations.
+3. The image law is accepted only if its source bands contain an in-band parent at
+   least 20 dB above the floor (`image_parent_ok`); otherwise it is retested without it.
+4. Observations explained by an identified law are masked, the cell levels recomputed,
+   and the loop repeats (up to 4 rounds) until no new source band appears.
+
+The report lists each law with its source bands and attributed observation count;
+`cell_levels.json` adds `mixing_identified` and the masked median/p10/p90, and
+`terminated_floor` and `compare` repeat their results under `after_mixing_mask`.
+The source frequencies are inferred from the law, not measured: confirm them with a
+filter or a wideband scan of the source band.
+
 ## macOS hardware runner (launchd)
 
 `tools/macos_runner/` runs sessions on a Mac whose shell an assistant or a remote job
@@ -219,10 +267,13 @@ dependencies.
 | `if_holdout` | independent refit on later acquisitions | RMS ≤ 0.25 dB, dispersion not inflated |
 | `settling` | exponential fit, held-out delay verification | tolerance 0.1 dB |
 | `image_rejection` | tone vs mirror per hop, floor subtracted | informational |
+| `terminated_floor` | floor, flatness, steady and intermittent features (terminated input) | informational |
+| `spurious_responses` | LO-harmonic mixing-law attribution and masking of excess observations | informational |
 | context | fixed gain, no AGC, constant receiver context; no tune args with DC mask | input refused otherwise |
 
-Not covered: absolute power, noise figure, compression/IIP3/SFDR, RF-fixed versus
-IF-fixed spur attribution on real hardware, and large-retune settling. Strong broadcast
+Not covered: absolute power, noise figure, compression/IIP3/SFDR, IF-fixed spur
+attribution on real hardware (RF-fixed and LO-harmonic laws are attributed), measured
+harmonic-response rejection, and large-retune settling. Strong broadcast
 signals in 100–300 MHz (FM, DAB) can drive the receiver nonlinear; then `G` depends on
 `S` and the additive model is violated. Use lower gain, or a terminated input for the
 IF-response trials.
