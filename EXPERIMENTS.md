@@ -18,6 +18,26 @@ Evidence levels (see [MEASUREMENT_ROADMAP.md](MEASUREMENT_ROADMAP.md)):
   response. Applying it reduced the apparent dispersion only 3.08 → 3.05 dB: that
   dispersion is dominated by time variation of real signals between hop visits.
   Settling and image rejection were not measured (no generator).
+- Terminated session (2026-11-16, same receiver state, a bare 50 Ω resistor on RX2,
+  4 × 60 s): all required checks passed; repeatability σ 0.084 dB; holdout refit
+  0.066 dB RMS; the IF correction now reduced dispersion by 0.17 dB (0.03 dB with
+  the antenna). Floor −135.3 dB(input power/Hz), flat within 0.42 dB (p5–p95) over
+  100–300 MHz, no steady internal features. The receiver's own IF shape is a smooth
+  bowl, about −0.4 dB at ±3 MHz rising to +2.2 dB at ±21 MHz. The antenna-derived
+  response differs by 0.27 dB RMS: its ripple came from the environment.
+  `compare` classifies every steady antenna feature as external (DAB 219–230 MHz up to
+  +24 dB, 200.05 MHz +14.6 dB, 237–269 MHz +9.5 dB, FM 105.65 MHz +13 dB). DAB
+  vanishes with the termination, so port leakage is at least ~24 dB down. The
+  termination still shows intermittent content above 237 MHz in 137 cells (p90 up to
+  ~6 dB over the typical spread). Its source is local to the setup (board, USB or
+  host) rather than leakage of the antenna signals, but it is not identified.
+  Fixed-tune baseline captures (`soapy_power_calibration baseline`, 50 Ω/50 Ω,
+  temperature assumed 295 K, not measured) agree with the suite floor within 0.5 dB at
+  110–230 MHz; the 270 MHz tune averages 5–10 dB higher because its linear mean
+  includes those bursts. Continuous 100 ms blocks at 56 MS/s overflowed intermittently,
+  so baseline captures use 5 ms blocks with the stream reopened. One load cannot
+  separate gain from noise figure: absolute scale still needs a known tone, two noise
+  temperatures, or a known noise figure.
 
 ## Model being validated
 
