@@ -69,12 +69,16 @@ class MacosRunnerTests(unittest.TestCase):
         request = self.sessions / 'queue' / (done.stdout.strip() + '.json')
         self.assertEqual(plistlib.loads(request.read_bytes()), {'mode': 'scan', 'scan_seconds': 45, 'gain_db': 12.5,
                                                                 'antenna': 'TX/RX', 'input': 'terminated',
-                                                                'procedure': 'baseline'})
+                                                                'procedure': 'baseline', 'device': 'b200',
+                                                                'bladerf_job': 'dense-dc+survey'})
+        blade = self.queue('scan', '--device', 'bladerf', '--bladerf-job', 'survey-anchor', '--seconds', '300')
+        body = plistlib.loads((self.sessions / 'queue' / (blade.stdout.strip() + '.json')).read_bytes())
+        self.assertEqual((body['device'], body['bladerf_job'], body['scan_seconds']), ('bladerf', 'survey-anchor', 300))
         for bad in (('hot',), ('scan', '--seconds', '4'), ('scan', '--gain', '71'), ('scan', '--antenna', 'RX1'),
                     ('scan', '--input', 'dummy'), ('scan', '--procedure', 'nf'), ('scan', '--seconds'),
-                    ('scan', '--wait', 'x')):
+                    ('scan', '--wait', 'x'), ('scan', '--device', 'hackrf'), ('scan', '--bladerf-job', 'flash')):
             self.assertEqual(self.queue(*bad).returncode, 2, bad)
-        self.assertEqual(len(list((self.sessions / 'queue').glob('*.json'))), 1)
+        self.assertEqual(len(list((self.sessions / 'queue').glob('*.json'))), 2)
 
     def test_runner_validates_requests_and_hands_over_only_checked_values(self):
         ok = self.queue('scan', '--gain', '12.5', '--input', 'terminated').stdout.strip()

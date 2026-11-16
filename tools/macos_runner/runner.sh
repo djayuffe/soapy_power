@@ -2,7 +2,8 @@
 # launchd job: runs requests from $SPR_SESSIONS/queue/*.json one at a time.
 # Request: an XML property list (plutil-readable; JSON is not) named <id>.json with keys
 #   mode (probe|setup|scan), scan_seconds, gain_db, antenna, input (antenna|terminated),
-#   procedure (suite|baseline).
+#   procedure (suite|baseline); run_session.sh itself reads and validates the optional keys
+#   device (b200|bladerf) and bladerf_job from the request.
 # Only these validated parameters reach tools/macos_runner/run_session.sh in the repo
 # (fixes need no reinstall; the repo's Python code runs on every scan anyway).
 set -u -o pipefail

@@ -278,6 +278,8 @@ def setup_argument_parser():
                               help='SoapySDR frequency arguments, e.g. OFFSET=250000 (driver dependent)')
     device_title.add_argument('--device-settings', metavar='STRING', type=device_settings, default='',
                               help='SoapySDR device settings (example: biastee=true)')
+    device_title.add_argument('--stream-args', metavar='KEY=VALUE,...', type=device_settings, default='',
+                              help='SoapySDR RX stream arguments (example: buffers=128,buflen=65536,transfers=16)')
     device_title.add_argument('--force-rate', action='store_true',
                               help='ignore list of sample rates provided by device and allow any value')
     device_title.add_argument('--force-bandwidth', action='store_true',
@@ -473,7 +475,8 @@ def main():
             iq_correction=args.iq_correction, tune_args=args.tune_args,
             manual_dc=args.manual_dc, manual_iq=args.manual_iq,
             manual_tolerance=args.manual_correction_tolerance, clock_source=args.clock_source,
-            time_source=args.time_source, master_clock_rate=args.master_clock_rate
+            time_source=args.time_source, master_clock_rate=args.master_clock_rate,
+            stream_args=args.stream_args
         )
         logger.info('Using device: {}'.format(sdr.device.hardware))
     except (RuntimeError, ValueError) as error:

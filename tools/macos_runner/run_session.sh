@@ -9,7 +9,14 @@
 #   baseline: fixed-tune captures (110/150/190/230/270 MHz, 200 x 5 ms each, stream reopened
 #             per run like the survey: continuous 100 ms blocks overflowed at 56 MS/s) for
 #             soapy_power_calibration baseline/compare, plus a SHA-256 manifest
-# Under the runner, REQUEST_FILE (or the newest queue/taken request) supplies INPUT/PROCEDURE.
+# Under the runner, REQUEST_FILE (or the newest queue/taken request) supplies INPUT/PROCEDURE,
+# and the optional keys device (b200 | bladerf) and bladerf_job:
+#   device=bladerf (bladeRF1 x40/x115 + XB-200, tools/bladerf/; stack and profile copied to
+#   sessions/bladerf-stack/{modules,lib} and sessions/bladerf-profile/, see tools/bladerf/README.md):
+#     probe: enumerate, report FPGA/firmware/LMS state against the profile
+#     scan with bladerf_job dense-dc | survey | survey-anchor | dense-dc+survey (default):
+#       dense-dc: per-center DC Jacobian + verification; survey: SCAN_SECONDS timed survey using the
+#       session's dense DC table; survey-anchor: the same survey with anchor DC only (control)
 #   probe: report every Python candidate (SoapySDR import result) and the B200 serial
 #   setup: create sessions/.venv (system site-packages) with numpy scipy simplesoapy simplespectral
 set -u -o pipefail
@@ -30,6 +37,10 @@ if ! [[ "$GAIN_DB" =~ ^[0-9]+(\.[0-9]+)?$ ]] || ! awk -v g="$GAIN_DB" 'BEGIN{exi
 case "$ANTENNA" in RX2|TX/RX) ;; *) echo "FEIL: ANTENNA må være RX2 eller TX/RX"; exit 2;; esac
 case "$INPUT" in antenna|terminated) ;; *) echo "FEIL: INPUT må være antenna eller terminated"; exit 2;; esac
 case "$PROCEDURE" in suite|baseline) ;; *) echo "FEIL: PROCEDURE må være suite eller baseline"; exit 2;; esac
+DEVICE_KIND="${DEVICE_KIND:-$(req_field device)}"; DEVICE_KIND="${DEVICE_KIND:-b200}"
+BLADERF_JOB="${BLADERF_JOB:-$(req_field bladerf_job)}"; BLADERF_JOB="${BLADERF_JOB:-dense-dc+survey}"
+case "$DEVICE_KIND" in b200|bladerf) ;; *) echo "FEIL: device må være b200 eller bladerf"; exit 2;; esac
+case "$BLADERF_JOB" in dense-dc|survey|survey-anchor|dense-dc+survey) ;; *) echo "FEIL: bladerf_job ukjent"; exit 2;; esac
 for v in DYLD_LIBRARY_PATH DYLD_FALLBACK_LIBRARY_PATH; do s="SPR_$v"; if [ -n "${!s:-}" ]; then export "$v=${!s}"; fi; done
 STAMP="$(date +%Y%m%d-%H%M%S)"
 LOG="$OUTDIR/run-$STAMP.log"
@@ -37,7 +48,73 @@ LAST="$OUTDIR/last-run.env"
 exec > >(tee "$LOG") 2>&1
 finish() { { echo "STAMP=$STAMP"; echo "LOG=$LOG"; echo "INPUT=$INPUT"; echo "PROCEDURE=$PROCEDURE"; echo "$1"; } > "$LAST"; }
 echo "== soapy_power $MODE $STAMP  repo=$REPO  $(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null) $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null)"
-echo "   scan_seconds=$SCAN_SECONDS gain_db=$GAIN_DB antenna=$ANTENNA input=$INPUT procedure=$PROCEDURE  PATH=$PATH"
+echo "   scan_seconds=$SCAN_SECONDS gain_db=$GAIN_DB antenna=$ANTENNA input=$INPUT procedure=$PROCEDURE device=$DEVICE_KIND  PATH=$PATH"
+
+if [ "$DEVICE_KIND" = bladerf ]; then
+  # ---- bladeRF1 + XB-200 (receive only): patched SoapyBladeRF module + its libbladeRF from sessions/
+  STACK="$OUTDIR/bladerf-stack"; PROF="$OUTDIR/bladerf-profile"
+  for f in "$STACK/modules/libbladeRFSupport.so" "$STACK/lib/libbladeRF.2.dylib" "$PROF/receiver-profile-final.json" \
+           "$PROF/validated-full-grid-profile.json" "$PROF/schedule-selection.json"; do
+    [ -f "$f" ] || { echo "FEIL: mangler $f (se tools/bladerf/README.md)"; finish "RESULT=bladerf_stack_missing"; exit 1; }
+  done
+  unset PYTHONPATH
+  export SOAPY_SDR_PLUGIN_PATH="$STACK/modules"
+  export DYLD_LIBRARY_PATH="$STACK/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+  PY=""
+  for v in "$OUTDIR"/.venv*/bin/python /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3; do
+    if [ -x "$v" ] && "$v" -c 'import SoapySDR, numpy, simplesoapy, simplespectral' 2>/dev/null; then PY="$v"; break; fi
+  done
+  [ -n "$PY" ] || { echo "FEIL: ingen Python med SoapySDR, numpy, simplesoapy og simplespectral"; finish "RESULT=no_python"; exit 1; }
+  export PYTHONPATH="$REPO:$REPO/tools/bladerf"
+  SERIAL="$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1]))["serial"])' "$PROF/receiver-profile-final.json")"
+  BDEV="driver=bladerf,serial=$SERIAL,xb200=custom"
+  echo "python: $PY ($("$PY" --version 2>&1))  SOAPY_SDR_PLUGIN_PATH=$SOAPY_SDR_PLUGIN_PATH  DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
+  echo "device: $BDEV  job: $BLADERF_JOB"
+  "$PY" - "$BDEV" "$PROF/receiver-profile-final.json" <<'PYEOF'
+import json, sys, SoapySDR
+args, profile = sys.argv[1], json.load(open(sys.argv[2]))
+found = [dict(d) for d in SoapySDR.Device.enumerate('driver=bladerf')]
+print('modules:', list(SoapySDR.listModules()))
+print('enumerated:', found)
+if not any(d.get('serial') == profile['serial'] for d in found):
+    sys.exit('FEIL: fant ikke bladeRF ' + profile['serial'])
+dev = SoapySDR.Device(args)
+info = dict(dev.getHardwareInfo())
+print('hardware_info:', json.dumps(info))
+state = info.get('lms_dc_state_at_open')
+print('lms_state:', state, 'profile:', profile['lms_state_at_fit'], 'MATCH' if state == profile['lms_state_at_fit'] else 'DIFFERS')
+del dev
+sys.exit(0 if state == profile['lms_state_at_fit'] else 3)
+PYEOF
+  PROBE=$?
+  if [ "$MODE" != scan ] || [ $PROBE -ne 0 ]; then
+    finish "RESULT=$([ $PROBE -eq 0 ] && echo bladerf_probe_ok || echo bladerf_probe_exit_$PROBE);SERIAL=$SERIAL"
+    echo "== bladerf probe exit $PROBE"; exit $PROBE
+  fi
+  SESSION="$OUTDIR/bladerf-$STAMP"; mkdir -p "$SESSION"
+  TABLE=""; RC=0
+  if [ "$BLADERF_JOB" = dense-dc ] || [ "$BLADERF_JOB" = dense-dc+survey ]; then
+    "$PY" "$REPO/tools/bladerf/bladerf_dense_dc.py" --device "$BDEV" --profile-dir "$PROF" --output "$SESSION/dense-dc"; RC=$?
+    echo "== dense-dc exit $RC"
+    TABLE="$SESSION/dense-dc/dc-table-dense.json"
+  fi
+  if [ $RC -eq 0 ] && [ "$BLADERF_JOB" != dense-dc ]; then
+    if [ "$BLADERF_JOB" = survey ]; then TABLE="$(ls -t "$OUTDIR"/bladerf-*/dense-dc/dc-table-dense.json 2>/dev/null | head -1)"; fi
+    if [ "$BLADERF_JOB" != survey-anchor ] && [ -n "$TABLE" ]; then
+      "$PY" "$REPO/tools/bladerf/bladerf_scan.py" --device "$BDEV" --profile-dir "$PROF" --duration "$SCAN_SECONDS" \
+        --output "$SESSION/survey" --dc-table "$TABLE"; RC=$?
+      echo "== survey exit $RC (dense DC: $TABLE)"
+    else
+      "$PY" "$REPO/tools/bladerf/bladerf_scan.py" --device "$BDEV" --profile-dir "$PROF" --duration "$SCAN_SECONDS" \
+        --output "$SESSION/survey"; RC=$?
+      echo "== survey exit $RC (anchor DC only)"
+    fi
+  fi
+  finish "SESSION=$SESSION
+RESULT=$([ $RC -eq 0 ] && echo done || echo failed_$RC)"
+  echo "== ferdig: $SESSION"
+  exit $RC
+fi
 
 # ---- 1+2. find a Python + site-packages + SoapySDR module dir that enumerates the B200
 # Inherited PYTHONPATH is dropped: a site-packages of another Python version breaks imports.

@@ -39,17 +39,29 @@ class SoapyPower:
                  force_sample_rate=False, force_bandwidth=False,
                  output=sys.stdout, output_format='rtl_power', dc_correction='default',
                  iq_correction='default', tune_args=None, manual_dc=None, manual_iq=None,
-                 manual_tolerance=None, clock_source=None, time_source=None, master_clock_rate=None):
+                 manual_tolerance=None, clock_source=None, time_source=None, master_clock_rate=None,
+                 stream_args=None):
         finite(sample_rate, 'sample_rate', positive=True)
         finite(bandwidth, 'bandwidth', nonnegative=True)
         integer(channel, 'channel')
         if output_format not in writer.formats:
             raise ValueError('unknown output format')
+        self._stream_args = dict(stream_args or {})
+        if any(not isinstance(k, str) or not k or not isinstance(v, str)
+               for k, v in self._stream_args.items()):
+            raise ValueError('stream arguments require nonempty string keys and string values')
         self.device = simplesoapy.SoapyDevice(
             soapy_args=soapy_args, sample_rate=sample_rate, bandwidth=bandwidth, corr=0,
             gain=None, auto_gain=False, channel=channel, antenna=antenna, settings=settings,
             force_sample_rate=force_sample_rate, force_bandwidth=force_bandwidth
         )
+        if self._stream_args:
+            # Use the binding's native map. Some SWIG/Python combinations lose
+            # values when a Python dict is passed directly to setupStream().
+            native = simplesoapy.SoapySDR.KwargsFromString('')
+            for key, value in self._stream_args.items():
+                native[key] = value
+            self.device.stream_args = native
 
         actual_channel = getattr(self.device, 'channel', channel)
         if actual_channel != channel:
@@ -101,8 +113,11 @@ class SoapyPower:
                 self.device.gain = finite(self._requested_gain, 'gain')
 
     def measurement_context(self):
-        return self._frontend.context(self._device_settings, self._tune_args,
-                                      self._lnb_lo, self._lnb_high_side, self._iq_conjugate)
+        context = self._frontend.context(self._device_settings, self._tune_args,
+                                         self._lnb_lo, self._lnb_high_side, self._iq_conjugate)
+        if self._stream_args:
+            context['stream_args'] = dict(self._stream_args)
+        return context
 
     def nearest_freq(self, freq, bin_size):
         """Return nearest frequency based on bin size"""
