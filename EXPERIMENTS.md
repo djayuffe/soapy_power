@@ -151,8 +151,9 @@ bash tools/macos_runner/uninstall.sh
   checkout's Python anyway. Status, logs and sessions are written to `sessions/`
   (git-ignored).
 - **Baseline captures:** `--procedure baseline` records fixed-tune captures at 110,
-  150, 190, 230 and 270 MHz (20 × 100 ms, same receiver state) with a SHA-256
-  manifest. These are for `soapy_power_calibration baseline` and `compare`
+  150, 190, 230 and 270 MHz (200 × 5 ms with the stream reopened per run, the
+  survey's policy; continuous 100 ms blocks overflowed at 56 MS/s on macOS) with a
+  SHA-256 manifest. These are for `soapy_power_calibration baseline` and `compare`
   ([CALIBRATION_STEPS.md](CALIBRATION_STEPS.md) §6), which need a single tuned grid
   per file.
 - **Stack discovery:** `run_session.sh` tries each Python interpreter (plus Homebrew,

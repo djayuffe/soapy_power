@@ -6,7 +6,8 @@
 # INPUT (antenna | terminated, default antenna; what the operator connected to the port),
 # PROCEDURE (suite | baseline, default suite):
 #   suite:    the 100-300 MHz experiment suite (plan, run, analyze)
-#   baseline: fixed-tune captures (110/150/190/230/270 MHz, 20 x 100 ms each) for
+#   baseline: fixed-tune captures (110/150/190/230/270 MHz, 200 x 5 ms each, stream reopened
+#             per run like the survey: continuous 100 ms blocks overflowed at 56 MS/s) for
 #             soapy_power_calibration baseline/compare, plus a SHA-256 manifest
 # Under the runner, REQUEST_FILE (or the newest queue/taken request) supplies INPUT/PROCEDURE.
 #   probe: report every Python candidate (SoapySDR import result) and the B200 serial
@@ -116,15 +117,15 @@ if [ "$PROCEDURE" = baseline ]; then
     for TRY in 1 2; do
       rm -f "$OUT"
       if "$WRAP" -d "$DEV" -A "$ANTENNA" -C 0 -f "${MHZ}M" -r 56M -w 56M --master-clock-rate 56M --force-rate \
-           -g "$GAIN_DB" -b 8192 -t 0.1 -u 20 --settle-samples 32768 --lock-sensor lo_locked \
-           --require-timestamps --partial-policy reject --no-pyfftw --precision single \
-           -F json -O "$OUT" --skip-driver-teardown; then echo "== $MHZ MHz ok"; break; fi
+           -g "$GAIN_DB" -b 8192 -t 0.005 -u 200 --reopen-stream --tune-delay 0.02 --settle-samples 32768 \
+           --lock-sensor lo_locked --require-timestamps --partial-policy reject --no-pyfftw --precision single \
+           --max-threads 4 --max-queue-size 4 -F json -O "$OUT" --skip-driver-teardown; then echo "== $MHZ MHz ok"; break; fi
       echo "== $MHZ MHz attempt $TRY failed"; [ "$TRY" = 2 ] && FAILED="$FAILED $MHZ"
     done
   done
   {
     printf '{"kind":"baseline_captures","version":1,"input":"%s","antenna":"%s","gain_db":%s,"device":"%s",' "$INPUT" "$ANTENNA" "$GAIN_DB" "$DEV"
-    printf '"settings":"-r 56M -b 8192 -t 0.1 -u 20 --settle-samples 32768","failed_mhz":"%s","files":{' "${FAILED# }"
+    printf '"settings":"-r 56M -b 8192 -t 0.005 -u 200 --reopen-stream --tune-delay 0.02 --settle-samples 32768","failed_mhz":"%s","files":{' "${FAILED# }"
     SEP=""; for F in "$SESSION"/baseline-*MHz.jsonl; do [ -f "$F" ] || continue
       printf '%s"%s":"%s"' "$SEP" "$(basename "$F")" "$(shasum -a 256 "$F" | awk '{print $1}')"; SEP=","; done
     printf '}}\n'
