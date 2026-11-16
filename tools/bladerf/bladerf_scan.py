@@ -18,7 +18,8 @@ from pathlib import Path
 
 import numpy as np
 
-from bladerf_profile import DenseDC, load_json, settings
+from bladerf_dense_dc import calibrate_center
+from bladerf_profile import DenseDC, load_json, sample_mean, settings
 
 IQ_CENTERS_MHZ = [70, 100, 400, 915, 1800, 2440, 3500, 910, 913, 915, 917, 923, 925]
 
@@ -34,7 +35,7 @@ def main(argv=None):
     options = parser.parse_args(argv)
     if not np.isfinite(options.duration) or options.duration <= 0:
         parser.error('duration must be positive')
-    from bladerf_hw import HOP_SAMPLES, Receiver, sample_mean
+    from bladerf_hw import HOP_SAMPLES, Receiver
 
     profile = load_json(options.profile_dir / 'receiver-profile-final.json')
     dense = load_json(options.profile_dir / 'validated-full-grid-profile.json')
@@ -118,11 +119,18 @@ def main(argv=None):
                 center = mhz * 1e6
                 gains, dc, _, _ = settings(profile, dense, center, dense_dc, iq_guard=True)
                 freq, psd_db, iq, _, _, gains, dc, quality, _ = receiver.guarded_hop(center, gains, dc)
+                dc_row = None
+                if dense_dc is not None:
+                    # IQ centers are off the survey grid and use the +/-14 MHz gain guard: calibrate them here
+                    dc_row = calibrate_center(receiver, center, gains, dc, iq, quality)
+                    if dc_row['accepted']:
+                        dc = dc_row['normalized_dc']
+                        freq, psd_db, iq, _, _, gains, dc, quality, _ = receiver.guarded_hop(center, gains, dc)
                 name = 'iq-%dM%s' % (mhz, '-retune' if index >= 7 else '')
                 np.savez_compressed(out / (name + '.npz'), iq=iq, frequency_hz=np.asarray(freq), psd_db=np.asarray(psd_db))
                 mean = sample_mean(iq)
                 rows.append(dict(name=name, center_hz=center, gains=gains, dc=list(dc), quality=quality,
-                                 abs_mean=abs(mean), iq_samples=int(iq.size)))
+                                 abs_mean=abs(mean), iq_samples=int(iq.size), dc_calibration=dc_row))
             (out / 'iq-summary.json').write_text(json.dumps(rows, indent=1))
             state['iq_status'] = 'complete'
             state['iq_captures'] = len(rows)

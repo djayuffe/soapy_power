@@ -104,3 +104,34 @@ class DcSolveTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CalibrateCenterTests(unittest.TestCase):
+    def test_full_procedure_against_a_simulated_receiver(self):
+        import bladerf_dense_dc as dd
+        jac = np.array([[-.23, .035], [-.26, -1.03]])
+        truth = np.array([.3906, -.2031])
+        rng = np.random.default_rng(1)
+
+        class Fake:
+            calls = []
+
+            def hop(self, center, gains, dc):
+                Fake.calls.append(list(dc))
+                d = np.asarray(dc, float) - truth
+                m = jac @ d + .3 * d ** 2
+                iq = (m[0] + 1j * m[1] + .02 * (rng.standard_normal(4096) + 1j * rng.standard_normal(4096))).astype(np.complex64)
+                return None, None, iq, None, None
+
+        receiver = Fake()
+        gains = {'lna': 6.0, 'rxvga1': 30.0, 'rxvga2': 24.0}
+        base = [0.0, 0.0]
+        iq = receiver.hop(0, gains, base)[2]
+        from soapypower.receiver_quality import headroom_metrics
+        row = dd.calibrate_center(receiver, 3e9, gains, base, iq, headroom_metrics(iq))
+        self.assertTrue(row['accepted'])
+        self.assertEqual(row['probe_codes'], [4, 4])                       # RXVGA2 24 dB: small probes
+        self.assertGreater(row['improvement_db'], 20)
+        self.assertLess(np.hypot(*row['verified_mean']), 2 * row['quantization_bound'] + .002)
+        self.assertEqual(len(Fake.calls), 1 + 2 + 1 + ('refine' in row))  # base, I, Q, verify (+ refine)
+        self.assertTrue(all(abs(v * 64 - round(v * 64)) < 1e-12 for v in row['normalized_dc']))

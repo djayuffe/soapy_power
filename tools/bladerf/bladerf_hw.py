@@ -122,6 +122,3 @@ class Receiver(SoapyPower):
             except Exception:  # restoring defaults must not hide the original error
                 pass
 
-
-def sample_mean(iq):
-    return complex(np.mean(iq, dtype=np.complex128))

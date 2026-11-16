@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 from bladerf_profile import (DC_QUANTUM, accept_verified, clip_codes, load_json, perturbation_codes,
-                             quantization_bound, refine_dc, select, solve_dc)
+                             quantization_bound, refine_dc, sample_mean, select, solve_dc)
 
 
 def main(argv=None):
@@ -34,7 +34,7 @@ def main(argv=None):
     parser.add_argument('--iterations', type=int, default=2, choices=(1, 2),
                         help='2: one more verified Newton step where the residual exceeds 1.5x the DAC limit')
     options = parser.parse_args(argv)
-    from bladerf_hw import HOP_SAMPLES, Receiver, sample_mean
+    from bladerf_hw import HOP_SAMPLES, Receiver
 
     profile = load_json(options.profile_dir / 'receiver-profile-final.json')
     dense = load_json(options.profile_dir / 'validated-full-grid-profile.json')
@@ -55,66 +55,13 @@ def main(argv=None):
                 except RuntimeError as error:
                     rows.append(dict(center_hz=center, accepted=False, reason=str(error)))
                     continue
-                m0 = sample_mean(iq)
-                base_codes = clip_codes(np.asarray(base_dc) / DC_QUANTUM)
-                delta = 4 if gains['rxvga2'] >= 18 else 8
-                step_i, step_q = perturbation_codes(base_codes, delta)
-                means = {}
-                failed = None
-                for name, codes in (('i', base_codes + [step_i, 0]), ('q', base_codes + [0, step_q])):
-                    probe = (clip_codes(codes) * DC_QUANTUM).tolist()
-                    _, _, piq, _, _ = receiver.hop(center, gains, probe)
-                    pq = receiver_quality(piq)
-                    log.write(json.dumps(dict(center_hz=center, role=name, gains=gains, dc=probe, mean=[pq['mean_i'], pq['mean_q']],
-                                              max_component=pq['max_component'])) + '\n')
-                    if not headroom_ok(pq):
-                        failed = 'probe %s failed headroom' % name
-                        break
-                    means[name] = complex(pq['mean_i'], pq['mean_q'])
-                row = dict(center_hz=center, gains=gains, base_dc=[float(v) for v in base_dc], anchor_hz=anchor,
-                           anchor_validated=validated, base_mean=[m0.real, m0.imag], base_max_component=quality['max_component'],
-                           headroom_reductions=len(reductions), probe_codes=[int(step_i), int(step_q)])
-                if failed:
-                    row.update(accepted=False, reason=failed, normalized_dc=row['base_dc'])
-                    rows.append(row)
-                    continue
-                solved = solve_dc(base_dc, m0, means['i'], means['q'], step_i, step_q)
-                if solved is None:
-                    row.update(accepted=False, reason='ill-conditioned Jacobian', normalized_dc=row['base_dc'])
-                    rows.append(row)
-                    continue
-                _, _, viq, _, _ = receiver.hop(center, gains, solved['dc'])
-                vq = receiver_quality(viq)
-                verified = complex(vq['mean_i'], vq['mean_q'])
-                ok = headroom_ok(vq) and accept_verified(abs(m0), abs(verified))
-                row.update(solved, verified_mean=[verified.real, verified.imag], verified_max_component=vq['max_component'],
-                           accepted=bool(ok), normalized_dc=solved['dc'] if ok else row['base_dc'],
-                           improvement_db=float(20 * np.log10(max(abs(m0), 1e-9) / max(abs(verified), 1e-9))))
-                if not ok:
-                    row['reason'] = 'verification did not confirm the solved value'
-                log.write(json.dumps(dict(center_hz=center, role='verify', gains=gains, dc=solved['dc'],
-                                          mean=[vq['mean_i'], vq['mean_q']], max_component=vq['max_component'])) + '\n')
-                bound = quantization_bound(solved['jacobian'])
-                row['quantization_bound'] = bound
-                if ok and options.iterations > 1 and abs(verified) > 1.5 * bound:
-                    step = refine_dc(solved['dc'], verified, solved['jacobian'])
-                    if step['dc'] != solved['dc']:
-                        _, _, riq, _, _ = receiver.hop(center, gains, step['dc'])
-                        rq = receiver_quality(riq)
-                        refined = complex(rq['mean_i'], rq['mean_q'])
-                        log.write(json.dumps(dict(center_hz=center, role='refine', gains=gains, dc=step['dc'],
-                                                  mean=[rq['mean_i'], rq['mean_q']], max_component=rq['max_component'])) + '\n')
-                        better = headroom_ok(rq) and abs(refined) < abs(verified)
-                        row['refine'] = dict(dc=step['dc'], mean=[refined.real, refined.imag], accepted=bool(better))
-                        if better:
-                            verified = refined
-                            row.update(normalized_dc=step['dc'], verified_mean=[refined.real, refined.imag],
-                                       verified_max_component=rq['max_component'],
-                                       improvement_db=float(20 * np.log10(max(abs(m0), 1e-9) / max(abs(refined), 1e-9))))
+                row = calibrate_center(receiver, center, gains, base_dc, iq, quality, iterations=options.iterations, log=log)
+                row.update(anchor_hz=anchor, anchor_validated=validated, headroom_reductions=len(reductions))
+                m0, verified, ok = abs(complex(*row['base_mean'])), abs(complex(*row.get('verified_mean', row['base_mean']))), row['accepted']
                 rows.append(row)
                 if index % 50 == 0:
                     print('dense-dc %4d/%d %.1f MHz |m| %.4f -> %.4f %s  %.0f s' % (
-                        index + 1, len(centers), center / 1e6, abs(m0), abs(verified), 'ok' if ok else 'kept',
+                        index + 1, len(centers), center / 1e6, m0, verified, 'ok' if ok else 'kept',
                         time.monotonic() - t0), flush=True)
     finally:
         receiver.close()
@@ -135,6 +82,59 @@ def main(argv=None):
     (options.output / 'dc-table-dense.json').write_text(json.dumps(table, indent=1))
     print('DENSE_DC_COMPLETE centers=%d accepted=%d seconds=%.0f' % (len(rows), len(accepted), table['seconds']), flush=True)
     return 0
+
+
+def calibrate_center(receiver, center, gains, base_dc, iq, quality, iterations=2, log=None):
+    """Jacobian DC calibration at one center and fixed gains, starting from a passed base capture."""
+
+    def record(role, dc, q):
+        if log is not None:
+            log.write(json.dumps(dict(center_hz=center, role=role, gains=gains, dc=dc, mean=[q['mean_i'], q['mean_q']],
+                                      max_component=q['max_component'])) + '\n')
+
+    m0 = sample_mean(iq)
+    base_codes = clip_codes(np.asarray(base_dc) / DC_QUANTUM)
+    step_i, step_q = perturbation_codes(base_codes, 4 if gains['rxvga2'] >= 18 else 8)
+    row = dict(center_hz=center, gains=gains, base_dc=[float(v) for v in base_dc], base_mean=[m0.real, m0.imag],
+               base_max_component=quality['max_component'], probe_codes=[int(step_i), int(step_q)],
+               normalized_dc=[float(v) for v in base_dc], accepted=False)
+    means = {}
+    for name, codes in (('i', base_codes + [step_i, 0]), ('q', base_codes + [0, step_q])):
+        probe = (clip_codes(codes) * DC_QUANTUM).tolist()
+        q = receiver_quality(receiver.hop(center, gains, probe)[2])
+        record(name, probe, q)
+        if not headroom_ok(q):
+            row['reason'] = 'probe %s failed headroom' % name
+            return row
+        means[name] = complex(q['mean_i'], q['mean_q'])
+    solved = solve_dc(base_dc, m0, means['i'], means['q'], step_i, step_q)
+    if solved is None:
+        row['reason'] = 'ill-conditioned Jacobian'
+        return row
+    vq = receiver_quality(receiver.hop(center, gains, solved['dc'])[2])
+    record('verify', solved['dc'], vq)
+    verified = complex(vq['mean_i'], vq['mean_q'])
+    ok = headroom_ok(vq) and accept_verified(abs(m0), abs(verified))
+    row.update(solved, verified_mean=[verified.real, verified.imag], verified_max_component=vq['max_component'],
+               accepted=bool(ok), quantization_bound=quantization_bound(solved['jacobian']))
+    if not ok:
+        row['reason'] = 'verification did not confirm the solved value'
+        return row
+    row['normalized_dc'] = solved['dc']
+    if iterations > 1 and abs(verified) > 1.5 * row['quantization_bound']:
+        step = refine_dc(solved['dc'], verified, solved['jacobian'])
+        if step['dc'] != solved['dc']:
+            rq = receiver_quality(receiver.hop(center, gains, step['dc'])[2])
+            record('refine', step['dc'], rq)
+            refined = complex(rq['mean_i'], rq['mean_q'])
+            better = headroom_ok(rq) and abs(refined) < abs(verified)
+            row['refine'] = dict(dc=step['dc'], mean=[refined.real, refined.imag], accepted=bool(better))
+            if better:
+                verified = refined
+                row.update(normalized_dc=step['dc'], verified_mean=[refined.real, refined.imag],
+                           verified_max_component=rq['max_component'])
+    row['improvement_db'] = float(20 * np.log10(max(abs(m0), 1e-9) / max(abs(verified), 1e-9)))
+    return row
 
 
 def receiver_quality(iq):

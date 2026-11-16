@@ -152,6 +152,10 @@ def quantization_bound(jacobian):
     return float(np.linalg.norm(np.asarray(jacobian, float), axis=0).sum() * DC_QUANTUM / 2)
 
 
+def sample_mean(iq):
+    return complex(np.mean(np.asarray(iq), dtype=np.complex128))
+
+
 def accept_verified(abs_base, abs_verified, ratio=0.7, floor=0.002):
     """Keep a solved value only if an independent capture confirms it helps."""
     return bool(abs_verified <= max(ratio * abs_base, floor) and abs_verified < abs_base)
