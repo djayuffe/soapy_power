@@ -35,7 +35,6 @@ def main(argv=None):
     if not np.isfinite(options.duration) or options.duration <= 0:
         parser.error('duration must be positive')
     from bladerf_hw import HOP_SAMPLES, Receiver, sample_mean
-    from soapypower.receiver_quality import lower_bladerf1_gain
 
     profile = load_json(options.profile_dir / 'receiver-profile-final.json')
     dense = load_json(options.profile_dir / 'validated-full-grid-profile.json')

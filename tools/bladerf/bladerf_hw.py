@@ -22,6 +22,7 @@ logging.getLogger('simplesoapy').setLevel(logging.ERROR)
 
 STREAM_ARGS = {'buffers': '128', 'buflen': '65536', 'transfers': '16'}
 SAMPLE_RATE = 28e6
+TRANSIENT = ('SDR overflow:', 'SDR read failed or timed out', 'SDR stream ended abruptly')
 HOP_SAMPLES = 35 * 4096          # 5.12 ms at 28 MS/s, the survey's acquisition per hop
 SETUP = dict(base_buffer_size=65536, max_buffer_size=262144, fft_overlap=.5, tune_delay=.02,
              settle_samples=32768, require_timestamps=True, reopen_stream=True, partial_policy='reject',
@@ -68,10 +69,13 @@ class Receiver(SoapyPower):
                 freq, psd_db = future.result()
                 break
             except RuntimeError as error:
-                if not self.settling or 'SDR overflow:' not in str(error) or attempt == 3:
+                # Transient stream faults (overflow, a failed USB transfer, an abrupt end) discard the
+                # whole hop; the next psd() reopens the stream and acquires it again from scratch.
+                if not any(text in str(error) for text in TRANSIENT) or attempt == 3:
                     raise
-                self.retries.append(dict(center_hz=float(center_hz), error=str(error), measurement_emitted=False))
-                time.sleep(.01)
+                self.retries.append(dict(center_hz=float(center_hz), error=str(error), during_settling=self.settling,
+                                         measurement_emitted=False))
+                time.sleep(.05)
         iq = np.concatenate(self.saved)
         integrity, context = self._last_integrity, self._last_context
         if not (integrity['continuity'] == 'verified' and integrity['measurement_status'] == 'complete'
