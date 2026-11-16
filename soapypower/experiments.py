@@ -278,8 +278,12 @@ def run_suite(suite, directory, source=None, runner=subprocess_runner, retries=1
 
 # -------------------------------------------------------------------------- analysis
 
-def analyze(directory, cell_hz=100e3, dc_mask_hz=500e3, edge_fraction=0.12, tone_window_hz=40e3):
-    """Verify evidence, then fit -> independent holdout refit, settling and image checks."""
+def analyze(directory, cell_hz=100e3, dc_mask_hz=500e3, edge_fraction=0.12, tone_window_hz=40e3, input_kind=None):
+    """Verify evidence, then fit -> independent holdout refit, settling and image checks.
+
+    input_kind may declare the connected input for a suite planned before --input
+    existed; it is recorded as declared at analysis and must match a planned value.
+    """
     directory = Path(directory)
     ledger = load_json(directory / 'ledger.json')
     if ledger.get('kind') != 'experiment_ledger' or ledger.get('status') != 'completed':
@@ -299,8 +303,15 @@ def analyze(directory, cell_hz=100e3, dc_mask_hz=500e3, edge_fraction=0.12, tone
     options = dict(edge_fraction=edge_fraction, dc_mask_hz=dc_mask_hz)
     by_role = lambda role: [files[i] for i in files if trials[i]['role'] == role]
     simulated = ledger['data_source'] == 'simulated'
-    input_kind = suite.get('input', {}).get('kind', 'unspecified')
+    planned = suite.get('input', {}).get('kind')
+    if input_kind is not None and input_kind not in INPUTS:
+        raise ValueError('input must be one of: ' + ', '.join(INPUTS))
+    if planned and input_kind and input_kind != planned:
+        raise ValueError('suite was planned with input {!r}, not {!r}'.format(planned, input_kind))
+    input_source = 'planned' if planned else ('declared at analysis' if input_kind else 'unspecified')
+    input_kind = planned or input_kind or 'unspecified'
     report = {'kind': 'experiment_analysis', 'version': 1, 'data_source': ledger['data_source'], 'input': input_kind,
+              'input_source': input_source,
               'evidence_level': 'simulation: software verification only' if simulated
               else 'hardware-observed: relative, uncalibrated', 'calibrated': False,
               'ledger_sha256': _sha256(directory / 'ledger.json'), 'checks': {}, 'required': []}
@@ -484,6 +495,7 @@ def main(argv=None):
     b.add_argument('--soapy-power', default=os.environ.get('SOAPY_POWER', 'soapy_power'))
     c = sub.add_parser('analyze', help='verify hashes; fit, independent holdout refit, settling, image')
     c.add_argument('directory')
+    c.add_argument('--input', choices=INPUTS, help='declare the input of a suite planned without --input')
     d = sub.add_parser('calibration-config', help='write a validated tone auto-calibration config')
     d.add_argument('device')
     d.add_argument('-O', '--output', required=True)
@@ -530,7 +542,7 @@ def main(argv=None):
             print(_comparison_summary(result))
             return 0
         if args.cmd == 'analyze':
-            report = analyze(args.directory)
+            report = analyze(args.directory, input_kind=args.input)
             print(_summary(report))
             return 0 if report['passed'] else 1
         rig = SimulatedRig()

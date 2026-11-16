@@ -516,6 +516,23 @@ class InputComparisonTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'declared inputs'):
                 ex.compare(ant, term)
 
+    def test_legacy_suite_input_can_be_declared_at_analysis_only(self):
+        suite = ex.default_suite('driver=simulated')
+        del suite['input']  # planned before --input existed
+        with tempfile.TemporaryDirectory() as temp:
+            ex.run_suite(suite, Path(temp) / 's', ex.SimulatedRig().source, ex.SimulatedRig().runner,
+                         data_source='simulated')
+            self.assertEqual(ex.analyze(Path(temp) / 's')['input'], 'unspecified')
+            report = ex.analyze(Path(temp) / 's', input_kind='antenna')
+            self.assertEqual((report['input'], report['input_source']), ('antenna', 'declared at analysis'))
+            self.assertEqual(json.loads((Path(temp) / 's' / 'cell_levels.json').read_text())['input'], 'antenna')
+        planned = ex.default_suite('driver=simulated', input_kind='terminated')
+        with tempfile.TemporaryDirectory() as temp:
+            ex.run_suite(planned, Path(temp) / 's', ex.SimulatedRig().source, ex.SimulatedRig().runner,
+                         data_source='simulated')
+            with self.assertRaisesRegex(ValueError, 'planned with input'):
+                ex.analyze(Path(temp) / 's', input_kind='antenna')
+
     def test_input_declaration_is_validated(self):
         with self.assertRaisesRegex(ValueError, 'input must be'):
             ex.default_suite('d', input_kind='dummy-load-maybe')
