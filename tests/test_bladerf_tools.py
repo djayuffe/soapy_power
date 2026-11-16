@@ -51,6 +51,11 @@ class ProfileSelectionTests(unittest.TestCase):
         self.assertEqual(bp.settings(profile(), None, 3450e6, dense_dc, iq_guard=True)[2], 3500e6)
         with self.assertRaises(ValueError):
             bp.DenseDC(dict(kind='other', points=[]))
+        reduced = {'lna': 6, 'rxvga1': 30, 'rxvga2': 18}
+        self.assertIsNone(dense_dc.lookup(3450e6, reduced))
+        dense_dc.add(3450e6, reduced, [.25, -.125])                  # live calibration after a gain backoff
+        self.assertEqual(dense_dc.lookup(3450e6, reduced), [.25, -.125])
+        self.assertEqual(dense_dc.lookup(3450e6, G_HIGH), [.109375, -.40625])
 
 
 class DcSolveTests(unittest.TestCase):

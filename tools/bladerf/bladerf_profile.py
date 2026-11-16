@@ -79,6 +79,9 @@ class DenseDC:
     def lookup(self, center_hz, gains):
         return self.rows.get((round(center_hz), gains_key(gains)))
 
+    def add(self, center_hz, gains, dc):
+        self.rows[(round(center_hz), gains_key(gains))] = [float(v) for v in dc]
+
 
 def settings(profile, dense, center_hz, dense_dc=None, iq_guard=False):
     """select() with a dense per-center DC value overriding the anchor when gains match."""

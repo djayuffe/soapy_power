@@ -32,6 +32,9 @@ def main(argv=None):
     parser.add_argument('--duration', type=float, default=300)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--no-iq', action='store_true')
+    parser.add_argument('--no-live-dc', action='store_true',
+                        help='with --dc-table: do not calibrate DC when the headroom guard moves a center to gains '
+                             'the table lacks (the hop then runs with zero DC correction)')
     options = parser.parse_args(argv)
     if not np.isfinite(options.duration) or options.duration <= 0:
         parser.error('duration must be positive')
@@ -52,7 +55,7 @@ def main(argv=None):
     shutil.copy2(__file__, out / 'acquisition-source.py')
     state = dict(status='starting', records=0, started_host_time=datetime.now(timezone.utc).isoformat(),
                  headroom_reductions=[], pipeline='v3-dense-dc' if dense_dc else 'v2-anchor-dc',
-                 hops_per_sweep=len(plan), dc_sources={})
+                 hops_per_sweep=len(plan), dc_sources={}, live_dc_calibrations=[])
 
     def save():
         tmp = out / 'status.json.tmp'
@@ -85,6 +88,16 @@ def main(argv=None):
                 if reductions:
                     state['headroom_reductions'].extend(reductions)
                     source = 'dense' if dense_dc and dense_dc.lookup(center, gains) == list(dc) else 'none'
+                    if source == 'none' and dense_dc is not None and not options.no_live_dc:
+                        # New gains for this center: calibrate once, cache, and acquire the hop again with it.
+                        row = calibrate_center(receiver, center, gains, dc, iq, quality)
+                        state['live_dc_calibrations'].append(row)
+                        if row['accepted']:
+                            dense_dc.add(center, gains, row['normalized_dc'])
+                            freq, psd_db, iq, start, stop, gains, dc, quality, more = receiver.guarded_hop(
+                                center, gains, row['normalized_dc'], dc_for_gains=lambda g, c=center: dc_for_gains(g, c))
+                            state['headroom_reductions'].extend(more)
+                            source = 'dense-live' if dense_dc.lookup(center, gains) == list(dc) else 'none'
                 live[key] = (gains, list(dc), source)
                 state['dc_sources'][source] = state['dc_sources'].get(source, 0) + 1
                 meta = receiver._psd.measurement_metadata(receiver._last_state)
@@ -140,7 +153,8 @@ def main(argv=None):
     finally:
         save()
         receiver.close()
-    print('SURVEY_COMPLETE', json.dumps({k: v for k, v in state.items() if k != 'headroom_reductions'}), flush=True)
+    print('SURVEY_COMPLETE', json.dumps({k: v for k, v in state.items()
+                                         if k not in ('headroom_reductions', 'live_dc_calibrations')}), flush=True)
     return 0
 
 
