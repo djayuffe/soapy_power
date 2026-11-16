@@ -404,15 +404,23 @@ def repeatability(store, max_sigma_db=None, min_cells=8):
 
 # ------------------------------------------------------------------- cell levels
 
-def cell_levels(store, response=None, if_bin_hz=None, max_if_hz=None):
+def cell_levels(store, response=None, if_bin_hz=None, max_if_hz=None, exclude=None):
     """Per-RF-cell level across every hop/IF position that saw the cell (dB).
 
     With a fitted relative IF response the observations are corrected first, so the
     median is an estimate of S[c] up to the response's single gauge constant.
+    exclude: {hop key: boolean cell mask} of observations to leave out (e.g. harmonic
+    mixing responses); the remaining hops still estimate those cells.
     """
     if_bin_hz = if_bin_hz or store.cell
     max_if_hz = max_if_hz or store.max_if or if_bin_hz
-    matrix, _ = _design(store, store.medians(), if_bin_hz, max_if_hz)
+    medians = store.medians()
+    for key, mask in (exclude or {}).items():
+        if key in medians:
+            row = medians[key][1].copy()
+            row[np.asarray(mask, dtype=bool)] = np.nan
+            medians[key] = (medians[key][0], row)
+    matrix, _ = _design(store, medians, if_bin_hz, max_if_hz)
     if response is not None:
         matrix = apply_if_response(matrix, response)
     seen = np.isfinite(matrix).any(axis=1)
@@ -442,6 +450,123 @@ def excess_regions(rf_hz, level_db, reference_db, threshold_db=3.0, cell_hz=None
                         'peak_hz': float(rf[peak]), 'peak_excess_db': float(excess[peak]),
                         'cells': int(stop - start + 1)})
     return sorted(regions, key=lambda r: -r['peak_excess_db'])
+
+
+def observation_residuals(store, response, levels):
+    """Residual D - S - G for every (hop, pass, cell) observation.
+
+    Returns arrays lo_hz, if_hz, rf_hz, residual_db, hop_key. A deterministic
+    LO-dependent artefact shows as large residuals for some hops of a cell and none
+    for others; a real RF signal raises every hop that sees the cell.
+    """
+    S = _array(levels['median_db'])
+    G = _array(response['response_db'])
+    axis = np.asarray(response['if_axis_hz'], dtype=float)
+    step, half = axis[1] - axis[0], (len(axis) - 1) // 2
+    centers = store.cell_center(np.arange(store.cells))
+    parts = {k: [] for k in ('lo_hz', 'if_hz', 'rf_hz', 'residual_db', 'hop_key')}
+    for key, hop in store.hops.items():
+        slots = np.rint((centers - hop['center']) / step).astype(int) + half
+        valid = (slots >= 0) & (slots < len(axis))
+        g = np.full(store.cells, np.nan)
+        g[valid] = G[slots[valid]]
+        for row in hop['passes']:
+            r = row - S - g
+            ok = np.flatnonzero(np.isfinite(r))
+            parts['lo_hz'].append(np.full(ok.size, hop['center']))
+            parts['if_hz'].append(centers[ok] - hop['center'])
+            parts['rf_hz'].append(centers[ok])
+            parts['residual_db'].append(r[ok])
+            parts['hop_key'].append(np.full(ok.size, key))
+    return {k: np.concatenate(v) if v else np.array([]) for k, v in parts.items()}
+
+
+def mixing_hypotheses(lo_hz, if_hz, orders=(1, 3, 5, 7), bin_hz=0.5e6, min_los=3, min_events=50):
+    """Which mixing law explains a set of excess observations?
+
+    Each hypothesis maps an observation to a source frequency f = n*LO - s*IF:
+    (n=1, s=-1) is an ordinary RF-fixed signal, (n=1, s=+1) its IQ image, odd n > 1
+    the LO-harmonic responses of a direct-conversion mixer. Under the true law,
+    observations made with different LO settings land on the same source frequency;
+    under a wrong law each LO lands elsewhere. A source bin is supported when at least
+    `min_los` distinct LO settings contribute. A non-RF law is identified when it
+    explains at least `min_events` observations that the RF-fixed law does not.
+    """
+    lo = np.asarray(lo_hz, dtype=float)
+    iff = np.asarray(if_hz, dtype=float)
+    if lo.size < min_events:
+        return {'status': 'too_few_events', 'events': int(lo.size), 'hypotheses': []}
+    lo_id = np.unique(np.rint(lo), return_inverse=True)[1].reshape(-1)
+    laws = [(n, sign) for n in orders for sign in (-1, 1)]
+    explained, details = {}, {}
+    for n, sign in laws:
+        bins = np.rint((n * lo - sign * iff) / bin_hz).astype(np.int64)
+        pairs = np.unique(np.stack([bins, lo_id]), axis=1)
+        values, los = np.unique(pairs[0], return_counts=True)
+        supported = values[los >= min_los]
+        hit = np.isin(bins, supported)
+        explained[(n, sign)] = hit
+        details[(n, sign)] = (bins, supported, dict(zip(values.tolist(), los.tolist())))
+    rf_hit = explained[(1, -1)]
+    result = []
+    for n, sign in laws:
+        hit = explained[(n, sign)]
+        bins, supported, los = details[(n, sign)]
+        kind = 'rf' if (n, sign) == (1, -1) else ('image' if n == 1 else 'harmonic')
+        unique = hit if kind == 'rf' else hit & ~rf_hit
+        counts = np.bincount(np.searchsorted(supported, bins[hit]), minlength=supported.size) if supported.size else np.array([])
+        bands = []
+        for value in np.sort(supported):
+            if bands and value - bands[-1][1] <= 1:
+                bands[-1][1] = value
+            else:
+                bands.append([value, value])
+        busiest = supported[np.argsort(-counts)[:6]] if supported.size else []
+        result.append({'order': n, 'sign': sign, 'kind': kind, 'explained_events': int(hit.sum()),
+                       'unique_events': int(unique.sum()), 'concentration': float(hit.mean()),
+                       'max_distinct_los': int(max(los.values())) if los else 0,
+                       'source_bands_hz': [[float((x - .5) * bin_hz), float((y + .5) * bin_hz)] for x, y in bands],
+                       'top_sources_hz': [float(v * bin_hz) for v in busiest],
+                       'identified': bool(kind != 'rf' and unique.sum() >= min_events)})
+    result.sort(key=lambda h: (-h['identified'], -h['unique_events']))
+    return {'status': 'tested', 'events': int(lo.size), 'bin_hz': bin_hz, 'min_los': min_los,
+            'min_events': min_events, 'rf_fixed_concentration': float(rf_hit.mean()), 'hypotheses': result}
+
+
+def mixing_mask(store, hypotheses, guard_hz=0.25e6):
+    """{hop key: cell mask} of observations an identified mixing law maps into a source band."""
+    centers = store.cell_center(np.arange(store.cells))
+    masks = {}
+    for key, hop in store.hops.items():
+        mask = np.zeros(store.cells, dtype=bool)
+        iff = centers - hop['center']
+        for h in hypotheses:
+            if not h.get('identified'):
+                continue
+            f = h['order'] * hop['center'] - h['sign'] * iff
+            for lo_band, hi_band in h['source_bands_hz']:
+                mask |= (f >= lo_band - guard_hz) & (f <= hi_band + guard_hz)
+        if mask.any():
+            masks[key] = mask
+    return masks
+
+
+def spurious_responses(store, response, levels, threshold_db=6.0, **options):
+    """Identify LO-harmonic/image responses and return the corrected cell levels."""
+    obs = observation_residuals(store, response, levels)
+    hot = obs['residual_db'] > threshold_db
+    tested = mixing_hypotheses(obs['lo_hz'][hot], obs['if_hz'][hot], **options)
+    identified = [h for h in tested['hypotheses'] if h.get('identified')]
+    report = dict(tested, threshold_db=threshold_db, observations=int(obs['lo_hz'].size),
+                  excess_observations=int(hot.sum()), identified=identified,
+                  scope='mixing-law fit of excess observations; source frequencies are inferred, not measured')
+    if not identified:
+        return report, None
+    mask = mixing_mask(store, identified)
+    masked = cell_levels(store, response['response_db'], exclude=mask)
+    report['masked_observations'] = int(sum(int(m.sum()) for m in mask.values()))
+    report['masked_hops'] = len(mask)
+    return report, masked
 
 
 def floor_summary(levels, spur_threshold_db=3.0):
@@ -663,13 +788,14 @@ def image_rejection_from_scan(path, tone_hz, window_hz=20e3, floor_offset_hz=100
 def synthetic_scan(path, start_hz, stop_hz, hop_hz, passes=6, rate_hz=56e6, bins=8192,
                    retained_hz=None, if_response=None, floor_db=-150.0, tones=(),
                    lo_spur_db=20.0, sigma_db=0.15, seed=1, tone_scale=1.0, offset_hz=0.0,
-                   image_rejection_db=None, frequency_grid=True, context=None):
+                   image_rejection_db=None, frequency_grid=True, context=None, harmonic_sources=()):
     """Write a spec-conformant JSONL scan from a known model (test/dry-run truth).
 
     Bins follow an even FFT (DC bin at index n/2, as soapy_power records). The DC bin
     is marked estimated. if_response(f_if_hz) -> dB is the ground-truth IF response.
     The LO spur sits at DC (IF-fixed). Tones: (rf_hz, level_db above floor); with
     image_rejection_db each tone also produces its IQ image at 2*origin - rf.
+    harmonic_sources: (source_hz, order, sign, dB above floor) responses at IF = sign*(order*LO - source).
     """
     import datetime
     from pathlib import Path
@@ -701,6 +827,9 @@ def synthetic_scan(path, start_hz, stop_hz, hop_hz, passes=6, rate_hz=56e6, bins
                     for where, db in images:
                         near = np.abs(f - where) <= step * 1.5
                         lin[near] += 10 ** ((floor_db + db + if_response(f[near] - center)) / 10) * tone_scale
+                for source, order, sign, level in harmonic_sources:
+                    near = np.abs(offset - sign * (order * center - source)) <= step * 1.5
+                    lin[near] += 10 ** ((floor_db + level + if_response(offset[near])) / 10)
                 lin[np.abs(offset) < step * 1.5] += 10 ** ((floor_db + lo_spur_db) / 10)
                 db = 10 * np.log10(lin)
                 db[n // 2] = floor_db  # interpolated DC estimate, flagged below

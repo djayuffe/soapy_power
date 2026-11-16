@@ -338,13 +338,24 @@ def analyze(directory, cell_hz=100e3, dc_mask_hz=500e3, edge_fraction=0.12, tone
             'receiver_context_signature': fit_store.signature,
             'validated': bool(checks['if_holdout'].get('passed'))}, overwrite=True)
         levels = mv.cell_levels(fit_store, fit['response_db'])
+        spurs, masked = mv.spurious_responses(fit_store, fit, levels)
+        checks['spurious_responses'] = dict(spurs, gating=False)
+        extra = {}
+        if masked is not None:
+            extra = {'mixing_masked_' + k: masked[k] for k in ('median_db', 'p10_db', 'p90_db')}
         write_json(directory / 'cell_levels.json', dict(
             levels, kind='cell_levels', version=1, calibrated=False, data_source=ledger['data_source'],
             input=input_kind, receiver_context_signature=fit_store.signature,
-            holdout_median_db=mv.cell_levels(test_store, fit['response_db'])['median_db'] if holdout_files else None),
-            overwrite=True)
+            holdout_median_db=mv.cell_levels(test_store, fit['response_db'])['median_db'] if holdout_files else None,
+            mixing_identified=[{k: h[k] for k in ('order', 'sign', 'kind', 'source_bands_hz')} for h in spurs.get('identified', [])],
+            **extra), overwrite=True)
         if input_kind == 'terminated':
-            checks['terminated_floor'] = dict(mv.floor_summary(levels), gating=False)
+            floor = mv.floor_summary(levels)
+            if masked is not None:
+                after = mv.floor_summary(masked)
+                floor['after_mixing_mask'] = {k: after.get(k) for k in ('floor_median_db', 'flatness_p5_p95_db', 'intermittent_cells')}
+                floor['after_mixing_mask']['internal_features'] = len(after.get('internal_features', []))
+            checks['terminated_floor'] = dict(floor, gating=False)
     settle = {trials[i]['tune_delay_s']: files[i] for i in files if trials[i]['role'] == 'settling'}
     if settle:
         tone = suite['tone_rf_hz']
@@ -389,6 +400,16 @@ def compare(terminated_dir, antenna_dir, output=None, threshold_db=3.0):
         if not analysis['passed']:
             raise ValueError('{} session did not pass its own checks'.format(name))
     result = mv.compare_inputs({'levels': tl, 'response': tr}, {'levels': al, 'response': ar}, threshold_db)
+    if tl.get('mixing_masked_median_db') or al.get('mixing_masked_median_db'):
+        def masked(levels):
+            if not levels.get('mixing_masked_median_db'):
+                return levels
+            return dict(levels, **{k: levels['mixing_masked_' + k] for k in ('median_db', 'p10_db', 'p90_db')})
+        after = mv.compare_inputs({'levels': masked(tl)}, {'levels': masked(al)}, threshold_db)
+        result['after_mixing_mask'] = {k: after[k] for k in ('external', 'internal', 'internal_intermittent',
+                                                             'antenna_minus_terminated_median_db')}
+        result['after_mixing_mask']['intermittent_cells'] = after['terminated_floor'].get('intermittent_cells')
+        result['mixing_identified'] = {'terminated': tl.get('mixing_identified', []), 'antenna': al.get('mixing_identified', [])}
     result.update(kind='input_comparison', version=1, calibrated=False, data_source=ta['data_source'],
                   terminated_session=str(terminated_dir), antenna_session=str(antenna_dir))
     output = Path(output) if output else Path(terminated_dir) / 'comparison-{}.json'.format(Path(antenna_dir).name)
@@ -402,13 +423,14 @@ class SimulatedRig:
     """Receiver + CW source simulator with known truth for a full pipeline dry run."""
 
     def __init__(self, truth_if=None, tau_s=0.008, amplitude_db=1.5, image_rejection_db=35.0,
-                 tone_above_floor_db=50.0, fail_first=False, environment=(), seed=0):
+                 tone_above_floor_db=50.0, fail_first=False, environment=(), seed=0, harmonic_sources=()):
         import numpy as np
         self.truth = truth_if or (lambda f: -1.2 * (f / 14e6) ** 2 + .25 * np.sin(2 * np.pi * f / 5e6))
         self.tau, self.amplitude, self.irr, self.tone_db = tau_s, amplitude_db, image_rejection_db, tone_above_floor_db
         self.fail_first = fail_first
         self.environment = list(environment)  # always-present RF-fixed (rf_hz, dB above floor)
         self.seed = int(seed)
+        self.harmonic_sources = list(harmonic_sources)  # (source_hz, order, sign, dB): LO-harmonic responses
         self.source_state = {'state': 'off'}
         self.calls = []
 
@@ -430,6 +452,7 @@ class SimulatedRig:
         mv.synthetic_scan(output, trial['start_hz'], trial['stop_hz'], hop_hz=plan['hop_hz'], bins=bins,
                           passes=passes, if_response=self.truth, tones=tones, tone_scale=scale,
                           image_rejection_db=self.irr, seed=zlib.crc32('{}/{}'.format(self.seed, trial['id']).encode()),
+                          harmonic_sources=self.harmonic_sources,
                           offset_hz=plan['centers_hz'][0] - trial['start_hz'] - plan['hop_hz'] / 2)
         return {'returncode': 0, 'seconds': 0.0, 'stderr_tail': ''}
 
@@ -449,6 +472,14 @@ def _summary(report):
             detail['agreement'] = detail['agreement'].get('rms_db')
         if check.get('internal_features') is not None:
             detail['internal_features'] = len(check['internal_features'])
+        if 'after_mixing_mask' in check:
+            detail['after_mixing_mask'] = check['after_mixing_mask']
+        if name == 'spurious_responses':
+            detail = {'excess_observations': check.get('excess_observations'),
+                      'rf_fixed_concentration': round(check.get('rf_fixed_concentration') or 0, 3),
+                      'identified': ['n={order} s={sign:+d} unique={unique_events} src {src}'.format(
+                          src='/'.join('{:.1f}'.format(f / 1e6) for f in h['top_sources_hz'][:3]), **h)
+                          for h in check.get('identified', [])]}
         lines.append('  {:<16} {:<8} {:<5} {}'.format(name, mark, str(check.get('passed', '-')), json.dumps(detail)))
     return '\n'.join(lines)
 
@@ -466,6 +497,12 @@ def _comparison_summary(result):
         mhz(r['start_hz']), mhz(r['stop_hz']), mhz(r['peak_hz']), r['peak_excess_db'],
         'n/a' if r['antenna_minus_terminated_db'] is None else '{:+.1f} dB'.format(r['antenna_minus_terminated_db']))
         for r in result['internal'][:15]] or ['  none']
+    if 'after_mixing_mask' in result:
+        after = result['after_mixing_mask']
+        lines.append('after masking identified mixing responses: {} external, {} intermittent cells; external:'.format(
+            len(after['external']), after['intermittent_cells']))
+        lines += ['  {}-{} MHz  peak {} MHz  +{:.1f} dB'.format(mhz(r['start_hz']), mhz(r['stop_hz']), mhz(r['peak_hz']),
+                                                             r['peak_excess_db']) for r in after['external'][:10]]
     floor = result['terminated_floor']
     lines.append('intermittent with the termination (p90-median spread > typical + {:g} dB): {} cells'.format(
         result['threshold_db'], floor.get('intermittent_cells', 'n/a')))

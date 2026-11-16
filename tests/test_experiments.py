@@ -550,6 +550,45 @@ class InputComparisonTests(unittest.TestCase):
         self.assertEqual(suite['input'], {'kind': 'terminated', 'port': 'TX/RX', 'declared_by': 'operator'})
 
 
+class MixingResponseTests(unittest.TestCase):
+    def test_mixing_law_fit_identifies_a_third_harmonic_response(self):
+        rng = np.random.default_rng(5)
+        lo = np.repeat(np.arange(255e6, 285e6, 3.49e6), 40)
+        iff = (3 * lo - 812e6) + rng.normal(0, 30e3, lo.size)      # f = 3 LO - IF  (sign +1)
+        keep = np.abs(iff) < 21e6
+        lo, iff = lo[keep], iff[keep]
+        lo = np.concatenate([lo, rng.uniform(100e6, 300e6, 200)])
+        iff = np.concatenate([iff, rng.uniform(-21e6, 21e6, 200)])
+        result = mv.mixing_hypotheses(lo, iff)
+        best = result['hypotheses'][0]
+        self.assertEqual((best['order'], best['sign'], best['kind']), (3, 1, 'harmonic'))
+        self.assertTrue(best['identified'])
+        self.assertTrue(any(a <= 812e6 <= b for a, b in best['source_bands_hz']))
+        self.assertFalse(next(h for h in result['hypotheses'] if h['kind'] == 'rf')['identified'])
+        self.assertEqual(mv.mixing_hypotheses(lo[:10], iff[:10])['status'], 'too_few_events')
+
+    def test_analysis_masks_harmonic_responses_but_keeps_real_signals(self):
+        lte_like = [(f, 3, 1, 15.0) for f in np.arange(805e6, 820e6, .7e6)]  # a wide downlink, as on the B200mini
+        rig = ex.SimulatedRig(environment=[(226.05e6, 25.0)], harmonic_sources=lte_like, seed=3)
+        suite = ex.default_suite('driver=simulated', input_kind='antenna')
+        with tempfile.TemporaryDirectory() as temp:
+            ex.run_suite(suite, Path(temp) / 's', rig.source, rig.runner, data_source='simulated')
+            report = ex.analyze(Path(temp) / 's')
+            spurs = report['checks']['spurious_responses']
+            self.assertFalse(spurs['gating'])
+            self.assertTrue(any(h['order'] == 3 and h['sign'] == 1 for h in spurs['identified']), spurs['hypotheses'][:3])
+            self.assertFalse(any(h['kind'] == 'rf' for h in spurs['identified']))
+            levels = json.loads((Path(temp) / 's' / 'cell_levels.json').read_text())
+            rf = np.array(levels['rf_hz'])
+            p90, masked = mv._array(levels['p90_db']), mv._array(levels['mixing_masked_p90_db'])
+            band = (rf > 258e6) & (rf < 290e6)
+            floor = np.nanmedian(mv._array(levels['median_db']))
+            self.assertGreater(np.nanmax(p90[band]) - floor, 8)       # responses visible before masking
+            self.assertLess(np.nanmax(masked[band]) - floor, 3)       # and gone after
+            tone = int(np.argmin(np.abs(rf - 226.05e6)))
+            self.assertGreater(mv._array(levels['mixing_masked_median_db'])[tone] - floor, 10)  # real signal kept
+
+
 class CliTests(unittest.TestCase):
     def test_plan_calibration_config_and_errors(self):
         with tempfile.TemporaryDirectory() as temp:
