@@ -566,6 +566,16 @@ class MixingResponseTests(unittest.TestCase):
         self.assertTrue(any(a <= 812e6 <= b for a, b in best['source_bands_hz']))
         self.assertFalse(next(h for h in result['hypotheses'] if h['kind'] == 'rf')['identified'])
         self.assertEqual(mv.mixing_hypotheses(lo[:10], iff[:10])['status'], 'too_few_events')
+        no_image = mv.mixing_hypotheses(lo, iff, allow_image=False)
+        self.assertFalse(any(h['kind'] == 'image' for h in no_image['hypotheses']))
+
+    def test_image_law_needs_a_strong_in_band_parent(self):
+        rf = [250e6 + 1e5 * i for i in range(200)]
+        quiet = {'rf_hz': rf, 'median_db': [-135.0] * 200}
+        law = {'source_bands_hz': [[260e6, 262e6]]}
+        self.assertFalse(mv.image_parent_ok(law, quiet))
+        loud = dict(quiet, median_db=[-135.0] * 100 + [-100.0] * 20 + [-135.0] * 80)
+        self.assertTrue(mv.image_parent_ok(law, loud))
 
     def test_analysis_masks_harmonic_responses_but_keeps_real_signals(self):
         lte_like = [(f, 3, 1, 15.0) for f in np.arange(805e6, 820e6, .7e6)]  # a wide downlink, as on the B200mini
@@ -577,7 +587,7 @@ class MixingResponseTests(unittest.TestCase):
             spurs = report['checks']['spurious_responses']
             self.assertFalse(spurs['gating'])
             self.assertTrue(any(h['order'] == 3 and h['sign'] == 1 for h in spurs['identified']), spurs['rounds'])
-            self.assertFalse(any(h['kind'] == 'rf' for h in spurs['identified']))
+            self.assertFalse(any(h['kind'] in ('rf', 'image') for h in spurs['identified']))
             levels = json.loads((Path(temp) / 's' / 'cell_levels.json').read_text())
             rf = np.array(levels['rf_hz'])
             p90, masked = mv._array(levels['p90_db']), mv._array(levels['mixing_masked_p90_db'])

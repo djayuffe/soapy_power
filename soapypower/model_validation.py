@@ -482,7 +482,7 @@ def observation_residuals(store, response, levels):
     return {k: np.concatenate(v) if v else np.array([]) for k, v in parts.items()}
 
 
-def mixing_hypotheses(lo_hz, if_hz, orders=(1, 3, 5, 7), bin_hz=0.5e6, min_los=3, min_events=50):
+def mixing_hypotheses(lo_hz, if_hz, orders=(1, 3, 5, 7), bin_hz=0.5e6, min_los=3, min_events=50, allow_image=True):
     """Which mixing law explains a set of excess observations?
 
     Each law maps an observation to a source frequency f = n*LO - s*IF: (n=1, s=-1)
@@ -498,7 +498,8 @@ def mixing_hypotheses(lo_hz, if_hz, orders=(1, 3, 5, 7), bin_hz=0.5e6, min_los=3
     if lo.size < min_events:
         return {'status': 'too_few_events', 'events': int(lo.size), 'hypotheses': []}
     lo_id = np.unique(np.rint(lo), return_inverse=True)[1].reshape(-1)
-    laws = [(1, -1)] + [(n, sign) for n in orders for sign in (-1, 1) if (n, sign) != (1, -1)]
+    laws = [(1, -1)] + [(n, sign) for n in orders for sign in (-1, 1)
+                        if (n, sign) != (1, -1) and (allow_image or (n, sign) != (1, 1))]
     bins_all, support = [], []
     for n, sign in laws:
         bins = np.rint((n * lo - sign * iff) / bin_hz).astype(np.int64)
@@ -548,7 +549,25 @@ def mixing_mask(store, hypotheses, guard_hz=0.25e6):
     return masks
 
 
-def spurious_responses(store, response, levels, threshold_db=6.0, iterations=4, **options):
+def image_parent_ok(law, levels, min_parent_db=20.0):
+    """An IQ image needs a strong in-band parent at its source frequency.
+
+    With image rejection of tens of dB, an image visible above the floor requires the
+    parent cell to stand at least min_parent_db above the floor median; otherwise the
+    image law is only an alias of another mechanism and is rejected.
+    """
+    rf = np.asarray(levels['rf_hz'], dtype=float)
+    level = _array(levels['median_db'])
+    floor = float(np.nanmedian(level))
+    inside = np.zeros(rf.size, dtype=bool)
+    for lo_band, hi_band in law['source_bands_hz']:
+        inside |= (rf >= lo_band) & (rf <= hi_band)
+    if not inside.any() or not np.isfinite(level[inside]).any():
+        return False
+    return bool(np.nanmax(level[inside]) - floor >= min_parent_db)
+
+
+def spurious_responses(store, response, levels, threshold_db=6.0, iterations=4, min_parent_db=20.0, **options):
     """Identify LO-harmonic/image responses, mask them and re-estimate the cell levels.
 
     Excess is first measured against levels that the responses themselves inflate, so
@@ -562,7 +581,11 @@ def spurious_responses(store, response, levels, threshold_db=6.0, iterations=4, 
         for key, cells in mask.items():
             hot &= ~((obs['hop_key'] == key) & cells[obs['cell']])
         tested = mixing_hypotheses(obs['lo_hz'][hot], obs['if_hz'][hot], **options)
-        rounds.append({'excess_observations': int(hot.sum()),
+        image = next((h for h in tested['hypotheses'] if h['kind'] == 'image' and h['identified']), None)
+        if image is not None and not image_parent_ok(image, current, min_parent_db):
+            tested = mixing_hypotheses(obs['lo_hz'][hot], obs['if_hz'][hot], allow_image=False, **options)
+            tested['image_rejected'] = 'no in-band parent >= {:g} dB above the floor'.format(min_parent_db)
+        rounds.append({'excess_observations': int(hot.sum()), 'image_rejected': tested.get('image_rejected'),
                        'identified': [(h['order'], h['sign'], h['attributed_events']) for h in tested['hypotheses'] if h['identified']]})
         grew = False
         for h in tested['hypotheses']:
