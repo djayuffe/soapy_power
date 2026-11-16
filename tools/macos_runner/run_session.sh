@@ -3,8 +3,12 @@
 #   bash tools/macos_runner/run_session.sh            (or through runner.sh / launchd)
 # Environment: MODE=probe|setup|scan (default scan), SCAN_SECONDS (5-600, default 30),
 # GAIN_DB (0-70, default 20), ANTENNA (RX2 | TX/RX, default RX2),
-# INPUT (antenna | terminated, default antenna; what the operator connected to the port).
-# Under the runner, REQUEST_FILE (or the newest queue/taken request) supplies INPUT.
+# INPUT (antenna | terminated, default antenna; what the operator connected to the port),
+# PROCEDURE (suite | baseline, default suite):
+#   suite:    the 100-300 MHz experiment suite (plan, run, analyze)
+#   baseline: fixed-tune captures (110/150/190/230/270 MHz, 20 x 100 ms each) for
+#             soapy_power_calibration baseline/compare, plus a SHA-256 manifest
+# Under the runner, REQUEST_FILE (or the newest queue/taken request) supplies INPUT/PROCEDURE.
 #   probe: report every Python candidate (SoapySDR import result) and the B200 serial
 #   setup: create sessions/.venv (system site-packages) with numpy scipy simplesoapy simplespectral
 set -u -o pipefail
@@ -12,12 +16,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="${SPR_REPO:-$(cd "$HERE/../.." && pwd)}"
 OUTDIR="${SPR_SESSIONS:-$REPO/sessions}"
 mkdir -p "$OUTDIR"
-if [ -z "${INPUT:-}" ]; then
-  REQ="${REQUEST_FILE:-}"
-  if [ -z "$REQ" ] && [ -n "${SPR_SESSIONS:-}" ]; then REQ="$(ls -t "$OUTDIR"/queue/taken/*.json 2>/dev/null | head -1)"; fi
-  if [ -n "$REQ" ] && [ -f "$REQ" ]; then INPUT="$(plutil -extract input raw -o - "$REQ" 2>/dev/null || true)"; fi
-fi
-INPUT="${INPUT:-antenna}"
+REQ="${REQUEST_FILE:-}"
+if [ -z "$REQ" ] && [ -n "${SPR_SESSIONS:-}" ]; then REQ="$(ls -t "$OUTDIR"/queue/taken/*.json 2>/dev/null | head -1)"; fi
+req_field() { if [ -n "$REQ" ] && [ -f "$REQ" ]; then plutil -extract "$1" raw -o - "$REQ" 2>/dev/null || true; fi; }
+INPUT="${INPUT:-$(req_field input)}"; INPUT="${INPUT:-antenna}"
+PROCEDURE="${PROCEDURE:-$(req_field procedure)}"; PROCEDURE="${PROCEDURE:-suite}"
 MODE="${MODE:-scan}"; [ "${PROBE_ONLY:-0}" = 1 ] && MODE=probe
 SCAN_SECONDS="${SCAN_SECONDS:-30}"; GAIN_DB="${GAIN_DB:-20}"; ANTENNA="${ANTENNA:-RX2}"
 case "$MODE" in probe|setup|scan) ;; *) echo "FEIL: MODE må være probe, setup eller scan"; exit 2;; esac
@@ -25,14 +28,15 @@ if ! [[ "$SCAN_SECONDS" =~ ^[0-9]+$ ]] || [ "$SCAN_SECONDS" -lt 5 ] || [ "$SCAN_
 if ! [[ "$GAIN_DB" =~ ^[0-9]+(\.[0-9]+)?$ ]] || ! awk -v g="$GAIN_DB" 'BEGIN{exit !(g>=0 && g<=70)}'; then echo "FEIL: GAIN_DB må være 0-70"; exit 2; fi
 case "$ANTENNA" in RX2|TX/RX) ;; *) echo "FEIL: ANTENNA må være RX2 eller TX/RX"; exit 2;; esac
 case "$INPUT" in antenna|terminated) ;; *) echo "FEIL: INPUT må være antenna eller terminated"; exit 2;; esac
+case "$PROCEDURE" in suite|baseline) ;; *) echo "FEIL: PROCEDURE må være suite eller baseline"; exit 2;; esac
 for v in DYLD_LIBRARY_PATH DYLD_FALLBACK_LIBRARY_PATH; do s="SPR_$v"; if [ -n "${!s:-}" ]; then export "$v=${!s}"; fi; done
 STAMP="$(date +%Y%m%d-%H%M%S)"
 LOG="$OUTDIR/run-$STAMP.log"
 LAST="$OUTDIR/last-run.env"
 exec > >(tee "$LOG") 2>&1
-finish() { { echo "STAMP=$STAMP"; echo "LOG=$LOG"; echo "INPUT=$INPUT"; echo "$1"; } > "$LAST"; }
+finish() { { echo "STAMP=$STAMP"; echo "LOG=$LOG"; echo "INPUT=$INPUT"; echo "PROCEDURE=$PROCEDURE"; echo "$1"; } > "$LAST"; }
 echo "== soapy_power $MODE $STAMP  repo=$REPO  $(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null) $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null)"
-echo "   scan_seconds=$SCAN_SECONDS gain_db=$GAIN_DB antenna=$ANTENNA input=$INPUT  PATH=$PATH"
+echo "   scan_seconds=$SCAN_SECONDS gain_db=$GAIN_DB antenna=$ANTENNA input=$INPUT procedure=$PROCEDURE  PATH=$PATH"
 
 # ---- 1+2. find a Python + site-packages + SoapySDR module dir that enumerates the B200
 # Inherited PYTHONPATH is dropped: a site-packages of another Python version breaks imports.
@@ -104,6 +108,33 @@ WRAP="$OUTDIR/.soapy_power-$STAMP"
   printf 'exec %q -m soapypower "$@"\n' "$PY"
 } > "$WRAP"
 chmod +x "$WRAP"
+if [ "$PROCEDURE" = baseline ]; then
+  SESSION="$OUTDIR/baseline-$STAMP"; mkdir -p "$SESSION"
+  FAILED=""
+  for MHZ in 110 150 190 230 270; do
+    OUT="$SESSION/baseline-${MHZ}MHz.jsonl"
+    for TRY in 1 2; do
+      rm -f "$OUT"
+      if "$WRAP" -d "$DEV" -A "$ANTENNA" -C 0 -f "${MHZ}M" -r 56M -w 56M --master-clock-rate 56M --force-rate \
+           -g "$GAIN_DB" -b 8192 -t 0.1 -u 20 --settle-samples 32768 --lock-sensor lo_locked \
+           --require-timestamps --partial-policy reject --no-pyfftw --precision single \
+           -F json -O "$OUT" --skip-driver-teardown; then echo "== $MHZ MHz ok"; break; fi
+      echo "== $MHZ MHz attempt $TRY failed"; [ "$TRY" = 2 ] && FAILED="$FAILED $MHZ"
+    done
+  done
+  {
+    printf '{"kind":"baseline_captures","version":1,"input":"%s","antenna":"%s","gain_db":%s,"device":"%s",' "$INPUT" "$ANTENNA" "$GAIN_DB" "$DEV"
+    printf '"settings":"-r 56M -b 8192 -t 0.1 -u 20 --settle-samples 32768","failed_mhz":"%s","files":{' "${FAILED# }"
+    SEP=""; for F in "$SESSION"/baseline-*MHz.jsonl; do [ -f "$F" ] || continue
+      printf '%s"%s":"%s"' "$SEP" "$(basename "$F")" "$(shasum -a 256 "$F" | awk '{print $1}')"; SEP=","; done
+    printf '}}\n'
+  } > "$SESSION/manifest.json"
+  RESULT=done; [ -n "$FAILED" ] && RESULT="partial:$FAILED"
+  finish "SESSION=$SESSION
+RESULT=$RESULT"
+  echo "== ferdig: $SESSION ($RESULT)"
+  [ -z "$FAILED" ]; exit $?
+fi
 SUITE="$OUTDIR/suite-$STAMP.json"
 SESSION="$OUTDIR/okt-$STAMP"
 "$PY" -m soapypower.experiments plan "$DEV" -O "$SUITE" --scan-seconds "$SCAN_SECONDS" --gain "$GAIN_DB" --antenna "$ANTENNA" --input "$INPUT" || { finish "RESULT=plan_failed"; exit 1; }

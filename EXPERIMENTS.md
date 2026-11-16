@@ -140,6 +140,7 @@ bash tools/macos_runner/install.sh                      # once: launchd agent + 
 tools/macos_runner/queue.sh probe --wait 120            # Python/SoapySDR/module matrix + B200 serial
 tools/macos_runner/queue.sh setup --wait 170            # sessions/.venv-* with numpy scipy simplesoapy simplespectral
 tools/macos_runner/queue.sh scan --input terminated --wait 600
+tools/macos_runner/queue.sh scan --input terminated --procedure baseline --wait 600   # fixed-tune captures
 bash tools/macos_runner/uninstall.sh
 ```
 
@@ -149,6 +150,11 @@ bash tools/macos_runner/uninstall.sh
   It starts `tools/macos_runner/run_session.sh` from the checkout, which runs the
   checkout's Python anyway. Status, logs and sessions are written to `sessions/`
   (git-ignored).
+- **Baseline captures:** `--procedure baseline` records fixed-tune captures at 110,
+  150, 190, 230 and 270 MHz (20 × 100 ms, same receiver state) with a SHA-256
+  manifest. These are for `soapy_power_calibration baseline` and `compare`
+  ([CALIBRATION_STEPS.md](CALIBRATION_STEPS.md) §6), which need a single tuned grid
+  per file.
 - **Stack discovery:** `run_session.sh` tries each Python interpreter (plus Homebrew,
   `/usr/local` and MacPorts `site-packages`) with each SoapySDR module directory until
   one enumerates exactly one B200. It drops an inherited `PYTHONPATH`, since another

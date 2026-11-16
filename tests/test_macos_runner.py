@@ -25,7 +25,7 @@ if args[0] == '-extract' and isinstance(data, dict) and args[1] in data:
 sys.exit(1)
 '''
 STUB_SESSION = '''#!/bin/bash
-env | grep -E '^(MODE|SCAN_SECONDS|GAIN_DB|ANTENNA|INPUT|REQUEST_FILE)=' | sort > "$SPR_SESSIONS/seen-$MODE"
+env | grep -E '^(MODE|SCAN_SECONDS|GAIN_DB|ANTENNA|INPUT|PROCEDURE|REQUEST_FILE)=' | sort > "$SPR_SESSIONS/seen-$MODE"
 printf 'STAMP=x\\nLOG=%s/stub.log\\nRESULT=%s_ok\\n' "$SPR_SESSIONS" "$MODE" > "$SPR_SESSIONS/last-run.env"
 '''
 
@@ -63,13 +63,16 @@ class MacosRunnerTests(unittest.TestCase):
             self.assertEqual(self.run_script('-n', script).returncode, 0, script.name)
 
     def test_queue_writes_a_typed_plist_and_refuses_bad_arguments(self):
-        done = self.queue('scan', '--seconds', '45', '--gain', '12.5', '--antenna', 'TX/RX', '--input', 'terminated')
+        done = self.queue('scan', '--seconds', '45', '--gain', '12.5', '--antenna', 'TX/RX', '--input', 'terminated',
+                          '--procedure', 'baseline')
         self.assertEqual(done.returncode, 0, done.stderr)
         request = self.sessions / 'queue' / (done.stdout.strip() + '.json')
         self.assertEqual(plistlib.loads(request.read_bytes()), {'mode': 'scan', 'scan_seconds': 45, 'gain_db': 12.5,
-                                                                'antenna': 'TX/RX', 'input': 'terminated'})
+                                                                'antenna': 'TX/RX', 'input': 'terminated',
+                                                                'procedure': 'baseline'})
         for bad in (('hot',), ('scan', '--seconds', '4'), ('scan', '--gain', '71'), ('scan', '--antenna', 'RX1'),
-                    ('scan', '--input', 'dummy'), ('scan', '--seconds'), ('scan', '--wait', 'x')):
+                    ('scan', '--input', 'dummy'), ('scan', '--procedure', 'nf'), ('scan', '--seconds'),
+                    ('scan', '--wait', 'x')):
             self.assertEqual(self.queue(*bad).returncode, 2, bad)
         self.assertEqual(len(list((self.sessions / 'queue').glob('*.json'))), 1)
 
@@ -82,6 +85,7 @@ class MacosRunnerTests(unittest.TestCase):
         raw('evil.json', {'mode': 'scan; rm -rf ~'})
         raw('badinput.json', {'mode': 'scan', 'input': 'antenna;reboot'})
         raw('badnumber.json', {'mode': 'scan', 'scan_seconds': '30 && x'})
+        raw('badproc.json', {'mode': 'scan', 'procedure': 'suite;id'})
         (q / 'notplist.json').write_text('{"mode": "probe"}')
         raw('bad id.json', {'mode': 'probe'})
         result = self.run_script(self.app / 'runner.sh')
@@ -90,12 +94,12 @@ class MacosRunnerTests(unittest.TestCase):
         self.assertIn('"state":"finished"', status(ok))
         self.assertIn('"exit":0', status(ok))
         for name, reason in (('evil', 'mode must be'), ('badinput', 'bad input'), ('badnumber', 'bad number'),
-                             ('notplist', 'invalid')):
+                             ('badproc', 'bad procedure'), ('notplist', 'invalid')):
             self.assertIn('rejected', status(name))
             self.assertIn(reason, status(name))
         self.assertEqual(len(list((self.sessions / 'status').glob('rejected-*.json'))), 1)
         seen = (self.sessions / 'seen-scan').read_text()
-        for line in ('MODE=scan', 'INPUT=terminated', 'GAIN_DB=12.5', 'SCAN_SECONDS=30', 'ANTENNA=RX2'):
+        for line in ('MODE=scan', 'INPUT=terminated', 'GAIN_DB=12.5', 'SCAN_SECONDS=30', 'ANTENNA=RX2', 'PROCEDURE=suite'):
             self.assertIn(line + '\n', seen)
         self.assertIn('REQUEST_FILE={}'.format(self.sessions / 'queue' / 'taken'), seen)
         self.assertEqual(list(q.glob('*.json')), [])
@@ -111,6 +115,10 @@ class MacosRunnerTests(unittest.TestCase):
         env = dict(self.env, MODE='probe', REQUEST_FILE=str(request))
         env.pop('INPUT', None)
         self.assertEqual(self.run_script(session, env=env).returncode, 2)
+        bad = dict(self.env, MODE='probe', INPUT='terminated', PROCEDURE='noise-figure')
+        result = self.run_script(session, env=bad)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('PROCEDURE', result.stdout)
 
 
 if __name__ == '__main__':
