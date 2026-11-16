@@ -71,6 +71,18 @@ class DcSolveTests(unittest.TestCase):
             self.assertTrue(all(abs(v * 64 - round(v * 64)) < 1e-12 for v in result['dc']))
             self.assertLess(np.abs(np.array(result['dc']) - truth).max(), 2 * bp.DC_QUANTUM)
 
+    def test_refinement_corrects_a_nonlinear_control(self):
+        jac = np.array([[-.23, .035], [-.26, -1.03]])
+        truth = np.array([.3906, -.2031])
+        mean = lambda dc: complex(*(jac @ (np.asarray(dc) - truth) + .3 * (np.asarray(dc) - truth) ** 2))
+        base = [0.0, 0.0]
+        q = bp.DC_QUANTUM
+        first = bp.solve_dc(base, mean(base), mean([4 * q, 0]), mean([0, 4 * q]), 4, 4)
+        second = bp.refine_dc(first['dc'], mean(first['dc']), first['jacobian'])
+        self.assertLess(abs(mean(second['dc'])), abs(mean(first['dc'])))
+        self.assertLess(abs(mean(second['dc'])), 2 * bp.quantization_bound(jac))
+        self.assertAlmostEqual(bp.quantization_bound(np.eye(2)), q)
+
     def test_ill_conditioned_and_range(self):
         jac = np.array([[.1, .1], [.1, .1000001]])
         m_base, m_i, m_q = self.simulate(jac, [.01, .01], [0, 0], 8, 8)

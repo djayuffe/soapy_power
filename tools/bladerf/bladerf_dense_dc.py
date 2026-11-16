@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 from bladerf_profile import (DC_QUANTUM, accept_verified, clip_codes, load_json, perturbation_codes,
-                             select, solve_dc)
+                             quantization_bound, refine_dc, select, solve_dc)
 
 
 def main(argv=None):
@@ -31,6 +31,8 @@ def main(argv=None):
                         help='receiver-profile-final.json, validated-full-grid-profile.json, schedule-selection.json')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--limit', type=int, default=0, help='first N centers only (testing)')
+    parser.add_argument('--iterations', type=int, default=2, choices=(1, 2),
+                        help='2: one more verified Newton step where the residual exceeds 1.5x the DAC limit')
     options = parser.parse_args(argv)
     from bladerf_hw import HOP_SAMPLES, Receiver, sample_mean
 
@@ -92,6 +94,23 @@ def main(argv=None):
                     row['reason'] = 'verification did not confirm the solved value'
                 log.write(json.dumps(dict(center_hz=center, role='verify', gains=gains, dc=solved['dc'],
                                           mean=[vq['mean_i'], vq['mean_q']], max_component=vq['max_component'])) + '\n')
+                bound = quantization_bound(solved['jacobian'])
+                row['quantization_bound'] = bound
+                if ok and options.iterations > 1 and abs(verified) > 1.5 * bound:
+                    step = refine_dc(solved['dc'], verified, solved['jacobian'])
+                    if step['dc'] != solved['dc']:
+                        _, _, riq, _, _ = receiver.hop(center, gains, step['dc'])
+                        rq = receiver_quality(riq)
+                        refined = complex(rq['mean_i'], rq['mean_q'])
+                        log.write(json.dumps(dict(center_hz=center, role='refine', gains=gains, dc=step['dc'],
+                                                  mean=[rq['mean_i'], rq['mean_q']], max_component=rq['max_component'])) + '\n')
+                        better = headroom_ok(rq) and abs(refined) < abs(verified)
+                        row['refine'] = dict(dc=step['dc'], mean=[refined.real, refined.imag], accepted=bool(better))
+                        if better:
+                            verified = refined
+                            row.update(normalized_dc=step['dc'], verified_mean=[refined.real, refined.imag],
+                                       verified_max_component=rq['max_component'],
+                                       improvement_db=float(20 * np.log10(max(abs(m0), 1e-9) / max(abs(refined), 1e-9))))
                 rows.append(row)
                 if index % 50 == 0:
                     print('dense-dc %4d/%d %.1f MHz |m| %.4f -> %.4f %s  %.0f s' % (
@@ -105,9 +124,11 @@ def main(argv=None):
                  started_utc=started.isoformat(), finished_utc=datetime.now(timezone.utc).isoformat(),
                  seconds=time.monotonic() - t0, dc_quantum=DC_QUANTUM, centers=len(rows), accepted=len(accepted),
                  hop_samples=HOP_SAMPLES,
+                 iterations=options.iterations,
                  method='Per center at survey stage gains: base + I-step + Q-step captures, 2x2 Jacobian, lattice '
                         'solve, independent verification capture; accepted only if |mean| drops to <=0.7x '
-                        '(or <=0.002) and headroom passes.',
+                        '(or <=0.002) and headroom passes. With 2 iterations, a second verified Newton step '
+                        'where the residual exceeds 1.5x the half-code DAC limit.',
                  scope='Normalized manual DC controls for this device, LMS state, gains and XB domain. '
                        'Not RF calibration; sample means include any signal within ~100 Hz of the LO.',
                  absolute_calibration=False, settling_retries=receiver.retries, points=rows)
