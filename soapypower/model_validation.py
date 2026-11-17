@@ -13,6 +13,7 @@ implied, and validation is always on acquisitions not used for fitting.
 Complex-IQ model (needs raw IQ or a tone PSD):  y = a x + b conj(x) + d + n.
 """
 import json
+from pathlib import Path
 import math
 
 import numpy as np
@@ -92,6 +93,8 @@ class HopStore:
         self.records = 0
         self.max_if = 0.0
         self.origin_sources = set()
+        self.telemetry = []   # per-record telemetry/LO-mapping observations (see hop_telemetry)
+        self.source = None    # label of the file being added (from_files)
 
     def cell_center(self, index):
         return self.start + (np.asarray(index) + .5) * self.cell
@@ -137,6 +140,13 @@ class HopStore:
             row[good] = 10 * np.log10(sums[good] / counts[good])
         hop['passes'].append(row)
         self.records += 1
+        entry = hop_telemetry(meta)
+        if entry:
+            finite_row = row[np.isfinite(row)]
+            entry.update(key=key, center_hz=float(origin), pass_index=len(hop['passes']) - 1, source=self.source,
+                         time_s=_timestamp(record.get('time_start')),
+                         floor_db=float(np.median(finite_row)) if finite_row.size else None)
+            self.telemetry.append(entry)
 
     @classmethod
     def from_files(cls, paths, start_hz, stop_hz, cell_hz, **options):
@@ -144,6 +154,7 @@ class HopStore:
         if isinstance(paths, (str, bytes)) or hasattr(paths, '__fspath__'):
             paths = [paths]
         for path in paths:
+            store.source = Path(str(path)).name
             for record in read_records(path):
                 store.add(record)
         if not store.hops:
@@ -832,10 +843,121 @@ def image_rejection_from_scan(path, tone_hz, window_hz=20e3, floor_offset_hz=100
 
 # ------------------------------------------------------------------ synthetic truth
 
+def _timestamp(text):
+    import datetime
+    try:
+        return datetime.datetime.fromisoformat(str(text)).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def _real(value):
+    return (float(value) if isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) else None)
+
+
+def hop_telemetry(meta):
+    """Temperature, processing-chain and analog-LO observations of one record (empty if none recorded).
+
+    Reads the post-acquisition telemetry snapshot (rf_state.after, soapypower.telemetry) and the
+    controller LO mapping. A temperature counts only when the snapshot marked it fresh.
+    """
+    out = {}
+    rf = meta.get('rf_state')
+    after = rf.get('after') if isinstance(rf, dict) else None
+    if isinstance(after, dict):
+        validity = after.get('validity') if isinstance(after.get('validity'), dict) else {}
+        out['temperature_c'] = _real(validity.get('temperature_c'))
+        chain = after.get('chain') if isinstance(after.get('chain'), dict) else {}
+        out['chain_sha256'] = chain.get('sha256') if isinstance(chain.get('sha256'), str) else None
+        value = chain.get('value') if isinstance(chain.get('value'), dict) else {}
+        tracking = value.get('iq_tracking')
+        out['iq_tracking'] = tracking if isinstance(tracking, bool) else None
+        key = after.get('temperature_sensor_key')
+        reading = (after.get('telemetry') or {}).get(key) if isinstance(after.get('telemetry'), dict) and key else None
+        polled = reading.get('polled_while_streaming') if isinstance(reading, dict) else None
+        out['temperature_polled_while_streaming'] = polled if isinstance(polled, bool) else None
+    mapping = meta.get('lo_mapping')
+    if isinstance(mapping, dict) and mapping.get('status') == 'controller_mapping':
+        out['analog_lo_baseband_hz'] = _real(mapping.get('analog_lo_baseband_hz'))
+    return out
+
+
+def telemetry_summary(stores, dc_mask_hz=0.0, controlled_input=False, min_groups=10):
+    """Receiver telemetry across a session: temperature, drift, floor-vs-temperature, chain, LO placement.
+
+    floor_vs_temperature regresses each hop's median cell level on its RFIC temperature within the
+    same center (both demeaned per center, so RF content cancels). With an uncontrolled antenna
+    input it is a diagnostic only; never applied as a correction. The RFIC sensor is approximate.
+    """
+    entries = [e for store in stores for e in store.telemetry]
+    report = {'status': 'measured' if entries else 'unavailable', 'records': len(entries),
+              'controlled_input': bool(controlled_input), 'applied_as_correction': False,
+              'absolute_temperature_calibrated': False}
+    if not entries:
+        return report
+    temps = [e for e in entries if e.get('temperature_c') is not None]
+    report['records_with_fresh_temperature'] = len(temps)
+    report['temperature_reads_while_streaming'] = sum(1 for e in entries if e.get('temperature_polled_while_streaming') is True)
+    chains = sorted({e['chain_sha256'] for e in entries if e.get('chain_sha256')})
+    report['chain_fingerprints'] = chains
+    report['chain_stable'] = len(chains) <= 1
+    report['iq_tracking_states'] = sorted({e['iq_tracking'] for e in entries if e.get('iq_tracking') is not None})
+    if temps:
+        t = np.array([e['temperature_c'] for e in temps])
+        report.update(temperature_min_c=float(t.min()), temperature_max_c=float(t.max()),
+                      temperature_median_c=float(np.median(t)), temperature_span_c=float(np.ptp(t)))
+        trials = []
+        for source in sorted({e['source'] for e in temps}, key=str):
+            rows = sorted((e['time_s'], e['temperature_c']) for e in temps if e['source'] == source and e['time_s'] is not None)
+            if not rows:
+                continue
+            x = np.array([r[0] for r in rows]); y = np.array([r[1] for r in rows])
+            slope = float(np.polyfit(x - x[0], y, 1)[0] * 60) if np.ptp(x) > 0 and len(rows) >= 3 else None
+            trials.append({'source': source, 'records': len(rows), 'start_c': float(y[0]), 'end_c': float(y[-1]),
+                           'median_c': float(np.median(y)), 'seconds': float(np.ptp(x)), 'slope_c_per_min': slope})
+        report['per_trial'] = trials
+        slopes = [abs(r['slope_c_per_min']) for r in trials if r['slope_c_per_min'] is not None]
+        report['max_abs_trial_slope_c_per_min'] = max(slopes) if slopes else None
+        groups = {}
+        for e in temps:
+            if e.get('floor_db') is not None:
+                groups.setdefault(e['key'], []).append((e['temperature_c'], e['floor_db']))
+        dt, dy = [], []
+        for rows in groups.values():
+            if len(rows) < 2:
+                continue
+            a = np.array(rows)
+            dt.extend(a[:, 0] - a[:, 0].mean()); dy.extend(a[:, 1] - a[:, 1].mean())
+        dt, dy = np.array(dt), np.array(dy)
+        used = sum(1 for rows in groups.values() if len(rows) >= 2)
+        regression = {'centers': used, 'observations': int(dt.size), 'within_center_temperature_sd_c': float(dt.std()) if dt.size else 0.0}
+        if used < min_groups or dt.size < used + 3 or float((dt ** 2).sum()) <= 1e-12:
+            regression['status'] = 'insufficient_temperature_variation'
+        else:
+            slope = float((dt * dy).sum() / (dt ** 2).sum())
+            residual = dy - slope * dt
+            dof = dt.size - used - 1
+            se = float(math.sqrt((residual ** 2).sum() / dof / (dt ** 2).sum())) if dof > 0 else None
+            r = float(np.corrcoef(dt, dy)[0, 1]) if dy.std() > 0 else 0.0
+            regression.update(status='fit', slope_db_per_c=slope, slope_se_db=se, correlation=r,
+                              explained_fraction=r * r,
+                              interpretation=('receiver gain/noise drift with temperature' if controlled_input
+                                              else 'diagnostic only: antenna input is not a controlled source'))
+        report['floor_vs_temperature'] = regression
+    lo = np.array([e['analog_lo_baseband_hz'] for e in entries if e.get('analog_lo_baseband_hz') is not None])
+    if lo.size:
+        report['lo_mapping'] = {'records': int(lo.size), 'max_abs_analog_lo_offset_hz': float(np.abs(lo).max()),
+                                'records_lo_outside_dc_mask': int((np.abs(lo) > dc_mask_hz / 2).sum()) if dc_mask_hz else None,
+                                'dc_mask_hz': float(dc_mask_hz)}
+    return report
+
+
 def synthetic_scan(path, start_hz, stop_hz, hop_hz, passes=6, rate_hz=56e6, bins=8192,
                    retained_hz=None, if_response=None, floor_db=-150.0, tones=(),
                    lo_spur_db=20.0, sigma_db=0.15, seed=1, tone_scale=1.0, offset_hz=0.0,
-                   image_rejection_db=None, frequency_grid=True, context=None, harmonic_sources=()):
+                   image_rejection_db=None, frequency_grid=True, context=None, harmonic_sources=(),
+                   temperature=None, thermal_db_per_c=0.0, lo_offset_hz=0.0, time_origin_s=0.0):
     """Write a spec-conformant JSONL scan from a known model (test/dry-run truth).
 
     Bins follow an even FFT (DC bin at index n/2, as soapy_power records). The DC bin
@@ -843,6 +965,9 @@ def synthetic_scan(path, start_hz, stop_hz, hop_hz, passes=6, rate_hz=56e6, bins
     The LO spur sits at DC (IF-fixed). Tones: (rf_hz, level_db above floor); with
     image_rejection_db each tone also produces its IQ image at 2*origin - rf.
     harmonic_sources: (source_hz, order, sign, dB above floor) responses at IF = sign*(order*LO - source).
+    temperature(t_s) -> deg C adds telemetry snapshots (rf_state/lo_mapping, as soapypower.telemetry
+    records them) and scales every level by thermal_db_per_c relative to temperature(0);
+    t_s counts from time_origin_s at 0.05 s per record.
     """
     import datetime
     from pathlib import Path
@@ -878,12 +1003,22 @@ def synthetic_scan(path, start_hz, stop_hz, hop_hz, passes=6, rate_hz=56e6, bins
                     near = np.abs(offset - sign * (order * center - source)) <= step * 1.5
                     lin[near] += 10 ** ((floor_db + level + if_response(offset[near])) / 10)
                 lin[np.abs(offset) < step * 1.5] += 10 ** ((floor_db + lo_spur_db) / 10)
+                t_s = time_origin_s + tick * .05
+                if temperature is not None:
+                    lin *= 10 ** (thermal_db_per_c * (temperature(t_s) - temperature(0.0)) / 10)
                 db = 10 * np.log10(lin)
                 db[n // 2] = floor_db  # interpolated DC estimate, flagged below
-                ts = t0 + datetime.timedelta(seconds=tick * .05)
+                ts = t0 + datetime.timedelta(seconds=t_s)
                 tick += 1
                 metadata = {'measurement_status': 'complete', 'continuity': 'verified', 'context': context,
                             'estimated_bins': [n // 2], 'frequency_sign': 1}
+                if temperature is not None:
+                    metadata['rf_state'] = {'after': {
+                        'validity': {'passed': True, 'temperature_c': float(temperature(t_s))},
+                        'chain': {'status': 'ok', 'sha256': 'synthetic-chain', 'value': {'iq_tracking': True}},
+                        'temperature_sensor_key': 'rx:temp',
+                        'telemetry': {'rx:temp': {'status': 'ok', 'fresh': True, 'polled_while_streaming': False}}}}
+                    metadata['lo_mapping'] = {'status': 'controller_mapping', 'analog_lo_baseband_hz': float(lo_offset_hz)}
                 if frequency_grid:
                     metadata['frequency_grid'] = {'rf_origin_hz': center, 'step_hz': step,
                                                   'first_bin_index': int(k[0]), 'bin_count': n}

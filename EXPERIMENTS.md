@@ -169,6 +169,31 @@ declared terminated and antenna. It reports:
 - **IF response agreement:** how closely the two sessions' IF responses match. With
   the antenna mostly at the receiver floor, they should agree.
 
+## Telemetry per hop
+
+Suites planned since 2026-11-17 carry a telemetry policy (`TELEMETRY_POLICY`; `plan --no-telemetry`
+turns it off, `--require-temperature` makes a missing or stale RFIC temperature reject a hop). `run`
+writes it to `telemetry-policy.json` in the session, records its SHA-256 in the ledger and passes
+`--telemetry-policy` to every scan. Each record then carries `soapypower.telemetry` snapshots: RFIC
+temperature (read at most once per second, only between hops while the stream is closed),
+LO/reference lock, RSSI, processing-chain fingerprint and IQ-tracking state when the native SoapyUHD
+extension is present, and the controller's analog-LO mapping.
+
+`analyze` adds an informational `telemetry` check:
+
+- temperature range, and drift per trial (°C/min, linear fit over the trial);
+- `floor_vs_temperature`: each hop's median cell level regressed on its temperature within the same
+  center (both demeaned per center, so RF content cancels). With a terminated input this measures
+  the receiver's gain/noise drift; with an antenna it is a diagnostic only. It is never applied as
+  a correction;
+- distinct chain fingerprints and IQ-tracking states (a change means the processing chain differed
+  between hops);
+- the largest analog-LO offset from the spectrum origin, and how many records place the LO outside
+  the DC mask (the LO leakage would then be fused as signal).
+
+In a dry run with a known 0.04 °C/s ramp and −0.30 dB/°C, the check recovers −0.30 ± 0.02 dB/°C
+and flags a 2 MHz LO offset on every record.
+
 ## Harmonic mixing responses
 
 A direct-conversion receiver also responds near odd LO harmonics. A source at `f`

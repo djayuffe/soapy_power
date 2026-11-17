@@ -621,3 +621,67 @@ class CliTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TelemetryTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_plan_argv_and_policy_file(self):
+        suite = ex.default_suite('driver=x')
+        self.assertEqual(suite['telemetry'], ex.TELEMETRY_POLICY)
+        self.assertIsNone(ex.default_suite('driver=x', telemetry=False)['telemetry'])
+        self.assertTrue(ex.default_suite('driver=x', require_temperature=True)['telemetry']['require_temperature'])
+        argv = ex.scan_argv('driver=x', 1e8, 2e8, 10, 'o.jsonl', telemetry_policy='p.json')
+        self.assertEqual(argv[-2:], ['--telemetry-policy', 'p.json'])
+        self.assertNotIn('--telemetry-policy', ex.scan_argv('driver=x', 1e8, 2e8, 10, 'o.jsonl'))
+        rig = ex.SimulatedRig()
+        seen = []
+        runner = lambda trial, argv, output, timeout: seen.append(argv) or rig.runner(trial, argv, output, timeout)
+        ledger = ex.run_suite(dict(suite, trials=suite['trials'][:1]), self.dir / 's', None, runner, data_source='simulated')
+        policy = self.dir / 's' / 'telemetry-policy.json'
+        self.assertEqual(json.loads(policy.read_text()), ex.TELEMETRY_POLICY)
+        self.assertEqual(seen[0][-1], str(policy))
+        from soapypower.telemetry import TelemetryPolicy
+        self.assertEqual(ledger['telemetry_policy_sha256'], TelemetryPolicy(ex.TELEMETRY_POLICY).sha256)
+        args = ['plan', 'driver=x', '-O', str(self.dir / 'p.json'), '--no-telemetry']
+        self.assertEqual(ex.main(args), 0)
+        self.assertIsNone(json.loads((self.dir / 'p.json').read_text())['telemetry'])
+
+    def run_session(self, name, **rig):
+        suite = ex.default_suite('driver=simulated', scan_seconds=1.0)
+        r = ex.SimulatedRig(**rig)
+        ex.run_suite(suite, self.dir / name, None, r.runner, data_source='simulated')
+        return ex.analyze(self.dir / name)
+
+    def test_dry_run_recovers_a_known_thermal_slope_and_lo_placement(self):
+        report = self.run_session('thermal', temperature=lambda t: 45.0 + .04 * t, thermal_db_per_c=-.3)
+        self.assertTrue(report['passed'])
+        tel = report['checks']['telemetry']
+        self.assertFalse(tel['gating'])
+        self.assertFalse(tel['applied_as_correction'])
+        self.assertEqual(tel['records'], tel['records_with_fresh_temperature'])
+        self.assertEqual(tel['temperature_reads_while_streaming'], 0)
+        self.assertTrue(tel['chain_stable'])
+        self.assertEqual(tel['iq_tracking_states'], [True])
+        self.assertGreater(tel['temperature_span_c'], .5)
+        self.assertEqual(len(tel['per_trial']), 4)
+        self.assertAlmostEqual(tel['per_trial'][0]['slope_c_per_min'], .04 * 60, places=6)
+        fit = tel['floor_vs_temperature']
+        self.assertEqual(fit['status'], 'fit')
+        self.assertAlmostEqual(fit['slope_db_per_c'], -.3, delta=.02)
+        self.assertGreater(fit['explained_fraction'], .9)
+        self.assertEqual(tel['lo_mapping']['records_lo_outside_dc_mask'], 0)
+        self.assertIn('floor_db_per_c', ex._summary(report))
+
+    def test_flat_temperature_and_misplaced_lo(self):
+        report = self.run_session('flat', temperature=lambda t: 46.0, lo_offset_hz=2e6)
+        tel = report['checks']['telemetry']
+        self.assertEqual(tel['temperature_span_c'], 0.0)
+        self.assertEqual(tel['floor_vs_temperature']['status'], 'insufficient_temperature_variation')
+        self.assertEqual(tel['lo_mapping']['records_lo_outside_dc_mask'], tel['lo_mapping']['records'])
+        self.assertNotIn('telemetry', self.run_session('none')['checks'])

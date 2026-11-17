@@ -36,6 +36,10 @@ OVERLAP_PERCENT = 87.5244140625  # exactly 1022 of 8192 bins retained per hop
 DEFAULT_DELAYS_S = (0.0, 0.002, 0.005, 0.01, 0.02, 0.04, 0.08, 0.2)
 ACCEPTANCE = {'max_repeat_sigma_db': 0.5, 'max_if_disagreement_db': 0.25, 'settling_tolerance_db': 0.1}
 INPUTS = ('antenna', 'terminated')
+# Typed telemetry per hop (soapypower.telemetry): RFIC temperature read at most once per second, only
+# while the stream is closed between hops (the suite reopens it per hop), plus sensors, processing-chain
+# fingerprint and controller LO mapping. Recording only: no thermal correction is applied.
+TELEMETRY_POLICY = {'version': 1, 'temperature_interval_s': 1.0, 'temperature_max_age_s': 3.0}
 
 
 # ----------------------------------------------------------------- geometry/commands
@@ -59,7 +63,7 @@ def hop_plan(start_hz, stop_hz, rate_hz=RATE_HZ, bins=BINS, overlap_percent=OVER
 
 def scan_argv(device, start_hz, stop_hz, seconds, output, antenna='RX2', gain_db=20.0,
               rate_hz=RATE_HZ, bins=BINS, overlap_percent=OVERLAP_PERCENT, integration_s=0.005,
-              tune_delay_s=0.02, settle_samples=32768, executable='soapy_power'):
+              tune_delay_s=0.02, settle_samples=32768, executable='soapy_power', telemetry_policy=None):
     """Acquisition policy of examples/ettus/scan.sh as an argument vector.
 
     --skip-driver-teardown: the run's status is decided once the output is closed; UHD's
@@ -74,7 +78,8 @@ def scan_argv(device, start_hz, stop_hz, seconds, output, antenna='RX2', gain_db
             '--tune-delay', '{:g}'.format(tune_delay_s), '--settle-samples', str(int(settle_samples)),
             '--lock-sensor', 'lo_locked', '--reopen-stream', '--deadline-policy', 'finish-hop',
             '--require-timestamps', '--partial-policy', 'reject', '--no-pyfftw',
-            '--precision', 'single', '--max-threads', '4', '--max-queue-size', '4', '--skip-driver-teardown']
+            '--precision', 'single', '--max-threads', '4', '--max-queue-size', '4', '--skip-driver-teardown'] + (
+            ['--telemetry-policy', str(telemetry_policy)] if telemetry_policy is not None else [])
 
 
 def calibration_config(device, levels_dbm, max_receiver_input_dbm, path_loss_db, reference,
@@ -113,7 +118,7 @@ def calibration_config(device, levels_dbm, max_receiver_input_dbm, path_loss_db,
 def default_suite(device, tone_rf_hz=200e6, tone_dbm=None, max_receiver_input_dbm=None, path_loss_db=None,
                   delays_s=DEFAULT_DELAYS_S, scan_seconds=60.0, settle_seconds=20.0, antenna='RX2',
                   gain_db=20.0, overlap_percent=OVERLAP_PERCENT, band_hz=BAND_HZ, settle_samples=32768,
-                  input_kind='antenna'):
+                  input_kind='antenna', telemetry=True, require_temperature=False):
     """Interleaved shifted hop grids (A, B), later holdout repeats, optional settling sweep.
 
     Grid B starts half a hop lower. A perfectly periodic grid identifies the IF
@@ -121,7 +126,9 @@ def default_suite(device, tone_rf_hz=200e6, tone_dbm=None, max_receiver_input_db
     Settling trials scan a window around the tone with --settle-samples 0, so the
     tune delay (plus the lock wait) is the only settling control being varied.
     input_kind is the operator's declaration of what is connected to the port
-    ('antenna' or 'terminated'); the software cannot verify it.
+    ('antenna' or 'terminated'); the software cannot verify it. telemetry records the
+    TELEMETRY_POLICY snapshots per hop; require_temperature makes a stale or missing RFIC
+    temperature reject the hop.
     """
     if not isinstance(device, str) or not device:
         raise ValueError('device selector must be a nonempty string')
@@ -170,7 +177,9 @@ def default_suite(device, tone_rf_hz=200e6, tone_dbm=None, max_receiver_input_db
     return {'version': 1, 'kind': 'experiment_suite', 'device': device, 'band_hz': [start, stop],
             'geometry': {k: v for k, v in geometry.items() if k != 'centers_hz'}, 'tone_rf_hz': tone_rf_hz,
             'source_limits': limits, 'trials': trials, 'acceptance': dict(ACCEPTANCE),
-            'input': {'kind': input_kind, 'port': antenna, 'declared_by': 'operator'}}
+            'input': {'kind': input_kind, 'port': antenna, 'declared_by': 'operator'},
+            'telemetry': (dict(TELEMETRY_POLICY, **({'require_temperature': True} if require_temperature else {}))
+                          if telemetry else None)}
 
 
 def _sha256(path):
@@ -206,6 +215,12 @@ def run_suite(suite, directory, source=None, runner=subprocess_runner, retries=1
     ledger = {'kind': 'experiment_ledger', 'version': 1, 'status': 'running', 'data_source': data_source,
               'suite': suite, 'started_utc': clock().isoformat(), 'trials': [], 'calibrated': False}
     path = directory / 'ledger.json'
+    policy_path = None
+    if suite.get('telemetry') is not None:
+        from soapypower.telemetry import TelemetryPolicy
+        ledger['telemetry_policy_sha256'] = TelemetryPolicy(suite['telemetry']).sha256
+        policy_path = directory / 'telemetry-policy.json'
+        write_json(policy_path, suite['telemetry'])
     write_json(path, ledger)
     last = {'state': 'unknown', 'rf_hz': suite['trials'][0]['start_hz']}
 
@@ -233,7 +248,7 @@ def run_suite(suite, directory, source=None, runner=subprocess_runner, retries=1
                     argv = scan_argv(suite['device'], trial['start_hz'], trial['stop_hz'], trial['seconds'], output,
                                      trial['antenna'], trial['gain_db'], overlap_percent=trial['overlap_percent'],
                                      tune_delay_s=trial['tune_delay_s'], settle_samples=trial['settle_samples'],
-                                     executable=executable)
+                                     executable=executable, telemetry_policy=policy_path)
                     record['argv'] = argv
                     result = runner(trial, argv, output, trial['seconds'] + timeout_margin_s)
                     record.update(result)
@@ -366,6 +381,10 @@ def analyze(directory, cell_hz=100e3, dc_mask_hz=500e3, edge_fraction=0.12, tone
         report['required'].append('settling')
         checks['image_rejection'] = dict(mv.image_rejection_from_scan(settle[delays[-1]], tone, tone_window_hz,
                                                                       dc_mask_hz=dc_mask_hz), gating=False)
+    stores = [fit_store] + ([test_store] if holdout_files else [])
+    if any(store.telemetry for store in stores):
+        checks['telemetry'] = dict(mv.telemetry_summary(stores, dc_mask_hz, controlled_input=input_kind == 'terminated'),
+                                   gating=False)
     report['passed'] = all(checks[name].get('passed') is True for name in report['required'])
     write_json(directory / 'analysis.json', report, overwrite=True)
     return report
@@ -423,7 +442,8 @@ class SimulatedRig:
     """Receiver + CW source simulator with known truth for a full pipeline dry run."""
 
     def __init__(self, truth_if=None, tau_s=0.008, amplitude_db=1.5, image_rejection_db=35.0,
-                 tone_above_floor_db=50.0, fail_first=False, environment=(), seed=0, harmonic_sources=()):
+                 tone_above_floor_db=50.0, fail_first=False, environment=(), seed=0, harmonic_sources=(),
+                 temperature=None, thermal_db_per_c=0.0, lo_offset_hz=0.0):
         import numpy as np
         self.truth = truth_if or (lambda f: -1.2 * (f / 14e6) ** 2 + .25 * np.sin(2 * np.pi * f / 5e6))
         self.tau, self.amplitude, self.irr, self.tone_db = tau_s, amplitude_db, image_rejection_db, tone_above_floor_db
@@ -431,6 +451,8 @@ class SimulatedRig:
         self.environment = list(environment)  # always-present RF-fixed (rf_hz, dB above floor)
         self.seed = int(seed)
         self.harmonic_sources = list(harmonic_sources)  # (source_hz, order, sign, dB): LO-harmonic responses
+        self.temperature, self.thermal_db_per_c, self.lo_offset_hz = temperature, thermal_db_per_c, lo_offset_hz
+        self.clock_s = 0.0  # session time across trials, for the temperature model
         self.source_state = {'state': 'off'}
         self.calls = []
 
@@ -449,11 +471,14 @@ class SimulatedRig:
             tones = [(self.source_state['rf_hz'], self.tone_db)]  # settling trials: the tone alone
             scale = 10 ** (-self.amplitude * math.exp(-trial['tune_delay_s'] / self.tau) / 10)
             bins, passes = 4096, 2
-        mv.synthetic_scan(output, trial['start_hz'], trial['stop_hz'], hop_hz=plan['hop_hz'], bins=bins,
+        centers = mv.synthetic_scan(output, trial['start_hz'], trial['stop_hz'], hop_hz=plan['hop_hz'], bins=bins,
                           passes=passes, if_response=self.truth, tones=tones, tone_scale=scale,
                           image_rejection_db=self.irr, seed=zlib.crc32('{}/{}'.format(self.seed, trial['id']).encode()),
                           harmonic_sources=self.harmonic_sources,
-                          offset_hz=plan['centers_hz'][0] - trial['start_hz'] - plan['hop_hz'] / 2)
+                          offset_hz=plan['centers_hz'][0] - trial['start_hz'] - plan['hop_hz'] / 2,
+                          temperature=self.temperature, thermal_db_per_c=self.thermal_db_per_c,
+                          lo_offset_hz=self.lo_offset_hz, time_origin_s=self.clock_s)
+        self.clock_s += .05 * passes * len(centers)
         return {'returncode': 0, 'seconds': 0.0, 'stderr_tail': ''}
 
 
@@ -466,8 +491,13 @@ def _summary(report):
         mark = 'required' if name in report['required'] else 'info'
         keys = ('sigma_db', 'identifiable_components', 'median_redundancy', 'agreement', 'improvement_db',
                 'delay_s', 'status', 'median_image_rejection_db', 'min_lower_bound_db',
-                'floor_median_db', 'flatness_p5_p95_db', 'intermittent_cells')
+                'floor_median_db', 'flatness_p5_p95_db', 'intermittent_cells', 'records_with_fresh_temperature',
+                'temperature_min_c', 'temperature_max_c', 'max_abs_trial_slope_c_per_min', 'chain_stable')
         detail = {k: check[k] for k in keys if k in check}
+        if isinstance(check.get('floor_vs_temperature'), dict) and check['floor_vs_temperature'].get('status') == 'fit':
+            detail['floor_db_per_c'] = check['floor_vs_temperature']['slope_db_per_c']
+        if isinstance(check.get('lo_mapping'), dict):
+            detail['lo_outside_dc_mask'] = check['lo_mapping']['records_lo_outside_dc_mask']
         if 'agreement' in detail:
             detail['agreement'] = detail['agreement'].get('rms_db')
         if check.get('internal_features') is not None:
@@ -529,6 +559,9 @@ def main(argv=None):
     a.add_argument('--gain', type=float, default=20.0)
     a.add_argument('--input', choices=INPUTS, default='antenna',
                    help='what is connected to the port (operator declaration)')
+    a.add_argument('--no-telemetry', action='store_true', help='do not record per-hop telemetry snapshots')
+    a.add_argument('--require-temperature', action='store_true',
+                   help='reject a hop whose RFIC temperature is missing or older than 3 s')
     b = sub.add_parser('run', help='execute a suite with real hardware')
     b.add_argument('suite')
     b.add_argument('directory', help='new session directory')
@@ -561,7 +594,8 @@ def main(argv=None):
             suite = default_suite(args.device, args.tone_mhz * 1e6, args.tone_dbm, args.max_receiver_input_dbm,
                                   args.path_loss_db, scan_seconds=args.scan_seconds, antenna=args.antenna,
                                   gain_db=args.gain, band_hz=(args.start_mhz * 1e6, args.stop_mhz * 1e6),
-                                  input_kind=args.input)
+                                  input_kind=args.input, telemetry=not args.no_telemetry,
+                                  require_temperature=args.require_temperature)
             write_json(args.output, suite)
             return 0
         if args.cmd == 'calibration-config':
