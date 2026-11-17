@@ -269,9 +269,10 @@ if [ "$PROCEDURE" = fullrange ]; then
   SESSION="$OUTDIR/fullrange-$STAMP"; mkdir -p "$SESSION"
   printf '%s\n' '{"version":1,"temperature_interval_s":1.0,"temperature_max_age_s":3.0}' > "$SESSION/telemetry-policy.json"
   FAILED=""
-  for VARIANT in features-on features-off; do
+  VARIANTS="features-on features-off"; case " $PLAN_ARGS " in *" --only-on "*) VARIANTS=features-on;; *" --only-off "*) VARIANTS=features-off;; esac
+  for VARIANT in $VARIANTS; do
     OUT="$SESSION/$VARIANT.jsonl"
-    EXTRA=""; [ "$VARIANT" = features-on ] && EXTRA="--rf-state --headroom --headroom-retries 2 --ensure-coverage --telemetry-policy $SESSION/telemetry-policy.json"
+    EXTRA=""; [ "$VARIANT" = features-on ] && EXTRA="--rf-state --headroom --headroom-retries 2 --rejection-evidence $SESSION/rejected-iq-$STAMP --ensure-coverage --telemetry-policy $SESSION/telemetry-policy.json"
     # shellcheck disable=SC2046
     "$PY" -c 'import sys;from soapypower.experiments import scan_argv;print("\0".join(scan_argv(sys.argv[1],70e6,6e9,float(sys.argv[2]),sys.argv[3],antenna=sys.argv[4],gain_db=float(sys.argv[5]),executable=sys.argv[6])))' \
       "$DEV" "$SCAN_SECONDS" "$OUT" "$ANTENNA" "$GAIN_DB" "$WRAP" > "$SESSION/$VARIANT.argv0" || { FAILED="$FAILED $VARIANT"; continue; }
