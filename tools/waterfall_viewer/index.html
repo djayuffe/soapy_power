@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="no"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>soapy_power — Full range 3D</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 700px at 70% -10%,#13244a 0%,#070b14 55%);color:#c9d4e6;font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;min-height:100vh}
+header{padding:20px 28px 6px}
+h1{margin:0;font-size:26px;letter-spacing:.3px;background:linear-gradient(90deg,#00d1ff,#7bffb2 45%,#ffd166 75%,#ff3d81);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:#8fa3c4;font-size:12.5px;margin-top:4px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 28px}
+.seg{display:flex;border:1px solid #2b3a55;border-radius:10px;overflow:hidden;background:#0b1222}
+.seg button,.btn{background:transparent;color:#c9d4e6;border:0;padding:8px 14px;cursor:pointer;font:inherit}
+.seg button+button{border-left:1px solid #2b3a55}
+.seg button.on{background:linear-gradient(180deg,#17325f,#10244a);color:#fff;box-shadow:inset 0 0 12px #00d1ff55}
+.btn{border:1px solid #2b3a55;border-radius:10px;background:#0b1222}
+.btn.on{box-shadow:inset 0 0 12px #7bffb255;color:#fff}
+select{background:#0b1222;color:#c9d4e6;border:1px solid #2b3a55;border-radius:10px;padding:8px 10px;font:inherit}
+#plot{height:min(72vh,760px);margin:0 12px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;padding:8px 28px 6px}
+.tile{background:#0b1222cc;border:1px solid #1f2d49;border-radius:12px;padding:10px 12px}
+.tile b{display:block;font-size:20px;color:#fff}.tile span{font-size:11.5px;color:#8fa3c4}
+.note{padding:6px 28px 28px;color:#8fa3c4;font-size:12.5px;max-width:1100px}
+#hover{color:#ffd166;padding:0 28px;min-height:20px;font-size:13px}
+</style></head><body>
+<header><h1>Full range 70 MHz–6 GHz — 3D vannfall</h1>
+<div class="sub">B200mini · antenne · 2026-11-17 · relative, ukalibrerte nivåer · bånd-navn er nominelle tildelinger · dra for å rotere, scroll for zoom</div></header>
+<div class="bar">
+ <div class="seg" id="mode"><button data-m="on" class="on">Features ON</button><button data-m="off">Features OFF</button><button data-m="delta">ON-pass − OFF-median</button><button data-m="zoom">100–300 MHz</button></div>
+ <div class="seg" id="xs"><button data-x="sqrt" class="on">√-skala</button><button data-x="lin">lineær</button></div>
+ <select id="cs"><option>Turbo</option><option>Inferno</option><option>Viridis</option><option>Plasma</option><option>Electric</option><option>Jet</option></select>
+ <button class="btn" id="spin">▶ Auto-rotér</button>
+ <button class="btn" id="cut">Skjær ut støygulv</button>
+</div>
+<div id="hover">Hold musepekeren over flaten for frekvens · pass · nivå.</div>
+<div id="plot"></div>
+<div class="tiles" id="tiles"></div>
+<div class="note">ON = rf-state + headroom + ensure-coverage + telemetri; OFF = ren skanning. Hvert pass er ett sveip 70 MHz–6 GHz (ON ≈ 12 s, OFF ≈ 33 s), 2 MHz-celler. Antenne betyr at miljøet endrer seg mellom kjøringene; «ON-pass − OFF-median» viser derfor både funksjonseffekt og miljø. Blokker ved 150–160 og 245–275 MHz i ON er hop-brede og kan være en planartefakt — uavklart uten 50 Ω-kjøring.</div>
+<script>
+const BANDS=[['FM',98],['DAB',225],['LTE800',805],['GSM900',935],['GSM1800',1840],['UMTS',2120],['WiFi 2.4',2410]];
+const TICKS=[100,300,1000,2000,3000,4500,6000];
+let W,state={m:'on',x:'sqrt',cs:'Turbo',spin:false,cut:false},fgrid={},raf=null,ang=-58*Math.PI/180;
+const sq=Math.sqrt;
+function med(col){const a=col.filter(v=>v!=null).sort((x,y)=>x-y);return a.length?a[a.length>>1]:null}
+function prep(name){const g=W[name].grid,ok=g.map(r=>r.filter(v=>v!=null).length/r.length>.5);return g.filter((_,i)=>ok[i])}
+function medProfile(g){return g[0].map((_,j)=>med(g.map(r=>r[j])))}
+function build(){
+  const f=Array.from({length:g_n},(_,i)=>W.start_mhz+W.cell_mhz*(i+.5));
+  let Z,fx=f,ylab='pass',title,zr=[-136,-100],cmin=-136,cmax=-104;
+  const on=prep('features-on'),off=prep('features-off');
+  if(state.m==='on')Z=on; else if(state.m==='off')Z=off;
+  else if(state.m==='delta'){const mo=medProfile(off);Z=on.map(r=>r.map((v,j)=>v==null||mo[j]==null?null:v-mo[j]));zr=[-12,24];cmin=-8;cmax=20}
+  else{Z=on;const k=f.map((x,i)=>x>=100&&x<=300?i:-1).filter(i=>i>=0);fx=k.map(i=>f[i]);Z=on.map(r=>k.map(i=>r[i]));}
+  if(state.cut&&state.m!=='delta'){Z=Z.map(r=>r.map(v=>v==null?null:Math.max(v,-134)));cmin=-134}
+  const X=state.m==='zoom'||state.x==='lin'?fx:fx.map(sq);
+  const Y=Z.map((_,i)=>i);
+  const lin=state.m==='zoom'||state.x==='lin';
+  const trace={type:'surface',x:X,y:Y,z:Z,colorscale:state.cs,cmin,cmax,showscale:true,connectgaps:false,
+    colorbar:{title:{text:state.m==='delta'?'Δ dB':'dB rel.'},tickfont:{color:'#c9d4e6'},titlefont:{color:'#c9d4e6'},len:.6},
+    lighting:{ambient:.65,diffuse:.9,specular:.35,roughness:.4},
+    contours:{z:{show:true,usecolormap:true,project:{z:false},width:1}},
+    hovertemplate:'%{customdata[0]:.1f} MHz<br>pass %{y}<br>%{z:.1f} dB<extra></extra>',
+    customdata:Z.map(()=>fx.map(x=>[x]))};
+  trace.customdata=Z.map(()=>fx.map(x=>[x]));
+  const tv=lin?(state.m==='zoom'?[100,150,200,250,300]:[70,1000,2000,3000,4000,5000,6000]):TICKS.map(sq);
+  const tt=lin?tv.map(String):TICKS.map(String);
+  const layout={paper_bgcolor:'rgba(0,0,0,0)',margin:{l:0,r:0,t:0,b:0},
+    scene:{bgcolor:'rgba(7,11,20,.0)',aspectmode:'manual',aspectratio:{x:state.m==='zoom'?2:2.6,y:1.2,z:.9},
+     xaxis:{title:'RF (MHz'+(lin?')':', √-skala)'),tickvals:tv,ticktext:tt,color:'#c9d4e6',gridcolor:'#24324f',backgroundcolor:'#0a1020',showbackground:true},
+     yaxis:{title:'pass (tid)',color:'#c9d4e6',gridcolor:'#24324f',backgroundcolor:'#0a1020',showbackground:true},
+     zaxis:{title:'dB',range:zr,color:'#c9d4e6',gridcolor:'#24324f',backgroundcolor:'#0a1020',showbackground:true},
+     camera:{eye:{x:1.9*Math.cos(ang),y:1.9*Math.sin(ang)*-1,z:1.0}}},
+    font:{color:'#c9d4e6'}};
+  const ann=[];
+  if(!lin&&state.m!=='zoom'&&state.m!=='delta')BANDS.forEach(([n,fq])=>{if(Z.length)ann.push({x:sq(fq),y:-1,z:-102,text:n,showarrow:false,font:{color:'#ffd166',size:11}})});
+  layout.scene.annotations=ann;
+  Plotly.react('plot',[trace],layout,{responsive:true,displaylogo:false});
+  const el=document.getElementById('plot'); el.removeAllListeners&&el.removeAllListeners('plotly_hover');
+  el.on('plotly_hover',e=>{const p=e.points[0];document.getElementById('hover').textContent=`${p.customdata[0].toFixed(1)} MHz · pass ${p.y} · ${p.z.toFixed(1)} dB`});
+  tiles(Z,on,off);
+}
+function tiles(Z,on,off){
+  const all=Z.flat().filter(v=>v!=null);const mx=Math.max(...all),mn=Math.min(...all);
+  document.getElementById('tiles').innerHTML=[['passer',Z.length],['celler/pass',Z[0].length],['maks',mx.toFixed(1)+' dB'],['min',mn.toFixed(1)+' dB'],['dynamikk',(mx-mn).toFixed(1)+' dB'],['ON / OFF passer',on.length+' / '+off.length]].map(([a,b])=>`<div class="tile"><b>${b}</b><span>${a}</span></div>`).join('');
+}
+let g_n=0;
+fetch('waterfall.json').then(r=>r.json()).then(j=>{W=j;g_n=j['features-on'].grid[0].length;build()});
+document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#mode button').forEach(x=>x.classList.remove('on'));b.classList.add('on');state.m=b.dataset.m;build()});
+document.querySelectorAll('#xs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#xs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');state.x=b.dataset.x;build()});
+document.getElementById('cs').onchange=e=>{state.cs=e.target.value;build()};
+document.getElementById('cut').onclick=e=>{state.cut=!state.cut;e.target.classList.toggle('on',state.cut);build()};
+document.getElementById('spin').onclick=e=>{state.spin=!state.spin;e.target.classList.toggle('on',state.spin);e.target.textContent=state.spin?'■ Stopp':'▶ Auto-rotér';
+  if(state.spin){const step=()=>{if(!state.spin)return;ang+=.006;Plotly.relayout('plot',{'scene.camera.eye':{x:1.9*Math.cos(ang),y:-1.9*Math.sin(ang),z:1.0}});raf=requestAnimationFrame(step)};step()}};
+</script></body></html>
