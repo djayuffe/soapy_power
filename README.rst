@@ -471,3 +471,17 @@ ladder. A low residual line contrast is not an amplitude-accuracy specification.
 The driver-accepted 42–6008 MHz experiments extend beyond Ettus's published
 70 MHz–6 GHz RF operating range; successful streaming does not certify those
 outer frequencies. See the roadmap's primary-source references and scope notes.
+
+Receiver quality and comparison algorithms
+-----------------------------------------
+
+The main scanner supports optional raw headroom gates, durable rejected-IQ
+evidence, state-bound gain/DC profiles, RF readback snapshots and mask-aware
+positive-support scan planning. Portable offline analysis provides area-overlap
+rebinning, provenance-preserving fusion, exact-state terminated-noise ratios,
+common-band IQ/held-out phase analysis and diagnostic spur recurrence checks.
+
+See `Receiver quality examples <examples/receiver_quality/README.md>`_ and the
+`implementation gap ledger <IMPLEMENTATION_GAPS.md>`_ for commands, validation
+scope and physical-reference requirements. These controls do not imply absolute
+power, NF or coherent RF phase calibration.

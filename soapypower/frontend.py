@@ -87,8 +87,16 @@ class Frontend:
             raise RuntimeError('manual ' + suffix + ' readback is unavailable or invalid') from None
         if not math.isfinite(actual.real) or not math.isfinite(actual.imag):
             raise RuntimeError('nonfinite manual ' + suffix + ' readback')
-        driver = self.optional('getDriverKey')
-        quantum = (1 / (2048 if suffix == 'DCOffset' else 4096)) if driver == 'bladerf' else 1e-9
+        driver = str(self.optional('getDriverKey') or '').lower()
+        hardware = str(self.optional('getHardwareKey') or '').lower()
+        # bladeRF1 LMS RX DC controls use sign + 6 magnitude bits. libbladeRF
+        # discards five bits of its normalized int16 value, then Soapy scales
+        # readback by 2048: the delivered normalized step is 32/2048 = 1/64.
+        # Other bladeRF hardware must not inherit the LMS6002D quantization.
+        if driver == 'bladerf' and suffix == 'DCOffset' and hardware == 'bladerf1':
+            quantum = 1 / 64
+        else:
+            quantum = (1 / (2048 if suffix == 'DCOffset' else 4096)) if driver == 'bladerf' else 1e-9
         tolerance = quantum if self.manual_tolerance is None else self.manual_tolerance
         if any(abs(got - wanted) > tolerance + 1e-12 for got, wanted in zip((actual.real, actual.imag), requested)):
             raise RuntimeError('SDR did not apply requested manual ' + suffix)

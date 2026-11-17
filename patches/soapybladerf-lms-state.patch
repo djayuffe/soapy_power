@@ -1,0 +1,48 @@
+--- a/bladeRF_SoapySDR.hpp
++++ b/bladeRF_SoapySDR.hpp
+@@ -363,6 +363,7 @@
+     std::string _xb200Mode;
+     std::string _samplingMode;
+     std::string _loopbackMode;
++    std::string _lmsDcStateAtOpen;
+ 
+     bladerf *_dev;
+ };
+--- a/bladeRF_Settings.cpp
++++ b/bladeRF_Settings.cpp
+@@ -76,6 +76,23 @@
+     //initialize the sample rates to something
+     this->setSampleRate(SOAPY_SDR_RX, 0, 4e6);
+     this->setSampleRate(SOAPY_SDR_TX, 0, 4e6);
++    if (_isBladeRF1)
++    {
++        struct bladerf_lms_dc_cals cals;
++        const int status = bladerf_lms_get_dc_cals(_dev, &cals);
++        if (status != 0)
++        {
++            bladerf_close(_dev);
++            _dev = NULL;
++            throw std::runtime_error("Cannot read LMS calibration state");
++        }
++        char text[256];
++        std::snprintf(text, sizeof(text), "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
++            cals.lpf_tuning, cals.tx_lpf_i, cals.tx_lpf_q, cals.rx_lpf_i,
++            cals.rx_lpf_q, cals.dc_ref, cals.rxvga2a_i, cals.rxvga2a_q,
++            cals.rxvga2b_i, cals.rxvga2b_q);
++        _lmsDcStateAtOpen = text;
++    }
+ }
+ 
+ bladeRF_SoapySDR::~bladeRF_SoapySDR(void)
+@@ -95,6 +112,11 @@
+ SoapySDR::Kwargs bladeRF_SoapySDR::getHardwareInfo(void) const
+ {
+     SoapySDR::Kwargs info;
++    if (_isBladeRF1)
++    {
++        info["lms_dc_state_at_open"] = _lmsDcStateAtOpen;
++        info["receiver_state_schema"] = "bladerf1-lms-v2";
++    }
+ 
+     {
+         bladerf_serial serial;

@@ -155,3 +155,160 @@ See [the measured comparison](results/full-range-clean-5min.png),
 measurements and the calibration ladder. Raw data and individual IQ samples are
 not part of the repository example. The JSONL files record uncalibrated PSD;
 they are not continuous complex-IQ recordings.
+
+### Offline RF Explorer for the full-band 30-minute recording
+
+`build_explorer.py` packages the validated high-resolution B200 display bundle
+into a self-contained HTML file. It does not acquire data or increase FFT
+resolution. Requires Pillow for bundle validation; no browser libraries or
+network connection are needed to use the resulting HTML.
+
+```sh
+python examples/ettus/build_explorer.py \
+  /path/to/hires-viewer-meta.json /path/to/hires-textures.json \
+  -o /path/to/heatmap-explorer.html
+node --test tests/test_heatmap_analysis.js
+python -m unittest discover -s tests -p test_explorer_bundle.py
+```
+
+Open the HTML in a browser. The existing weighted-mean, reduced-IF peak,
+broad-IF peak and peak-difference views now accompany:
+
+- A threshold activity profile and contiguous candidate-region table. The
+  analysis always uses reduced-IF peak display cells, independently of the
+  color view. Set an absolute PSD threshold, minimum observed time cells and
+  minimum activity fraction. Missing cells are excluded from the denominator.
+- Clickable regions, back through up to 40 zooms, keyboard cell selection,
+  Ctrl + wheel zoom, and view bookmarks stored in the URL fragment. A bookmark needs the same
+  local HTML file; it is not a public sharing link.
+- Frequency-analysis CSV, selected-frequency time-trace CSV and a 3200-pixel
+  wide PNG report with heatmap, activity profile, spectrum and time trace.
+  The earlier heatmap PNG and selected-spectrum CSV exports remain available.
+
+Activity means the fraction of observed 30-second display cells whose peak
+exceeds the threshold, strictly `>`. It is not transmitter duty cycle, packet
+occupancy, a signal detector or evidence that a displayed feature is genuine
+RF. The full-band revisit interval is about 36 seconds and each frequency is
+only briefly sampled. Contiguous display cells do not establish emission
+bandwidth or transmitter identity. The table sorts qualifying regions by their
+highest peak and displays the first 50; CSV exports every frequency cell.
+Minimum observation filtering applies to the profile and candidate table;
+summary activity includes all observed cells. Analysis rounds PSD to 0.01 dB,
+matching browser readouts. Values near the threshold can change classification
+within that quantization. All power remains uncalibrated.
+
+The packager currently accepts the **42–6008 MHz, 16,384 × 60, 30-second** bundle
+format from the full-range B200 recording. Other geometries and encodings are
+rejected because this example contains acquisition-specific annotations. It is
+not a general JSONL renderer. Metadata supplies dates, source count, units,
+FFT spacing and encoding details; textures are lossless RGB/RGBA PNGs at the
+matrix dimensions, with each uint16 value encoded in the red/green bytes.
+`65535` denotes missing density/time/offset values; density is `(q/100)-250`,
+host-read bounds are `q/10` seconds, peak offsets are `(q/100)-32` MHz. Counts
+are integers, not independent average counts. Planned center overlays describe
+the hop plan, not physical LO readback. The underlying numerical NPZ remains
+the preferred input for precise offline analysis.
+
+### Phase analysis of the terminated full-band bundle
+
+The `phase_report.py` example reprocesses the 27 archived complex-IQ captures
+and scalar full-band matrices from the termination experiment. It acquires no
+new data. Run it from an environment with this repository installed, NumPy and
+Matplotlib:
+
+```sh
+python examples/ettus/phase_report.py /path/to/termination-bundle
+python -m unittest discover -s tests -p test_phase_diagnostics.py
+```
+
+The bundle must include `terminated-baseline-data.npz`,
+`sweep-provenance.json` and the matching `iq-FREQUENCYM-gGAIN-dcSTATE.npz` and
+JSON captures at 70, 100, 400, 915, 1800, 2440, 3500, 5800 and 6000 MHz, for gain
+20/DC off, gain 20/DC on and gain 60/DC on. This example describes that measured
+B200 bundle; it is not a general IQ-file renderer. `-o DIRECTORY` selects a
+separate output directory. The general numerical entry point is
+`soapypower.phase_diagnostics.analyze_phase(samples, sample_rate, ...)`.
+
+Outputs include an expanded full-band graph, phase overview, spectral
+coherence/phase matrices, IQ-density clouds, frequency stability regions,
+per-capture phase CSV and numerical NPZ arrays. Raw source files are preserved.
+
+Analysis removes the global mean of the analyzed prefix, then computes angular
+moments, covariance-ellipse orientation, I/Q cross spectra and complementary
+mirror-pair spectra. The I/Q convention is `E[conj(FFT(I))*FFT(Q)]`, matching
+SciPy `csd`; a positive complex tone gives −90° at its positive IF bin. Mirror
+phase uses `E[Z(+f)*Z(-f)]` and rotates by twice a rotation of the local I/Q
+coordinate system. Neither is an absolute RF transfer phase.
+
+Phase cells below squared coherence 0.2 are masked. Ellipse orientation is
+shown only when `abs(E[z*z])/E[abs(z)**2] >= 0.05`, modulo 180 degrees. Angular
+histograms omit radius ≤0.05 complex RMS. These are descriptive display gates,
+not confidence/significance thresholds; 255 overlapping frames are correlated.
+Gray means unsupported phase, not zero phase. Sparse delivered I/Q levels can
+produce comb-like phase histograms; observed level counts do not establish ADC
+bit depth or effective number of bits.
+
+I/Q coherence can arise from unequal positive/negative sideband power even for
+proper complex noise. Complementary coherence is a separate statistic; neither
+alone identifies hardware IQ imbalance or proves an image-rejection ratio.
+Separate retunes have no validated common phase reference, so no RF-frequency
+phase unwrapping, group delay, absolute phase, oscillator phase noise in dBc/Hz
+or calibrated complex correction is produced. Those need suitable coherent
+reference measurements and reference-plane/path characterization.
+
+### Use phase to qualify lines and inspect them coherently
+
+The noise-audit CLI now accepts the opt-in `--coherent-features` flag. Install
+optional SciPy support (`pip install '.[fft]'` from the repo) when using it:
+
+```sh
+soapy_power_noise_audit iq.npy --sample-rate 56e6 --fft-size 8192 \
+  --segments 255 --coherent-features -O phase-qualified.json
+```
+
+This adds training/held-out stationary-line candidates to the diagnostic JSON.
+It applies no notch or source-file correction. Programmatic access is through
+`soapypower.coherent_features.coherent_features(iq, sample_rate)`; it also returns
+spectra and residual-phase traces. The CLI retains a compact scalar/candidate
+report. Existing noise-audit behavior is unchanged unless the flag is supplied.
+
+Candidate selection, phase unwrapping and weighted linear frequency/phase fit
+use only the first half of the analyzed IQ prefix. Validation uses the disjoint
+second half with no refit. Short Hann frames overlap only within each partition.
+Default gates select training peaks 8 dB above a 129-bin local median, then
+require phase-lock value at least 0.7 in both partitions and at least 8 dB
+held-out matched-frequency PSD excess above a nearby long-periodogram median.
+These are descriptive gates, not false-alarm probabilities or significance
+thresholds. Failed candidates may be valid modulated/intermittent RF. All PSD
+observations and source IQ are retained.
+
+The validated ~920 MHz feature in this experiment supports a longer coherent
+analysis: 106.81 Hz FFT spacing and 160.22 Hz Hann ENBW in the held-out 9.36 ms,
+versus 6835.94 Hz spacing and 10253.91 Hz ENBW for 8192-point frames. The finer
+FFT grid comes from the longer window; phase qualification tests whether the
+stationary-line model remains useful. The long-window PSD is one periodogram,
+with different variance. Narrower ENBW raises a tone's density peak without
+increasing its power. This is a local analysis of sparse IQ snapshots, not a
+64-fold resolution improvement of the entire five-minute sweep.
+
+Six targeted retunes at 910/913/915/917/923/925 MHz found the ~920 MHz feature
+phase-qualified in five captures. Its IF moved approximately +7 to −5 MHz while
+RF stayed fixed, ruling against a fixed-IF/LO-following feature in those captures.
+It also qualified in the earlier terminated capture. This does not identify an
+external transmitter or distinguish RF ingress, termination coupling and an
+internally generated RF-fixed source. No automatic notch was applied.
+
+Reproduce the plots from those specific archived bundles:
+
+```sh
+python examples/ettus/coherent_phase_report.py /path/to/antenna-bundle \
+  /path/to/termination-bundle --retunes /path/to/retune-920mhz
+python -m unittest discover -s tests -p 'test_coherent*.py'
+```
+
+The example expects the same nine-center antenna captures and the six retunes
+named in this experiment. It performs no hardware acquisition. Native sample
+clock/frequency accuracy, absolute phase calibration and source identification
+remain separate measurements. A trial subtraction of the first-half sample
+mean worsened held-out sample-mean power in seven of nine snapshots; that trial
+was not applied to the source or scanning pipeline.

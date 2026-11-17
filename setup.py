@@ -22,7 +22,8 @@ setup(
         'console_scripts': [
             'soapy_power=soapypower.__main__:main',
             'soapy_power_calibration=soapypower.calibration_cli:main',
-            'soapy_power_noise_audit=soapypower.noise_audit:main'
+            'soapy_power_noise_audit=soapypower.noise_audit:main',
+            'soapy_power_analysis=soapypower.analysis_cli:main'
         ],
     },
     python_requires='>=3.6',

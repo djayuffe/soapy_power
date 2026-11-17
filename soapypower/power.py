@@ -6,7 +6,10 @@ import numpy
 import simplesoapy
 from simplespectral import zeros
 
-from soapypower import psd, writer
+from soapypower import psd, writer, rf_state
+from soapypower.acquisition_quality import QualityPolicy, RejectionEvidence, HeadroomRejected, IQEvidenceBuffer
+from soapypower.scan_profile import ScanProfile
+from soapypower.coverage import masked_frequency_plan, coverage_gaps
 from soapypower.frontend import Frontend
 from soapypower.calibration import _compare
 from soapypower.integrity import ContinuityTracker, shifted
@@ -39,17 +42,31 @@ class SoapyPower:
                  force_sample_rate=False, force_bandwidth=False,
                  output=sys.stdout, output_format='rtl_power', dc_correction='default',
                  iq_correction='default', tune_args=None, manual_dc=None, manual_iq=None,
-                 manual_tolerance=None, clock_source=None, time_source=None, master_clock_rate=None):
+                 manual_tolerance=None, clock_source=None, time_source=None, master_clock_rate=None,
+                 stream_args=None):
         finite(sample_rate, 'sample_rate', positive=True)
         finite(bandwidth, 'bandwidth', nonnegative=True)
         integer(channel, 'channel')
         if output_format not in writer.formats:
             raise ValueError('unknown output format')
+        self._soapy_args = soapy_args
+        self._enumerated_identity = None
+        self._stream_args = dict(stream_args or {})
+        if any(not isinstance(k, str) or not k or not isinstance(v, str)
+               for k, v in self._stream_args.items()):
+            raise ValueError('stream arguments require nonempty string keys and string values')
         self.device = simplesoapy.SoapyDevice(
             soapy_args=soapy_args, sample_rate=sample_rate, bandwidth=bandwidth, corr=0,
             gain=None, auto_gain=False, channel=channel, antenna=antenna, settings=settings,
             force_sample_rate=force_sample_rate, force_bandwidth=force_bandwidth
         )
+        if self._stream_args:
+            # Use the binding's native map. Some SWIG/Python combinations lose
+            # values when a Python dict is passed directly to setupStream().
+            native = simplesoapy.SoapySDR.KwargsFromString('')
+            for key, value in self._stream_args.items():
+                native[key] = value
+            self.device.stream_args = native
 
         actual_channel = getattr(self.device, 'channel', channel)
         if actual_channel != channel:
@@ -96,13 +113,39 @@ class SoapyPower:
         if not self._requested_agc:
             if isinstance(self._requested_gain, dict):
                 for element, value in self._requested_gain.items():
-                    self.device.set_gain(element, finite(value, 'gain'))
+                    if element == 'overall':
+                        self.device.gain = finite(value, 'gain')
+                    else:
+                        self.device.set_gain(element, finite(value, 'gain'))
             elif self._requested_gain is not None:
                 self.device.gain = finite(self._requested_gain, 'gain')
 
     def measurement_context(self):
-        return self._frontend.context(self._device_settings, self._tune_args,
-                                      self._lnb_lo, self._lnb_high_side, self._iq_conjugate)
+        context = self._frontend.context(self._device_settings, self._tune_args,
+                                         self._lnb_lo, self._lnb_high_side, self._iq_conjugate)
+        if (getattr(self, '_receiver_profile', None) is not None and context['serial'] is None
+                and str(context['driver']).lower() == 'rtlsdr'):
+            if self._enumerated_identity is None:
+                selection = simplesoapy.SoapySDR.KwargsFromString(self._soapy_args)
+                candidates = list(simplesoapy.SoapySDR.Device.enumerate(selection))
+                if len(candidates) != 1 or not candidates[0].get('serial'):
+                    raise ValueError('RTL receiver profile requires one unambiguously enumerated serial')
+                observed = dict(candidates[0])
+                if selection.get('serial') and selection['serial'] != observed['serial']:
+                    raise ValueError('enumerated serial differs from requested receiver')
+                if str(observed.get('driver','')).lower() != 'rtlsdr':
+                    raise ValueError('enumerated identity driver differs from the open receiver')
+                index = context['hardware_info'].get('index')
+                if index is not None and str(observed.get('rtl', observed.get('index'))) != str(index):
+                    raise ValueError('RTL open-device index and enumeration identity differ')
+                self._enumerated_identity = observed
+            context['serial'] = self._enumerated_identity['serial']
+            context['hardware_info']['soapypower_identity_enumeration'] = dict(self._enumerated_identity)
+        if self._stream_args:
+            # Preserve the fixed top-level context schema used by calibrated
+            # references; transport provenance belongs in hardware_info.
+            context['hardware_info']['soapypower_stream_args'] = dict(self._stream_args)
+        return context
 
     def nearest_freq(self, freq, bin_size):
         """Return nearest frequency based on bin size"""
@@ -254,7 +297,8 @@ class SoapyPower:
               dc_mask_width=0, dc_offset=0, calibration=None, fft_threads=1, partial_policy=None, acquisition_rounding='exact',
               settle_samples=0, lock_sensor=None, lock_timeout=2.0, timestamp_tolerance_samples=0.25,
               require_timestamps=False, workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False,
-              reference_lock_sensor=None, reopen_stream=False):
+              reference_lock_sensor=None, reopen_stream=False, quality_policy=None, receiver_profile=None,
+              observe_rf_state=False):
         """Prepare samples buffer and start streaming samples from device"""
         bins = integer(bins, 'bins', 2)
         repeats = integer(repeats, 'repeats', 1)
@@ -283,7 +327,27 @@ class SoapyPower:
         self._acquisition_rounding = acquisition_rounding
         self._calibration = calibration
         self._lnb_lo, self._lnb_high_side, self._iq_conjugate = lnb_lo, lnb_high_side, iq_conjugate
-        self._need_context = calibration is not None or self._output_format in ('json', 'rtl_power_fftw', 'soapy_power_bin_v3')
+        self._quality_policy = QualityPolicy(quality_policy) if quality_policy is not None else None
+        prior_profile = getattr(self, '_receiver_profile', None)
+        managed_dc = (prior_profile is not None and bool(prior_profile.anchors))
+        self._receiver_profile = (receiver_profile if isinstance(receiver_profile, ScanProfile) else
+                                  ScanProfile(receiver_profile)) if receiver_profile is not None else None
+        self._observe_rf_state = bool(observe_rf_state or self._quality_policy is not None)
+        self._gain_cache = {}
+        self._quality_chunks = None
+        self._rejection_evidence = None
+        if self._receiver_profile is not None:
+            if self._quality_policy is None:
+                raise ValueError('receiver profiles require a headroom policy and rejected-IQ evidence')
+            if calibration is not None or self._requested_agc or (self._frontend.manual_dc is not None and not managed_dc) or self._frontend.manual_iq is not None:
+                raise ValueError('receiver profiles require fixed gain and cannot combine with absolute calibration or manual correction options')
+            self._receiver_profile.validate_context(self.measurement_context())
+            if managed_dc:
+                self._frontend.manual_dc = [0.,0.]
+                self._frontend.apply_corrections()
+            if self._receiver_profile.anchors and self._frontend.dc_correction != 'off':
+                raise ValueError('profile DC anchors require --dc-correction off')
+        self._need_context = self._quality_policy is not None or calibration is not None or self._output_format in ('json', 'rtl_power_fftw', 'soapy_power_bin_v3')
         if self._frontend.manual_dc is not None or self._frontend.manual_iq is not None:
             self._frontend.apply_corrections()
         if calibration is not None:
@@ -298,6 +362,9 @@ class SoapyPower:
             self._requested_samples = bins * repeats
             self._target_samples = (self._requested_samples if acquisition_rounding == 'exact' else
                                     ((self._requested_samples + block_size - 1) // block_size) * block_size)
+            if self._quality_policy is not None:
+                self._quality_policy.check_budget(self._target_samples)
+                self._rejection_evidence = RejectionEvidence(self._quality_policy.directory)
             self._base_buffer_size = len(base_buffer)
             self._max_buffer_size = max_buffer_size
             self._buffer_repeats, self._buffer = self.create_buffer(
@@ -372,6 +439,8 @@ class SoapyPower:
             self._record_times(self._read_tail_time, count)
             self._read_tail_time = shifted(self._read_tail_time, count)
             output[:count] = self._read_tail[:count]
+            if getattr(self, '_quality_chunks', None) is not None and self._acquisition_stage == 'measurement':
+                self._quality_chunks.append(output[:count])
             self._read_tail = self._read_tail[count:]
             position = count
         while position < len(output) and not self._cancelled() and not self._burst_ended:
@@ -390,6 +459,8 @@ class SoapyPower:
             copied = min(count, len(output) - position)
             self._record_times(packet_time, copied)
             output[position:position + copied] = self.device.buffer[:copied]
+            if getattr(self, '_quality_chunks', None) is not None and self._acquisition_stage == 'measurement':
+                self._quality_chunks.append(output[position:position + copied])
             position += copied
             if copied < count:
                 self._read_tail = self.device.buffer[copied:count].copy()
@@ -445,11 +516,79 @@ class SoapyPower:
         return discarded
 
     def psd(self, freq):
+        """Publish only complete headroom-safe hops when a quality policy is active."""
+        policy = getattr(self, '_quality_policy', None)
+        if policy is None:
+            return self._acquire_psd(freq)
+        freq = finite(freq, 'freq')
+        profile = self._receiver_profile
+        source = None
+        if profile is not None:
+            seed, source = profile.select_gain(freq)
+            gain = self._gain_cache.get(freq, seed).copy()
+        for attempt in range(policy.retries + 1):
+            self._quality_chunks = IQEvidenceBuffer(self._target_samples)
+            self._acquisition_stage = 'receiver_controls'
+            self._last_context = self._last_integrity = None
+            try:
+                if profile is not None:
+                    # Check identity/state before writing any empirical controls.
+                    profile.validate_context(self.measurement_context())
+                    self._requested_gain = gain.copy()
+                    self._apply_gain()
+                    if profile.anchors:
+                        self._frontend.manual_dc = profile.correction(freq, gain)[0]
+                result = self._acquire_psd(freq)
+                if result[0] is not None:
+                    result[0].result()  # Drain this hop before accepting or retrying.
+                raw = self._quality_chunks.samples()
+                if raw.size != self._target_samples:
+                    raise RuntimeError('headroom evidence does not contain every requested raw sample')
+                if not self._last_integrity or self._last_integrity['measurement_status'] != 'complete':
+                    raise RuntimeError('headroom mode requires a complete acquisition')
+                self._acquisition_stage = 'raw_headroom'
+                metrics, safe = policy.evaluate(raw)
+            except BaseException as error:
+                raw = self._quality_chunks.samples()
+                try:
+                    observed_context = self.measurement_context()
+                except BaseException as context_error:
+                    observed_context = {'readback_error':str(context_error)}
+                self._rejection_evidence.save(raw, dict(requested_center_hz=freq, attempt=attempt,
+                    acquisition_stage=self._acquisition_stage, observed_context_at_failure=observed_context,
+                    requested_gains=self._requested_gain,
+                    reason=type(error).__name__ + ': ' + str(error), context=self._last_context,
+                    integrity=self._last_integrity, profile_sha256=profile.sha256 if profile else None))
+                self._quality_chunks = None
+                raise
+            self._quality_chunks = None
+            if safe:
+                self._last_integrity['headroom'] = dict(metrics, accepted=True, attempt=attempt,
+                    maximum_limit=policy.maximum, p999_limit=policy.percentile,
+                    evaluated_samples=int(raw.size), uncentered_components=True)
+                if profile is not None:
+                    self._gain_cache[freq] = gain.copy()
+                    self._last_integrity['receiver_profile'] = dict(sha256=profile.sha256,
+                        gain_source=source, accepted_gains=gain.copy(),
+                        dc_anchor_hz=profile.correction(float(self.device.freq), self._last_context['gains'])[1])
+                return result
+            # Unsafe raw data is durable BEFORE backoff, retry or exception.
+            self._rejection_evidence.save(raw, dict(requested_center_hz=freq, attempt=attempt,
+                reason='headroom_rejected', metrics=metrics, context=self._last_context,
+                integrity=self._last_integrity, profile_sha256=profile.sha256 if profile else None))
+            lower = profile.lower_gain(gain) if profile is not None and attempt < policy.retries else None
+            if lower is None or self._cancelled():
+                raise HeadroomRejected('headroom rejected; original IQ retained in ' + str(policy.directory))
+            gain = lower
+        raise RuntimeError('unreachable headroom retry state')
+
+    def _acquire_psd(self, freq):
         """Acquire one center frequency using continuous Welch framing."""
         if not self.device.is_streaming:
             raise RuntimeError('Streaming is not initialized, you must run setup() first!')
         freq = finite(freq, 'freq')
         t_freq = time.monotonic()
+        self._acquisition_stage = 'tuning'
         self._read_tail = numpy.empty(0, dtype=numpy.complex64)
         self._next_sample_time = None
         self._reset_packet_state()
@@ -481,8 +620,11 @@ class SoapyPower:
                         raise RuntimeError('SDR stream activation failed: {}'.format(status))
         if self._reopen_stream:
             self.device.start_stream(buffer_size=self._base_buffer_size)
+        if self._receiver_profile is not None:
+            self._frontend.apply_corrections()
         # Settling starts after all synchronous tuning/correction operations,
         # including stream reactivation; their latency is not settling time.
+        self._acquisition_stage = 'settling'
         settled_samples = self._settle(time.monotonic())
         if not math.isclose(finite(self.device.sample_rate, 'actual sample rate', positive=True),
                             self._psd._sample_rate, rel_tol=1e-12, abs_tol=1e-9):
@@ -491,6 +633,17 @@ class SoapyPower:
         if not math.isclose(actual_freq, freq, rel_tol=0, abs_tol=self._psd.bin_width * 1e-6):
             logger.warning('Requested center %.9g Hz; device tuned %.9g Hz. Output uses actual tuning.',
                            freq, actual_freq)
+        if self._receiver_profile is not None:
+            profile = self._receiver_profile
+            profile.validate_context(self.measurement_context())
+            observed_gains = self.measurement_context()['gains']
+            profile.check_gains(observed_gains, self._requested_gain)
+            if profile.anchors:
+                correction, _ = profile.correction(actual_freq, observed_gains)
+                if correction != self._frontend.manual_dc:
+                    self._frontend.manual_dc = correction
+                    self._frontend.apply_corrections()
+                    settled_samples += self._settle(time.monotonic())
         context = self.measurement_context() if self._need_context else None
         if self._calibration is not None:
             self._calibration.validate_context(context)
@@ -507,6 +660,8 @@ class SoapyPower:
             if (previous is None and actual_lo > lo + tolerance) or (previous is not None and actual_lo > previous + tolerance):
                 raise ValueError('actual tuning leaves a frequency coverage gap')
             self._coverage_request = (lo, hi, max(previous or actual_hi, actual_hi))
+        before_rf = rf_state.observe(self._frontend) if self._observe_rf_state else None
+        self._acquisition_stage = 'measurement'
         start = stop = None
         self._acquired_samples = 0
         while (self._acquired_samples < self._target_samples and not self._cancelled() and
@@ -514,11 +669,15 @@ class SoapyPower:
             length = min(len(self._buffer), self._target_samples - self._acquired_samples)
             if start is None:
                 start = datetime.datetime.now(datetime.timezone.utc)
+            quality_chunks_before = len(self._quality_chunks) if self._quality_chunks is not None else None
             count = self._read_chunk(self._buffer[:length])
             stop = datetime.datetime.now(datetime.timezone.utc)
             if not count:
                 break
             self._acquired_samples += count
+            if self._quality_chunks is not None and len(self._quality_chunks) == quality_chunks_before:
+                # Custom reader overrides may not implement packet-level evidence.
+                self._quality_chunks.append(self._buffer[:count])
             self._psd.update_contiguous_async(state, self._buffer[:count])
         acquired = self._acquired_samples
         status = ('complete' if acquired == self._target_samples else
@@ -526,6 +685,15 @@ class SoapyPower:
                   'partial_end_burst' if self._burst_ended else 'partial')
         clock = self._tracker.metadata()
         first_ns, last_ns = self._tracker.timestamp(self._time_first), self._tracker.timestamp(self._time_last)
+        driver_first_ns, driver_last_ns = first_ns, last_ns
+        software_clock = str(self._frontend.optional('getDriverKey') or '').lower() == 'rtlsdr'
+        if software_clock:
+            # SoapyRTLSDR timestamps count samples delivered to its host callback.
+            # HAS_TIME alone cannot establish independent hardware continuity.
+            clock.update(driver_reported_continuity=clock['continuity'],
+                         continuity='unverifiable_software_clock',
+                         timestamp_source='driver_sample_counter')
+            first_ns = last_ns = None
         self._last_integrity = dict(clock, measurement_status=status, requested_samples=self._requested_samples,
                                     target_samples=self._target_samples, acquired_samples=acquired,
                                     completion_fraction=acquired / self._target_samples,
@@ -538,11 +706,18 @@ class SoapyPower:
                                     burst_samples_unprocessed=int(self._read_tail.size) if self._burst_ended else 0,
                                     packet_tail_unprocessed=int(self._read_tail.size),
                                     hardware_first_sample_ns=first_ns, hardware_last_sample_ns=last_ns,
+                                    driver_first_sample_ns=driver_first_ns, driver_last_sample_ns=driver_last_ns,
                                     hardware_time_is_utc=False, settled_discarded_samples=settled_samples,
                                     settle_policy={'min_time_s': self._tune_delay, 'min_samples': self._settle_samples,
                                                    'lock_sensor': self._lock_sensor, 'reference_lock_sensor': self._reference_lock_sensor,
                                                    'timeout_s': self._lock_timeout},
-                                    time_basis={'host_read_bounds_utc': True, 'hardware_sample_time': first_ns is not None})
+                                    time_basis={'host_read_bounds_utc': True, 'hardware_sample_time': first_ns is not None,
+                                                'driver_sample_counter_time': software_clock and driver_first_ns is not None})
+        if before_rf is not None:
+            after_rf = rf_state.observe(self._frontend)
+            self._last_integrity['rf_state'] = dict(before=before_rf,after=after_rf)
+            rf_state.require_stable(before_rf,after_rf,self._psd.bin_width*1e-6)
+        rf_state.require_lock(self._frontend,self._lock_sensor,self._reference_lock_sensor)
         if self._require_timestamps and clock['continuity'] != 'verified':
             raise RuntimeError('hardware timestamp continuity is not verified')
         if status != 'complete':
@@ -566,6 +741,7 @@ class SoapyPower:
                 # Raw JSON is also used as future calibration evidence.
                 # Never label an internally changed fixed state as one context.
                 _compare(context, final_context, 'fixed acquisition context')
+        self._acquisition_stage = 'dsp_completion'
         future = self._psd.result_async(state)
         logger.debug('Acquired %d samples at %.9g Hz in %.3f s',
                      self._acquired_samples, actual_freq, time.monotonic() - t_freq)
@@ -579,7 +755,8 @@ class SoapyPower:
               acquisition_rounding='exact', settle_samples=0, lock_sensor=None, lock_timeout=2.0,
               timestamp_tolerance_samples=0.25, require_timestamps=False,
               workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False, reference_lock_sensor=None,
-              reopen_stream=False, deadline_policy='interrupt'):
+              reopen_stream=False, deadline_policy='interrupt', quality_policy=None, receiver_profile=None,
+              ensure_coverage=False, usable_halfwidth=None, observe_rf_state=False):
         """Sweep spectrum using frequency hopping"""
         if deadline_policy not in ('interrupt', 'finish-hop'):
             raise ValueError('deadline policy must be interrupt or finish-hop')
@@ -590,6 +767,21 @@ class SoapyPower:
         direction = -1 if lnb_high_side else 1
         rf_centers = self.freq_plan(min_freq, max_freq, bins, overlap, quiet=True,
                                     frequency_sign=direction)
+        coverage_halfwidth = None
+        if ensure_coverage:
+            df = self.device.sample_rate / bins
+            retained_halfwidth = (bins-crop_bins(bins,overlap if crop else 0))*df/2
+            coverage_halfwidth = retained_halfwidth if usable_halfwidth is None else finite(usable_halfwidth,'usable halfwidth',positive=True)
+            if coverage_halfwidth > retained_halfwidth:
+                raise ValueError('usable halfwidth exceeds the retained FFT region')
+            if abs(dc_offset)+dc_mask_width/2 >= self.device.sample_rate/2:
+                raise ValueError('coverage planner requires a non-wrapping DC exclusion')
+            tuner = self.device.get_frequency_range() if hasattr(self.device,'get_frequency_range') else None
+            rf_range = sorted(lnb_lo+direction*x for x in tuner) if tuner is not None else None
+            rf_centers = masked_frequency_plan(min_freq,max_freq,coverage_halfwidth,df,
+                dc_mask_width, direction*(-dc_offset if iq_conjugate else dc_offset),rf_range)
+        elif usable_halfwidth is not None:
+            raise ValueError('usable halfwidth requires ensure_coverage')
         freq_list = [direction * (center - lnb_lo) for center in rf_centers]
         if hasattr(self.device, 'get_frequency_range'):
             low, high = self.device.get_frequency_range()
@@ -610,9 +802,13 @@ class SoapyPower:
                 settle_samples=settle_samples, lock_sensor=lock_sensor, lock_timeout=lock_timeout,
                 reference_lock_sensor=reference_lock_sensor,
                 timestamp_tolerance_samples=timestamp_tolerance_samples, require_timestamps=require_timestamps,
-                workspace_budget_bytes=workspace_budget_bytes, allow_estimated_dc=allow_estimated_dc
+                workspace_budget_bytes=workspace_budget_bytes, allow_estimated_dc=allow_estimated_dc,
+                quality_policy=quality_policy, receiver_profile=receiver_profile, observe_rf_state=observe_rf_state
             )
-            self.freq_plan(min_freq, max_freq, bins, overlap, frequency_sign=direction)
+            if ensure_coverage:
+                logger.info('Mask-aware plan: %d centers, usable halfwidth %.9g Hz',len(rf_centers),coverage_halfwidth)
+            else:
+                self.freq_plan(min_freq, max_freq, bins, overlap, frequency_sign=direction)
             run = 0
             write_next_future = None
             while not self._cancelled() and not self._burst_ended and (runs == 0 or run < runs):
@@ -621,6 +817,7 @@ class SoapyPower:
                 logger.debug('Run: {}'.format(run))
 
                 self._coverage_request = (min_freq, max_freq, None) if max_freq > min_freq else None
+                accepted_centers = []
                 for freq in freq_list:
                     if self._cancelled():
                         break
@@ -635,6 +832,11 @@ class SoapyPower:
 
                     # Write PSD to stdout (in another thread)
                     if psd_future is not None:
+                        if ensure_coverage:
+                            accepted_centers.append(float(self._last_state['rf_origin_hz']))
+                            self._last_integrity['coverage_plan'] = dict(mask_aware=True,
+                                planned_centers=len(freq_list),usable_halfwidth_hz=coverage_halfwidth,
+                                positive_weight_edge_margin_hz=self._psd.bin_width)
                         def metadata(handler=self._psd, state=self._last_state,
                                      context=self._last_context, integrity=dict(self._last_integrity)):
                             result = handler.measurement_metadata(state)
@@ -655,6 +857,11 @@ class SoapyPower:
                 if (self._coverage_request is not None and not self._cancelled() and not self._burst_ended
                         and self._coverage_request[2] < max_freq - self._psd.bin_width * 1e-6):
                     raise ValueError('actual tuning does not cover the requested upper frequency')
+                if ensure_coverage and not self._cancelled() and not self._burst_ended:
+                    gaps = coverage_gaps(accepted_centers,min_freq,max_freq,coverage_halfwidth,
+                        dc_mask_width,direction*(-dc_offset if iq_conjugate else dc_offset),self._psd.bin_width)
+                    if gaps:
+                        raise ValueError('actual tuning leaves masked/zero-weight frequency support gaps')
                 # Write end of measurement marker (in another thread)
                 write_next_future = self._writer.write_next_async()
                 t_run = time.monotonic()
