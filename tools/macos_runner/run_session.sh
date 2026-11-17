@@ -91,9 +91,11 @@ print("RESULT", SoapySDR.getAPIVersion(), len(SoapySDR.Device.enumerate("driver=
     for k in "" ${KEG08[@]+"${KEG08[@]}"}; do
       site=""; dyl="$STACK/lib"
       if [ -n "$k" ]; then site="$(keg_site "$k" "$ver")"; [ -n "$site" ] || continue; dyl="$STACK/lib:$k/lib"; fi
-      out="$(in_env "$site" "$dyl" "$STACK/modules" "" -- "$v" -c "$BTEST" 2>&1 | grep '^RESULT' | tail -1)"
+      diag="$(in_env "$site" "$dyl" "$STACK/modules" "" -- "$v" -c "$BTEST" 2>&1)"
+      out="$(printf '%s\n' "$diag" | grep '^RESULT' | tail -1)"
       read -r tag api nfound <<< "${out:-RESULT - 0}"
       echo "  $([ "${nfound:-0}" -gt 0 ] 2>/dev/null && echo 'OK  ' || echo 'nei ') $v py$ver ${site:+[+$site]} api=$api bladerf=$nfound"
+      [ "${nfound:-0}" -gt 0 ] 2>/dev/null || printf '%s\n' "$diag" | grep -iE 'error|not loaded|dlopen|no module|reason' | head -3 | cut -c1-240 | sed 's/^/        /'
       if [ "${nfound:-0}" -gt 0 ] 2>/dev/null; then PY="$v"; BSITE="$site"; BDYLD="$dyl"; break 2; fi
     done
   done
