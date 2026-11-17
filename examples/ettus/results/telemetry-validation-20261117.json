@@ -1,0 +1,59 @@
+{
+  "bandwidth_hz": 28000000.0,
+  "captured_span_s": 299.936132,
+  "chain_fingerprints": [
+    "893eb554860f66af29f02d3dc40d82cd75c666a926cc8378c4a3c594eb79df67"
+  ],
+  "continuity": "all accepted records verified",
+  "full_sweeps": 8,
+  "host_io": {
+    "error_counts": {},
+    "read_calls": 70460,
+    "read_latency_median_ms": 2.2846044739708304,
+    "read_latency_p95_ms": 2.4060733267106116,
+    "usb_packet_count_observed": false
+  },
+  "iq_tracking_verified": true,
+  "lo_hypotheses_beyond_250khz": 34,
+  "manufacturer_nominal_rf_range_hz": [
+    70000000.0,
+    6000000000.0
+  ],
+  "master_clock_hz": 56000000.0,
+  "max_raw_component": 0.2228461056947708,
+  "max_temperature_age_s": 1.0006561670452356,
+  "naive_before_after_temperature_reads": 8812,
+  "physical_absolute_calibration": false,
+  "records": 4406,
+  "requested_center_range_hz": [
+    36000000.0,
+    6014000000.0
+  ],
+  "sample_rate_hz": 28000000.0,
+  "synthetic_models_are_receiver_calibration": false,
+  "telemetry_statistics": {
+    "elapsed_host_s": 300.03616116696503,
+    "native_chain_refreshes": 45,
+    "read_counts": {
+      "device:ref_locked": 8812,
+      "rx:lo_locked": 8812,
+      "rx:rssi": 8812,
+      "rx:temp": 293
+    },
+    "sensor_latency_median_ms": 0.18649949925020337,
+    "sensor_latency_p95_ms": 0.4686291387770325
+  },
+  "temperature_c_range": [
+    45.730995,
+    47.485382
+  ],
+  "temperature_poll_reduction_fraction": 0.966749886518384,
+  "temperature_reads": 293,
+  "temperature_reads_during_rx": 0,
+  "python_tests": 414,
+  "javascript_tests": 6,
+  "native_cpp_tests": 1,
+  "final_source_live_hops": 24,
+  "known_source_thermal_accuracy_validated": false,
+  "known_source_shorter_settling_validated": false
+}

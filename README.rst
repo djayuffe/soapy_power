@@ -485,3 +485,14 @@ See `Receiver quality examples <examples/receiver_quality/README.md>`_ and the
 `implementation gap ledger <IMPLEMENTATION_GAPS.md>`_ for commands, validation
 scope and physical-reference requirements. These controls do not imply absolute
 power, NF or coherent RF phase calibration.
+
+Typed telemetry and reference models
+------------------------------------
+
+Use ``--telemetry-policy`` for age-qualified temperature/reference/fixture
+validity and ``soapy_power_telemetry`` for inventory, reference-trained thermal
+and settling models, and exposed digital filter phase/response analysis.
+Receiver profiles can bind telemetry requirements. The optional isolated
+SoapyUHD extension exposes hidden IQ tracking and typed native filter/format
+metadata. See `Telemetry examples <examples/ettus/TELEMETRY.md>`_ for commands,
+build instructions, synthetic schemas and physical validation boundaries.

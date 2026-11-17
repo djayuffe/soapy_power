@@ -67,3 +67,22 @@ exercised CLI context/integration, rebin/fusion, common IQ, held-out phase, nois
 reference identity and mismatched-reference refusal, native audit, historical
 profile import and retune recurrence. No current antenna-only data were relabelled
 as absolute power/NF/vector calibration.
+
+## Telemetry implementation follow-up
+
+Typed observations, closed-stream temperature polling, explicit freshness/error
+semantics, startup thermal waits, thermal/reference/GPIO gates, profile-bound
+policies and actual RF/BB LO mapping are implemented in the main scanner. The
+optional isolated native SoapyUHD patch exposes hidden IQ tracking, typed filters
+and native format scale. Reference-trained scalar thermal and RF-step settling
+models now have independent holdout gates, bounded domains and context-bound
+application; a partial complex digital filter model supports phase/delay analysis.
+
+The 300-second antenna validation completed 4,406 verified accepted hops at
+28 MS/s, eight full sweeps plus a partial sweep. IQ tracking remained enabled,
+the processing chain fingerprint stayed constant and 293 temperature reads all
+occurred with RX stopped. The final warmup path was separately tested using the
+independently rebuilt module. See examples/ettus/TELEMETRY.md for schemas and
+reference requirements. Synthetic model tests establish software behavior only;
+known-source thermal/settling accuracy, absolute power/NF, external-clock error
+and end-to-end coherent RF phase remain physical reference experiments.

@@ -359,6 +359,8 @@ def setup_argument_parser():
                              help='Welch\'s method overlap between segments (default: %(default)s)')
 
     quality = parser.add_argument_group('Receiver quality and measured controls')
+    quality.add_argument('--telemetry-policy', help='Typed telemetry polling/validity policy JSON')
+    quality.add_argument('--settling-model', help='Reference-validated settling model; unmatched steps use configured delay')
     quality.add_argument('--rf-state', action='store_true', help='Record advertised RF/BB tuning and sensor snapshots before/after each hop')
     quality.add_argument('--ensure-coverage', action='store_true', help='Plan overlapping positive-weight coverage outside the DC exclusion')
     quality.add_argument('--usable-halfwidth', type=float_with_multiplier, help='Trusted IF halfwidth for coverage planning (Hz)')
@@ -412,6 +414,14 @@ def validate_arguments(parser, args):
         parser.error('master clock rate must be finite and positive')
     if args.manual_correction_tolerance is not None and (not math.isfinite(args.manual_correction_tolerance) or args.manual_correction_tolerance < 0):
         parser.error('manual correction tolerance must be finite and nonnegative')
+    if args.settling_model:
+        from soapypower.telemetry_models import validate_settling
+        try:validate_settling(args.settling_model)
+        except (ValueError,OSError,KeyError,TypeError) as error:parser.error(str(error))
+    if args.telemetry_policy:
+        from soapypower.telemetry import TelemetryPolicy
+        try:TelemetryPolicy(args.telemetry_policy)
+        except (ValueError,OSError) as error:parser.error(str(error))
     if args.headroom or args.receiver_profile:
         from soapypower.acquisition_quality import QualityPolicy
         try:
@@ -575,6 +585,7 @@ def main():
             require_timestamps=args.require_timestamps, workspace_budget_bytes=args.workspace_budget,
             allow_estimated_dc=args.allow_estimated_dc,
             receiver_profile=args.receiver_profile, ensure_coverage=args.ensure_coverage, observe_rf_state=args.rf_state,
+            telemetry_policy=args.telemetry_policy, settling_model=args.settling_model,
             usable_halfwidth=args.usable_halfwidth,
             quality_policy=(dict(max_component=args.headroom_max, p999_component=args.headroom_p999,
                 max_retries=args.headroom_retries, workspace_bytes=args.headroom_workspace,

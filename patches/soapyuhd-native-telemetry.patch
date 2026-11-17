@@ -1,0 +1,156 @@
+--- a/SoapyUHDDevice.cpp
++++ b/SoapyUHDDevice.cpp
+@@ -18,6 +18,9 @@
+ #include <uhd/version.hpp>
+ #include <boost/lexical_cast.hpp>
+ #include <cctype>
++#include <iomanip>
++#include <cmath>
++#include <uhd/types/filters.hpp>
+ #include <iostream>
+ 
+ /***********************************************************************
+@@ -526,7 +529,8 @@
+         if (dir == SOAPY_SDR_TX) return false;
+         if (dir == SOAPY_SDR_RX)
+         {
+-            return __doesMBoardFEPropTreeEntryExist(dir, channel, "iq_balance/enable");
++            return __doesMBoardFEPropTreeEntryExist(dir, channel, "iq_balance/enable") ||
++                   __doesDBoardFEPropTreeEntryExist(dir, channel, "iq_balance/enable");
+         }
+ 
+         return SoapySDR::Device::hasIQBalanceMode(dir, channel);
+@@ -548,7 +552,9 @@
+             const std::string subpath = "/iq_balance/enable";
+ 
+             auto path = __getMBoardFEPropTreePath(dir, channel) + subpath;
+-            return tree->access<bool>(path).get();
++            if(tree->exists(path)) return tree->access<bool>(path).get();
++            path = __getDBoardFEPropTreePath(dir, channel) + subpath;
++            if(tree->exists(path)) return tree->access<bool>(path).get();
+         }
+ 
+         return false;
+@@ -939,8 +945,94 @@
+         if (dir == SOAPY_SDR_TX) return _dev->get_tx_sensor(name, channel).value;
+         if (dir == SOAPY_SDR_RX) return _dev->get_rx_sensor(name, channel).value;
+         return SoapySDR::Device::readSensor(dir, channel, name);
++    }
++
++
++    // Read-only native telemetry. No sensor conversions occur in these metadata calls.
++    static std::string jsonQuote(const std::string &value)
++    {
++        std::ostringstream out; out << '"';
++        for (unsigned char c : value) switch(c)
++        {
++        case '"': out << "\\\""; break;
++        case '\\': out << "\\\\"; break;
++        case '\n': out << "\\n"; break;
++        case '\r': out << "\\r"; break;
++        case '\t': out << "\\t"; break;
++        default:
++            if (c < 32) out << "\\u" << std::hex << std::setw(4) << std::setfill('0') << int(c) << std::dec;
++            else out << c;
++        }
++        out << '"'; return out.str();
++    }
++
++    SoapySDR::ArgInfoList getSettingInfo(void) const
++    {
++        SoapySDR::ArgInfo value; value.key="SOAPY_POWER_DEVICE_INFO_V1";
++        value.name="Read-only native UHD device telemetry"; value.type=SoapySDR::ArgInfo::STRING;
++        value.description="Versioned JSON capability metadata; not a calibrated measurement";
++        return SoapySDR::ArgInfoList(1,value);
++    }
++
++    std::string readSetting(const std::string &key) const
++    {
++        if(key!="SOAPY_POWER_DEVICE_INFO_V1") return SoapySDR::Device::readSetting(key);
++        std::ostringstream out; out << std::setprecision(17);
++        out << "{\"schema\":\"soapypower_native_uhd_v1\",\"module\":\"SoapyUHD-telemetry1\",\"uhd_version\":" << jsonQuote(uhd::get_version_string());
++        auto tree=_get_tree();
++        if(tree->exists("/mboards/0/usb_version")) out << ",\"usb_version\":" << tree->access<int>("/mboards/0/usb_version").get();
++        if(tree->exists("/mboards/0/link_max_rate")) out << ",\"declared_link_max_rate\":" << tree->access<double>("/mboards/0/link_max_rate").get();
++        out << ",\"power_reference_is_not_assumed\":true}"; return out.str();
++    }
++
++    SoapySDR::ArgInfoList getSettingInfo(const int direction,const size_t channel) const
++    {
++        if(direction!=SOAPY_SDR_RX) return SoapySDR::Device::getSettingInfo(direction,channel);
++        SoapySDR::ArgInfo value; value.key="SOAPY_POWER_RX_CHAIN_V1";
++        value.name="Read-only native UHD RX chain"; value.type=SoapySDR::ArgInfo::STRING;
++        value.description="Versioned JSON filter/correction/format state; not a whole-receiver calibration";
++        return SoapySDR::ArgInfoList(1,value);
+     }
+ 
++    std::string readSetting(const int direction,const size_t channel,const std::string &key) const
++    {
++        if(direction!=SOAPY_SDR_RX || key!="SOAPY_POWER_RX_CHAIN_V1") return SoapySDR::Device::readSetting(direction,channel,key);
++        std::ostringstream out; out << std::setprecision(17);
++        double fullScale=0; const auto format=this->getNativeStreamFormat(direction,channel,fullScale);
++        out << "{\"schema\":\"soapypower_native_uhd_v1\",\"module\":\"SoapyUHD-telemetry1\",\"sample_rate_hz\":" << _dev->get_rx_rate(channel)
++            << ",\"bandwidth_hz\":" << _dev->get_rx_bandwidth(channel) << ",\"master_clock_hz\":" << _dev->get_master_clock_rate()
++            << ",\"native_format\":" << jsonQuote(format) << ",\"native_full_scale\":" << fullScale;
++        out << ",\"iq_tracking\":";
++        if(this->hasIQBalanceMode(direction,channel)) out << (this->getIQBalanceMode(direction,channel)?"true":"false"); else out << "null";
++        out << ",\"dc_tracking\":";
++        if(this->hasDCOffsetMode(direction,channel)) out << (this->getDCOffsetMode(direction,channel)?"true":"false"); else out << "null";
++        out << ",\"has_power_reference\":";
++        try {out << (_dev->has_rx_power_reference(channel)?"true":"false");} catch(const std::exception &) {out << "null";}
++        out << ",\"complete_receiver_response\":false,\"filters\":";
++        try
++        {
++            std::ostringstream filters; filters << std::setprecision(17) << '['; bool comma=false;
++            for(const auto &name : _dev->get_rx_filter_names(channel))
++            {
++                auto f=_dev->get_rx_filter(name,channel); if(comma) filters << ','; comma=true;
++                filters << "{\"name\":" << jsonQuote(name) << ",\"bypassed\":" << (f->is_bypassed()?"true":"false") << ",\"type\":" << int(f->get_type());
++                auto digital=std::dynamic_pointer_cast<uhd::digital_filter_base<int16_t>>(f);
++                auto analog=std::dynamic_pointer_cast<uhd::analog_filter_lp>(f);
++                if(digital)
++                {
++                    filters << ",\"input_rate_hz\":" << digital->get_input_rate() << ",\"interpolation\":" << digital->get_interpolation()
++                            << ",\"decimation\":" << digital->get_decimation() << ",\"full_scale\":" << digital->get_tap_full_scale() << ",\"taps\":[";
++                    bool sep=false;for(auto tap:digital->get_taps()){if(sep)filters<<',';sep=true;filters<<tap;} filters<<']';
++                }
++                if(analog) filters << ",\"cutoff_hz\":" << analog->get_cutoff() << ",\"rolloff\":" << analog->get_rolloff() << ",\"description\":" << jsonQuote(analog->get_analog_type());
++                filters << '}';
++            }
++            filters << ']'; out << filters.str();
++        }
++        catch(const std::exception &error){out << "null,\"filter_error\":" << jsonQuote(error.what());}
++        out << '}'; return out.str();
++    }
++
+     /*******************************************************************
+      * GPIO API
+      ******************************************************************/
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -45,7 +45,15 @@
+ # Setup SoapySDR and set default modules location
+ ########################################################################
+ find_package(SoapySDR "0.7" NO_MODULE REQUIRED)
++# Optional explicit SDK for side-by-side ABI builds; never alter installed SDKs.
++if(SOAPY_UHD_SDK_INCLUDE_DIR)
++    set_property(TARGET SoapySDR PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${SOAPY_UHD_SDK_INCLUDE_DIR}")
++    set(SoapySDR_INCLUDE_DIRS "${SOAPY_UHD_SDK_INCLUDE_DIR}")
++    set(SOAPY_SDR_INCLUDE_DIR "${SOAPY_UHD_SDK_INCLUDE_DIR}")
++    _SOAPY_SDR_GET_ABI_VERSION(SOAPY_SDR_ABI_VERSION "${SOAPY_UHD_SDK_INCLUDE_DIR}")
++endif()
+ 
++
+ get_filename_component(_SoapySDR_ROOT "${SoapySDR_INCLUDE_DIRS}/.." ABSOLUTE)
+ message(STATUS "SoapySDR root directory: ${_SoapySDR_ROOT}")
+ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT AND NOT "${_SoapySDR_ROOT}" STREQUAL "/usr")
+@@ -157,6 +165,9 @@
+             ${Boost_LIBRARIES}
+     )
+     target_include_directories(uhdSupport PRIVATE ${SOAPY_UHD_INCLUDE_DIRS})
++    if(SOAPY_UHD_SDK_INCLUDE_DIR)
++        target_include_directories(uhdSupport BEFORE PRIVATE "${SOAPY_UHD_SDK_INCLUDE_DIR}")
++    endif()
+     target_compile_definitions(uhdSupport PRIVATE ${UHD_FEATURE_DEFS})
+ endif()
+ 

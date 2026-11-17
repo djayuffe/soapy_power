@@ -31,10 +31,14 @@ class ScanProfile:
         fields = {'version', 'type', 'reference', 'identity', 'sample_rate_hz', 'bandwidth_hz',
                   'antenna', 'settings', 'expected_hardware_info', 'points', 'bands',
                   'point_tolerance_hz', 'dc_anchors', 'dc_max_distance_hz', 'dc_domain_edges_hz',
-                  'gain_strategy', 'gain_ladder', 'gain_readback_tolerance_db', 'control_context'}
+                  'gain_strategy', 'gain_ladder', 'gain_readback_tolerance_db', 'control_context', 'telemetry_policy'}
         if not isinstance(value, dict) or set(value)-fields or type(value.get('version')) is not int or value['version'] != 1 or value.get('type') != 'receiver_scan_profile':
             raise ValueError('invalid receiver scan profile schema/version')
         self.value = copy.deepcopy(value)
+        self.telemetry_policy = None
+        if 'telemetry_policy' in value:
+            from soapypower.telemetry import TelemetryPolicy
+            self.telemetry_policy = TelemetryPolicy(value['telemetry_policy'])
         if not isinstance(value.get('reference'), str) or not value['reference'].strip():
             raise ValueError('receiver profile needs its measured reference/procedure')
         identity = value.get('identity')

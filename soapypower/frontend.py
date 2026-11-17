@@ -145,6 +145,16 @@ class Frontend:
         value = self.optional('get' + suffix, self.direction, self.channel)
         return None if value is None else bool(value)
 
+    def native_chain(self, force=False):
+        from soapypower.telemetry import native_metadata
+        key=(getattr(self.wrapper,'sample_rate',None),getattr(self.wrapper,'bandwidth',None),
+             getattr(self.wrapper,'antenna',None),self.optional('getMasterClockRate'),
+             self.correction_state('DCOffsetMode'),self.correction_state('IQBalanceMode'))
+        if force or getattr(self,'_native_chain_key',None)!=key:
+            self._native_chain_key=key
+            self._native_chain_value=native_metadata(self,True)
+        return self._native_chain_value
+
     def context(self, device_settings, tune_args, lnb_lo, lnb_high_side, iq_conjugate):
         gains = None
         names = getattr(self.wrapper, 'list_gains', lambda: [])()
@@ -175,6 +185,16 @@ class Frontend:
             full_scale = finite(native[1], 'native full-scale', positive=True)
             info['soapypower_native_stream'] = {'format': native[0], 'full_scale': full_scale,
                                                'requested_format': 'CF32'}
+        chain=self.native_chain()
+        if chain['status']=='ok':
+            from soapypower.filter_model import validate_chain
+            from soapypower.telemetry import digest
+            observed=validate_chain(chain['value'])
+            info['soapypower_native_rx_chain']=observed
+            info['soapypower_native_chain_sha256']=digest(observed)
+            info['soapypower_native_stream']={'format':observed['native_format'],
+                'full_scale':observed['native_full_scale'],'requested_format':'CF32',
+                'source':'versioned_native_metadata','adc_effective_bits_inferred':False}
         hardware_time = self.optional('hasHardwareTime')
         if hardware_time is not None:
             info['soapypower_hardware_time_available'] = bool(hardware_time)
@@ -191,7 +211,7 @@ class Frontend:
         keys = set(device_settings)
         for info_item in self.optional('getSettingInfo') or []:
             key = getattr(info_item, 'key', None)
-            if isinstance(key, str) and key:
+            if isinstance(key, str) and key and not key.startswith('SOAPY_POWER_'):
                 keys.add(key)
         settings = {key: self.optional('readSetting', key) for key in sorted(keys)}
         gain_mode = (self.optional('getGainMode', self.direction, self.channel)

@@ -10,6 +10,7 @@ from soapypower import psd, writer, rf_state
 from soapypower.acquisition_quality import QualityPolicy, RejectionEvidence, HeadroomRejected, IQEvidenceBuffer
 from soapypower.scan_profile import ScanProfile
 from soapypower.coverage import masked_frequency_plan, coverage_gaps
+from soapypower.telemetry import TelemetryMonitor, TelemetryPolicy, digest
 from soapypower.frontend import Frontend
 from soapypower.calibration import _compare
 from soapypower.integrity import ContinuityTracker, shifted
@@ -298,7 +299,7 @@ class SoapyPower:
               settle_samples=0, lock_sensor=None, lock_timeout=2.0, timestamp_tolerance_samples=0.25,
               require_timestamps=False, workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False,
               reference_lock_sensor=None, reopen_stream=False, quality_policy=None, receiver_profile=None,
-              observe_rf_state=False):
+              observe_rf_state=False, telemetry_policy=None, settling_model=None):
         """Prepare samples buffer and start streaming samples from device"""
         bins = integer(bins, 'bins', 2)
         repeats = integer(repeats, 'repeats', 1)
@@ -332,7 +333,27 @@ class SoapyPower:
         managed_dc = (prior_profile is not None and bool(prior_profile.anchors))
         self._receiver_profile = (receiver_profile if isinstance(receiver_profile, ScanProfile) else
                                   ScanProfile(receiver_profile)) if receiver_profile is not None else None
+        if self._receiver_profile is not None and self._receiver_profile.telemetry_policy is not None:
+            bound = self._receiver_profile.telemetry_policy
+            if telemetry_policy is not None:
+                requested = telemetry_policy if isinstance(telemetry_policy, TelemetryPolicy) else TelemetryPolicy(telemetry_policy)
+                if requested.sha256 != bound.sha256:
+                    raise ValueError('receiver profile telemetry policy cannot be overridden')
+            telemetry_policy = bound
+        if telemetry_policy is not None:
+            parsed_policy = telemetry_policy if isinstance(telemetry_policy, TelemetryPolicy) else TelemetryPolicy(telemetry_policy)
+            if parsed_policy.require_temperature and not reopen_stream:
+                raise ValueError('required thermal validity needs --reopen-stream for safe polling')
         self._observe_rf_state = bool(observe_rf_state or self._quality_policy is not None)
+        self._telemetry = TelemetryMonitor(self._frontend,telemetry_policy) if self._observe_rf_state or telemetry_policy is not None else None
+        self._observe_rf_state = self._telemetry is not None
+        if settling_model is not None:
+            from soapypower.telemetry_models import validate_settling
+            settling_model=validate_settling(settling_model)
+        self._settling_model = settling_model
+        self._read_latencies = []
+        self._read_errors = {}
+        self._host_reads = 0
         self._gain_cache = {}
         self._quality_chunks = None
         self._rejection_evidence = None
@@ -347,7 +368,7 @@ class SoapyPower:
                 self._frontend.apply_corrections()
             if self._receiver_profile.anchors and self._frontend.dc_correction != 'off':
                 raise ValueError('profile DC anchors require --dc-correction off')
-        self._need_context = self._quality_policy is not None or calibration is not None or self._output_format in ('json', 'rtl_power_fftw', 'soapy_power_bin_v3')
+        self._need_context = self._telemetry is not None or self._quality_policy is not None or calibration is not None or self._output_format in ('json', 'rtl_power_fftw', 'soapy_power_bin_v3')
         if self._frontend.manual_dc is not None or self._frontend.manual_iq is not None:
             self._frontend.apply_corrections()
         if calibration is not None:
@@ -355,6 +376,7 @@ class SoapyPower:
         self._burst_ended = False
         self._coverage_request = None
         try:
+            if self._telemetry is not None:self._telemetry.closed_slot()
             base_buffer = self.device.start_stream(buffer_size=base_buffer_size)
             block_size = integer(len(base_buffer), 'device block size', 1)
             self._bins = bins
@@ -444,7 +466,17 @@ class SoapyPower:
             self._read_tail = self._read_tail[count:]
             position = count
         while position < len(output) and not self._cancelled() and not self._burst_ended:
-            result = self.device.read_stream()
+            read_started=time.monotonic()
+            try:
+                result = self.device.read_stream()
+            except BaseException:
+                self._read_errors['exception']=self._read_errors.get('exception',0)+1
+                raise
+            finally:
+                self._read_latencies.append(max(0,time.monotonic()-read_started)*1000)
+                if len(self._read_latencies)>256:del self._read_latencies[0]
+            self._host_reads+=1
+            if result.ret<=0:self._read_errors[str(result.ret)]=self._read_errors.get(str(result.ret),0)+1
             count = result.ret
             if count == constants.SOAPY_SDR_OVERFLOW:
                 self.device.buffer_overflow_count += 1
@@ -499,11 +531,11 @@ class SoapyPower:
                     raise ValueError('requested motherboard reference-lock sensor is unavailable')
                 locked = locked and str(value).strip().lower() in ('true', '1', 'yes', 'locked')
             now = time.monotonic()
-            if discarded >= self._settle_samples and now >= tuned_at + self._tune_delay and locked:
+            if discarded >= self._settle_samples and now >= tuned_at + self._active_tune_delay and locked:
                 break
             if self._cancelled():
                 return discarded
-            if now - tuned_at >= max(self._tune_delay, self._lock_timeout):
+            if now - tuned_at >= max(self._active_tune_delay, self._lock_timeout):
                 raise RuntimeError('tuning settle timeout')
             count = self._read_chunk(self._buffer)
             discarded += count
@@ -566,6 +598,8 @@ class SoapyPower:
                 self._last_integrity['headroom'] = dict(metrics, accepted=True, attempt=attempt,
                     maximum_limit=policy.maximum, p999_limit=policy.percentile,
                     evaluated_samples=int(raw.size), uncentered_components=True)
+                if self._telemetry is not None:
+                    self._last_integrity['rssi_iq_consistency']=self._telemetry.qualify_iq(self._last_context,self._last_integrity['rf_state']['after'],metrics)
                 if profile is not None:
                     self._gain_cache[freq] = gain.copy()
                     self._last_integrity['receiver_profile'] = dict(sha256=profile.sha256,
@@ -588,6 +622,7 @@ class SoapyPower:
             raise RuntimeError('Streaming is not initialized, you must run setup() first!')
         freq = finite(freq, 'freq')
         t_freq = time.monotonic()
+        previous_center = finite(self.device.freq, 'previous device frequency')
         self._acquisition_stage = 'tuning'
         self._read_tail = numpy.empty(0, dtype=numpy.complex64)
         self._next_sample_time = None
@@ -619,6 +654,20 @@ class SoapyPower:
                     status = self.device.device.activateStream(self.device.stream)
                     if status:
                         raise RuntimeError('SDR stream activation failed: {}'.format(status))
+        if self._telemetry is not None:
+            self._telemetry.closed_slot()
+            self._telemetry.await_warmup(cancelled=self._cancelled)
+        self._active_tune_delay=self._tune_delay
+        self._settling_decision={'status':'configured_default','delay_s':self._tune_delay}
+        if self._settling_model is not None:
+            from soapypower.telemetry_models import evaluate_settling, ModelContextMismatch
+            step=digest(dict(context=self.measurement_context(),previous_center_hz=previous_center,center_hz=float(self.device.freq)))
+            try:
+                self._active_tune_delay=evaluate_settling(self._settling_model,step)
+                self._settling_decision={'status':'validated_reference_model','delay_s':self._active_tune_delay,'step_context_sha256':step}
+            except ModelContextMismatch as error:
+                # An untrained RF/gain/clock step keeps the conservative configured policy.
+                self._settling_decision.update(status='unmatched_model_fallback',reason=str(error))
         if self._reopen_stream:
             self.device.start_stream(buffer_size=self._base_buffer_size)
         if self._receiver_profile is not None:
@@ -661,7 +710,8 @@ class SoapyPower:
             if (previous is None and actual_lo > lo + tolerance) or (previous is not None and actual_lo > previous + tolerance):
                 raise ValueError('actual tuning leaves a frequency coverage gap')
             self._coverage_request = (lo, hi, max(previous or actual_hi, actual_hi))
-        before_rf = rf_state.observe(self._frontend) if self._observe_rf_state else None
+        before_rf = rf_state.observe(self._frontend,self._telemetry) if self._observe_rf_state else None
+        if self._telemetry is not None:self._telemetry.require_valid(before_rf)
         self._acquisition_stage = 'measurement'
         start = stop = None
         self._acquired_samples = 0
@@ -721,10 +771,21 @@ class SoapyPower:
                                     time_basis={'host_read_bounds_utc': True, 'hardware_sample_time': first_ns is not None,
                                                 'driver_sample_counter_time': software_clock and driver_first_ns is not None})
         if before_rf is not None:
-            after_rf = rf_state.observe(self._frontend)
+            self._telemetry.hops+=1
+            self._telemetry.closed_slot()
+            after_rf = rf_state.observe(self._frontend,self._telemetry)
             self._last_integrity['rf_state'] = dict(before=before_rf,after=after_rf)
             rf_state.require_stable(before_rf,after_rf,self._psd.bin_width*1e-6)
+            self._telemetry.require_valid(after_rf)
+            self._last_integrity['lo_mapping']=rf_state.lo_mapping(after_rf,actual_freq,self.device.sample_rate,
+                -1 if self._lnb_high_side else 1,self._lnb_lo,self._iq_conjugate)
+            self._last_integrity['telemetry_statistics']=self._telemetry.statistics()
         rf_state.require_lock(self._frontend,self._lock_sensor,self._reference_lock_sensor)
+        self._last_integrity['settling_decision']=dict(self._settling_decision)
+        self._last_integrity['host_io']=dict(read_calls=self._host_reads,error_counts=dict(self._read_errors),
+            read_latency_median_ms=float(numpy.median(self._read_latencies)) if self._read_latencies else None,
+            read_latency_p95_ms=float(numpy.percentile(self._read_latencies,95)) if self._read_latencies else None,
+            usb_packet_count_observed=False)
         if self._require_timestamps and clock['continuity'] != 'verified':
             raise RuntimeError('hardware timestamp continuity is not verified')
         if status != 'complete':
@@ -763,7 +824,7 @@ class SoapyPower:
               timestamp_tolerance_samples=0.25, require_timestamps=False,
               workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False, reference_lock_sensor=None,
               reopen_stream=False, deadline_policy='interrupt', quality_policy=None, receiver_profile=None,
-              ensure_coverage=False, usable_halfwidth=None, observe_rf_state=False):
+              ensure_coverage=False, usable_halfwidth=None, observe_rf_state=False, telemetry_policy=None, settling_model=None):
         """Sweep spectrum using frequency hopping"""
         if deadline_policy not in ('interrupt', 'finish-hop'):
             raise ValueError('deadline policy must be interrupt or finish-hop')
@@ -810,7 +871,8 @@ class SoapyPower:
                 reference_lock_sensor=reference_lock_sensor,
                 timestamp_tolerance_samples=timestamp_tolerance_samples, require_timestamps=require_timestamps,
                 workspace_budget_bytes=workspace_budget_bytes, allow_estimated_dc=allow_estimated_dc,
-                quality_policy=quality_policy, receiver_profile=receiver_profile, observe_rf_state=observe_rf_state
+                quality_policy=quality_policy, receiver_profile=receiver_profile, observe_rf_state=observe_rf_state,
+                telemetry_policy=telemetry_policy, settling_model=settling_model
             )
             if ensure_coverage:
                 logger.info('Mask-aware plan: %d centers, usable halfwidth %.9g Hz',len(rf_centers),coverage_halfwidth)

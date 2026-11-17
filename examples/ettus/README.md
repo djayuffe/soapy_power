@@ -347,3 +347,6 @@ Offline record readers accept `.jsonl.gz` as well as plain JSONL, including the
 heatmap, context extraction and fractional channel-integration tools. The
 provenance combiner and other analysis commands are documented in
 [receiver quality examples](../receiver_quality/README.md).
+
+See [telemetry policies and reference models](TELEMETRY.md) for typed sensors,
+warmup/validity gates, native filter phase, and the isolated SoapyUHD extension.

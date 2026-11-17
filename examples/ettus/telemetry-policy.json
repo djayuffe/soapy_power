@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "temperature_interval_s": 1,
+  "temperature_max_age_s": 3,
+  "require_temperature": true,
+  "reference_lock": "selected",
+  "require_native_chain": true,
+  "refresh_hops": 100
+}
