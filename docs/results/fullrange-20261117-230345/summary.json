@@ -1,0 +1,26 @@
+{
+ "agreement": {
+  "common_cells": 5964,
+  "median_diff_db": -0.04285176452283679,
+  "robust_sd_db": 0.3169200202003913,
+  "p95_abs_diff_db": 0.8190033304713646,
+  "cells_over_3db": 55,
+  "note": "antenna input: both sessions see changing external signals, so large cell differences are expected"
+ },
+ "features-on": {
+  "records": 5134,
+  "hops": 215,
+  "passes": 23.87906976744186,
+  "seconds": 299.960838,
+  "records_per_s": 17.115567599527775,
+  "temperature_records": 5134
+ },
+ "features-off": {
+  "records": 7071,
+  "hops": 849,
+  "passes": 8.328621908127209,
+  "seconds": 299.902516,
+  "records_per_s": 23.577661482506535,
+  "temperature_records": 0
+ }
+}
