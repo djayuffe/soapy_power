@@ -282,7 +282,14 @@ if [ "$PROCEDURE" = fullrange ]; then
   done
   "$PY" "$REPO/tools/fullrange_compare.py" "$SESSION" --input "$INPUT" > "$SESSION/compare.json" 2> "$SESSION/compare.err"; echo "== compare exit $?"
   # autogenerate the 3D waterfalls / intermittency / merged PDF into $SESSION/report (never fails the run; needs matplotlib)
-  [ -z "${NO_REPORT:-}" ] && { "$PY" "$REPO/tools/report_auto.py" "$SESSION" > "$SESSION/report.log" 2>&1; echo "== report exit $? ($(tail -n 1 "$SESSION/report.log" 2>/dev/null))"; }
+  # (uses the first python that can import numpy + matplotlib: the SDR python often lacks them)
+  if [ -z "${NO_REPORT:-}" ]; then
+    RPY=""; for cand in "$PY" "$HOME/.venv/bin/python" "$HOME/.pyenv/shims/python3" /opt/homebrew/bin/python3 /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 /usr/local/bin/python3 python3; do
+      "$cand" -c 'import numpy, matplotlib.pyplot' >/dev/null 2>&1 && { RPY="$cand"; break; }
+    done
+    if [ -n "$RPY" ]; then "$RPY" "$REPO/tools/report_auto.py" "$SESSION" > "$SESSION/report.log" 2>&1; echo "== report exit $? via $RPY ($(tail -n 1 "$SESSION/report.log" 2>/dev/null))"
+    else echo "== report hoppet over: ingen python med numpy+matplotlib (pip install matplotlib pypdf packaging)"; fi
+  fi
   RESULT=done; [ -n "$FAILED" ] && RESULT="partial:$FAILED"
   finish "SESSION=$SESSION
 RESULT=$RESULT"
