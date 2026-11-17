@@ -356,3 +356,8 @@ Relative levels only; nothing here is calibrated.
 | T1-T5, 360 true peaks | 120 mislabelled (spur and image read as signal) | 0 mislabelled, 0 false, 0 missed |
 | floor-vs-T slope error, oscillating T | 0.019-0.022 dB/C (OLS) | 0.010-0.015 dB/C (Kalman) |
 | floor-vs-T slope, monotone T | 0.076-0.089 dB/C error, no warning | 0.061-0.068 dB/C error, flagged confounded 100 % |
+
+Real data, B200 session okt-20261117-193257 (5741 temperatures, 46.3-47.2 C, antenna input, 1914 records used): within-center OLS
++0.024 dB/C; Kalman -0.018 dB/C, sd 0.057, plausible range -0.037..-0.016, not confounded (corr(T,t)=0.33). The two agree within
+the Kalman uncertainty and neither excludes zero: the earlier "+0.024 +/- 0.031" was too tight. Treat the floor-vs-temperature
+slope as unresolved for this session; a terminated-input run with a temperature swing is needed.
