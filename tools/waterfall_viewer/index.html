@@ -28,7 +28,7 @@ select{background:#0b1222;color:#c9d4e6;border:1px solid #2b3a55;border-radius:1
 <div class="sub">B200mini · antenne · 2026-11-17 · relative, ukalibrerte nivåer · bånd-navn er nominelle tildelinger · dra for å rotere, scroll for zoom</div></header>
 <div class="bar">
  <div class="seg" id="mode"><button data-m="on" class="on">Features ON</button><button data-m="off">Features OFF</button><button data-m="delta">ON-pass − OFF-median</button><button data-m="zoom">100–300 MHz</button></div>
- <div class="seg" id="xs"><button data-x="sqrt" class="on">√-skala</button><button data-x="lin">lineær</button></div>
+ <div class="seg" id="xs"><button data-x="sqrt">√-skala</button><button data-x="lin" class="on">lineær (sann skala)</button></div>
  <select id="cs"><option>Turbo</option><option>Inferno</option><option>Viridis</option><option>Plasma</option><option>Electric</option><option>Jet</option></select>
  <button class="btn" id="spin">▶ Auto-rotér</button>
  <button class="btn" id="cut">Skjær ut støygulv</button>
@@ -40,10 +40,12 @@ select{background:#0b1222;color:#c9d4e6;border:1px solid #2b3a55;border-radius:1
 <script>
 const BANDS=[['FM',98],['DAB',225],['LTE800',805],['GSM900',935],['GSM1800',1840],['UMTS',2120],['WiFi 2.4',2410]];
 const TICKS=[100,300,1000,2000,3000,4500,6000];
-let W,state={m:'on',x:'sqrt',cs:'Turbo',spin:false,cut:false},fgrid={},raf=null,ang=-58*Math.PI/180;
+let W,state={m:'on',x:'lin',cs:'Turbo',spin:false,cut:false},fgrid={},raf=null,ang=-58*Math.PI/180;
 const sq=Math.sqrt;
 function med(col){const a=col.filter(v=>v!=null).sort((x,y)=>x-y);return a.length?a[a.length>>1]:null}
-function prep(name){const g=W[name].grid,ok=g.map(r=>r.filter(v=>v!=null).length/r.length>.5);return g.filter((_,i)=>ok[i])}
+function okrows(name){return W[name].grid.map(r=>r.filter(v=>v!=null).length/r.length>.5)}
+function prep(name){const ok=okrows(name);return W[name].grid.filter((_,i)=>ok[i])}
+function tsec(name){const ok=okrows(name);return W[name].t0_s.filter((_,i)=>ok[i])}
 function medProfile(g){return g[0].map((_,j)=>med(g.map(r=>r[j])))}
 function build(){
   const f=Array.from({length:g_n},(_,i)=>W.start_mhz+W.cell_mhz*(i+.5));
@@ -54,13 +56,13 @@ function build(){
   else{Z=on;const k=f.map((x,i)=>x>=100&&x<=300?i:-1).filter(i=>i>=0);fx=k.map(i=>f[i]);Z=on.map(r=>k.map(i=>r[i]));}
   if(state.cut&&state.m!=='delta'){Z=Z.map(r=>r.map(v=>v==null?null:Math.max(v,-134)));cmin=-134}
   const X=state.m==='zoom'||state.x==='lin'?fx:fx.map(sq);
-  const Y=Z.map((_,i)=>i);
+  const Y=tsec(state.m==='off'?'features-off':'features-on');
   const lin=state.m==='zoom'||state.x==='lin';
   const trace={type:'surface',x:X,y:Y,z:Z,colorscale:state.cs,cmin,cmax,showscale:true,connectgaps:false,
     colorbar:{title:{text:state.m==='delta'?'Δ dB':'dB rel.'},tickfont:{color:'#c9d4e6'},titlefont:{color:'#c9d4e6'},len:.6},
     lighting:{ambient:.65,diffuse:.9,specular:.35,roughness:.4},
     contours:{z:{show:true,usecolormap:true,project:{z:false},width:1}},
-    hovertemplate:'%{customdata[0]:.1f} MHz<br>pass %{y}<br>%{z:.1f} dB<extra></extra>',
+    hovertemplate:'%{customdata[0]:.1f} MHz<br>t %{y:.0f} s<br>%{z:.1f} dB<extra></extra>',
     customdata:Z.map(()=>fx.map(x=>[x]))};
   trace.customdata=Z.map(()=>fx.map(x=>[x]));
   const tv=lin?(state.m==='zoom'?[100,150,200,250,300]:[70,1000,2000,3000,4000,5000,6000]):TICKS.map(sq);
@@ -68,7 +70,7 @@ function build(){
   const layout={paper_bgcolor:'rgba(0,0,0,0)',margin:{l:0,r:0,t:0,b:0},
     scene:{bgcolor:'rgba(7,11,20,.0)',aspectmode:'manual',aspectratio:{x:state.m==='zoom'?2:2.6,y:1.2,z:.9},
      xaxis:{title:'RF (MHz'+(lin?')':', √-skala)'),tickvals:tv,ticktext:tt,color:'#c9d4e6',gridcolor:'#24324f',backgroundcolor:'#0a1020',showbackground:true},
-     yaxis:{title:'pass (tid)',color:'#c9d4e6',gridcolor:'#24324f',backgroundcolor:'#0a1020',showbackground:true},
+     yaxis:{title:'tid (s)',range:[0,300],color:'#c9d4e6',gridcolor:'#24324f',backgroundcolor:'#0a1020',showbackground:true},
      zaxis:{title:'dB',range:zr,color:'#c9d4e6',gridcolor:'#24324f',backgroundcolor:'#0a1020',showbackground:true},
      camera:{eye:{x:1.9*Math.cos(ang),y:1.9*Math.sin(ang)*-1,z:1.0}}},
     font:{color:'#c9d4e6'}};
@@ -77,7 +79,7 @@ function build(){
   layout.scene.annotations=ann;
   Plotly.react('plot',[trace],layout,{responsive:true,displaylogo:false});
   const el=document.getElementById('plot'); el.removeAllListeners&&el.removeAllListeners('plotly_hover');
-  el.on('plotly_hover',e=>{const p=e.points[0];document.getElementById('hover').textContent=`${p.customdata[0].toFixed(1)} MHz · pass ${p.y} · ${p.z.toFixed(1)} dB`});
+  el.on('plotly_hover',e=>{const p=e.points[0];document.getElementById('hover').textContent=`${p.customdata[0].toFixed(1)} MHz · t ${p.y.toFixed(0)} s · ${p.z.toFixed(1)} dB`});
   tiles(Z,on,off);
 }
 function tiles(Z,on,off){
