@@ -266,6 +266,32 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'digital_agc'):
             self.scan(sdr,quality_policy=self.policy(),receiver_profile=profile())
 
+    def test_reopen_mode_closes_usb_before_headroom_and_evidence_publication(self):
+        sdr,out=self.capable_receiver();self.signal(sdr,.1)
+        original=QualityPolicy.evaluate
+        seen=[]
+        def evaluate(policy,samples):
+            self.assertFalse(sdr.device.is_streaming)
+            seen.append(len(samples))
+            return original(policy,samples)
+        with mock.patch.object(QualityPolicy,'evaluate',evaluate):
+            sdr.sweep(10000,10000,64,4,runs=3,max_threads=1,reopen_stream=True,quality_policy=self.policy())
+        self.assertEqual(seen,[256,256,256])
+        rows=[json.loads(r) for r in out.getvalue().splitlines() if r.strip()]
+        self.assertEqual(len(rows),3)
+        self.assertTrue(all(r['metadata']['stream_closed_after_acquisition'] for r in rows))
+
+    def test_reopen_mode_rejection_retains_iq_with_usb_already_closed(self):
+        sdr,out=self.capable_receiver();self.signal(sdr,.9)
+        original=RejectionEvidence.save
+        def save(evidence,samples,metadata):
+            self.assertFalse(sdr.device.is_streaming)
+            return original(evidence,samples,metadata)
+        with mock.patch.object(RejectionEvidence,'save',save):
+            with self.assertRaises(HeadroomRejected):
+                self.scan(sdr,reopen_stream=True,quality_policy=self.policy())
+        self.assertEqual(out.getvalue(),b'')
+
 
 class ProfileTests(unittest.TestCase):
     def test_dc_anchor_requires_exact_stage_and_rf_domain(self):
@@ -388,6 +414,8 @@ class AlgorithmTests(unittest.TestCase):
                    center_hz=c,baseband_hz=10000,sample_rate_hz=2e6,clock_state='internal')
               for i,c in enumerate([100e6,101e6,102e6,100.2e6,101.2e6])]
         result=analyze_track(rows,100)
+        json.dumps(result,allow_nan=False)  # All diagnostic metadata must publish as strict JSON.
+        self.assertIs(type(result['groups'][0]['identifiable']),bool)
         self.assertEqual(result['groups'][0]['diagnostic_class'],'if_fixed')
         self.assertEqual(result['automatic_exclusions'],[])
         rows[-1]['baseband_hz']=12000
@@ -470,6 +498,16 @@ class NoiseReferenceTests(unittest.TestCase):
                 self.assertEqual(meta['short_bin_spacing_hz'],10000)
                 self.assertIn('candidate_0_validation_phase_residual_deg',archive)
             np.testing.assert_array_equal(np.load(source)['iq'],z)
+
+    def test_spur_cli_publishes_python_boolean_metadata(self):
+        rows=[dict(capture_id=str(i),partition='train' if i<3 else 'validation',
+                   center_hz=100e6+i*1e6,baseband_hz=10000,sample_rate_hz=2e6,clock_state='internal')
+              for i in range(5)]
+        with tempfile.TemporaryDirectory() as directory:
+            source=Path(directory)/'track.json';out=Path(directory)/'atlas.json'
+            source.write_text(json.dumps(rows))
+            analyze(['spur-atlas',str(source),str(out),'--tolerance-hz','100'])
+            self.assertEqual(json.loads(out.read_text())['groups'][0]['diagnostic_class'],'if_fixed')
 
 
 if __name__ == '__main__':unittest.main()

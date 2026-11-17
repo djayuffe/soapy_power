@@ -49,3 +49,21 @@ No new physical SDR capture or firmware change is claimed by this integration.
 Software regression tests and replay of retained campaign data are recorded in
 the validation deliverables. See `examples/receiver_quality/README.md` for the
 schemas, CLI commands, budgets and publication semantics.
+
+## Full-operation follow-up
+
+The sustained antenna run exposed a USB-lifecycle gap that a short smoke test
+had missed: reopened streams remained active during post-acquisition CPU/output
+work. Reopen mode now closes the stream immediately after collecting the unique
+IQ samples, before RF readbacks, FFT completion and quality/evidence work. Tests
+verify this ordering and repeated-hop restart behavior. The corrected 28 MS/s
+run completed 300 seconds and 4,449 verified hops; the earlier overflow run is
+retained separately. This is session evidence, not a universal throughput claim.
+
+Compressed JSONL readers now stream `.gz` inputs through the same numerical and
+record checks. Spur-atlas identifiability metadata is converted to a Python
+boolean so successful diagnostics also publish as strict JSON. The operation
+exercised CLI context/integration, rebin/fusion, common IQ, held-out phase, noise
+reference identity and mismatched-reference refusal, native audit, historical
+profile import and retune recurrence. No current antenna-only data were relabelled
+as absolute power/NF/vector calibration.

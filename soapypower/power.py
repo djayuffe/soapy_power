@@ -584,7 +584,7 @@ class SoapyPower:
 
     def _acquire_psd(self, freq):
         """Acquire one center frequency using continuous Welch framing."""
-        if not self.device.is_streaming:
+        if self._psd is None or (not self.device.is_streaming and not self._reopen_stream):
             raise RuntimeError('Streaming is not initialized, you must run setup() first!')
         freq = finite(freq, 'freq')
         t_freq = time.monotonic()
@@ -595,7 +595,8 @@ class SoapyPower:
         if self._reopen_stream:
             # A new stream avoids queued END_BURST packets and buffers captured
             # while UHD is retuning. Never reopen after a failed tuning call.
-            self.device.stop_stream()
+            if self.device.is_streaming:
+                self.device.stop_stream()
             self._burst_ended = False
         if self._reopen_stream or self.device.freq != freq or (self._tune_args and not self._tune_args_applied):
             if self._reset_stream and not self._reopen_stream:
@@ -680,6 +681,11 @@ class SoapyPower:
                 self._quality_chunks.append(self._buffer[:count])
             self._psd.update_contiguous_async(state, self._buffer[:count])
         acquired = self._acquired_samples
+        if self._reopen_stream:
+            # Do not fill the USB FIFO while RF readbacks, queued FFT work,
+            # headroom statistics, evidence publication or output run. Each
+            # next hop explicitly starts a fresh stream after tuning.
+            self.device.stop_stream()
         status = ('complete' if acquired == self._target_samples else
                   'partial_cancelled' if _shutdown else 'partial_deadline' if self._cancelled() else
                   'partial_end_burst' if self._burst_ended else 'partial')
@@ -699,6 +705,7 @@ class SoapyPower:
                                     completion_fraction=acquired / self._target_samples,
                                     acquisition_rounding=self._acquisition_rounding,
                                     stream_reopened_per_hop=self._reopen_stream,
+                                    stream_closed_after_acquisition=self._reopen_stream,
                                     end_burst_seen=self._burst_ended,
                                     terminal_packet_fully_processed=self._burst_ended and not self._read_tail.size,
                                     full_burst_received=None,

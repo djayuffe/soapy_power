@@ -35,7 +35,7 @@ def analyze_track(observations, tolerance_hz):
         train = [r for r in rows if r[2]=='train']
         test = [r for r in rows if r[2]=='validation']
         hypotheses = []
-        identifiable = (len(train)>=3 and len(test)>=2 and
+        identifiable = bool(len(train)>=3 and len(test)>=2 and
                         np.ptp([r[0] for r in train])>4*tolerance and
                         np.ptp([r[0] for r in test])>4*tolerance)
         for name,fn in (('if_fixed',lambda r:r[1]),('rf_fixed',lambda r:r[0]+r[1])):
