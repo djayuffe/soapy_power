@@ -340,15 +340,38 @@ def compare_responses(first, second):
             'rms_normalized': float(np.sqrt(np.mean(normalized ** 2))) if normalized.size else None}
 
 
+def _row_std(matrix, keep):
+    """Per-RF-cell std across IF slots (NaN where not kept)."""
+    out = np.full(matrix.shape[0], np.nan)
+    for i in np.flatnonzero(keep):
+        values = matrix[i][np.isfinite(matrix[i])]
+        out[i] = np.std(values)
+    return out
+
+
+def _median_sd(values, resamples=200, seed=0):
+    """Bootstrap standard deviation of the median (fixed seed: analyses are reproducible)."""
+    values = np.asarray(values, float)
+    if values.size < 2:
+        return float('nan')
+    rng = np.random.default_rng(seed)
+    return float(np.std([np.median(values[rng.integers(0, values.size, values.size)]) for _ in range(resamples)]))
+
+
 def holdout_validation(fit_store, test_store, if_bin_hz=None, max_if_hz=None, min_observations=3,
-                       max_disagreement_db=0.25):
+                       max_disagreement_db=0.25, quiet_quantile=0.25, min_quiet_cells=50):
     """Fit on one store, refit independently on held-out acquisitions, compare.
 
     Pass rules: the fit store identifies one component; the independent refit
     reproduces the response (gauge-free RMS <= max_disagreement_db); applying the
-    fit to the holdout does not increase the apparent RF dispersion beyond the
-    response's own estimation noise. A flat receiver passes with no significant
-    improvement; a changed receiver fails.
+    fit to the holdout does not increase the IF-slot dispersion of quiet RF cells
+    beyond the response's own estimation noise plus two bootstrap standard
+    deviations of that paired statistic. Quiet cells are the lowest quiet_quantile
+    of dispersion in the *fit* store, so their selection is independent of the
+    holdout data. With an antenna, time-varying signals dominate the dispersion of
+    most cells; there an all-cell comparison is reported (with its bootstrap SD)
+    but cannot decide. A flat receiver passes with no significant improvement; a
+    changed receiver fails.
     """
     if (fit_store.start, fit_store.stop, fit_store.cell) != (test_store.start, test_store.stop, test_store.cell):
         raise ValueError('fit and test stores must share the same cell grid')
@@ -359,23 +382,43 @@ def holdout_validation(fit_store, test_store, if_bin_hz=None, max_if_hz=None, mi
     if fit['status'] != 'fit' or refit['status'] != 'fit':
         return {'status': 'not_fitted', 'passed': False, 'fit_status': fit['status'], 'refit_status': refit['status']}
     agreement = compare_responses(fit, refit)
-    matrix, _ = _design(test_store, test_store.medians(), if_bin_hz, max_if_hz)
     response = _array(fit['response_db'])
+    matrix, _ = _design(test_store, test_store.medians(), if_bin_hz, max_if_hz)
     matrix[:, ~np.isfinite(response)] = np.nan  # compare before/after on identical observations
     keep = np.isfinite(matrix).sum(axis=1) >= min_observations
-    before = _spread(matrix, keep)
-    after = _spread(apply_if_response(matrix, fit['response_db']), keep)
+    before_rows = _row_std(matrix, keep)
+    after_rows = _row_std(apply_if_response(matrix, fit['response_db']), keep)
+    before, after = float(np.nanmedian(before_rows)), float(np.nanmedian(after_rows))
     drift = level_drift(fit_store, test_store)
     # Subtracting an estimated response adds its own estimation noise; a correct but
     # unnecessary correction (flat receiver) may raise the spread by about that much.
     se = _array(fit['response_se_db'])
     se_typical = float(np.median(se[np.isfinite(se)])) if np.isfinite(se).any() else 0.0
-    allowed = math.sqrt(before ** 2 + se_typical ** 2) if math.isfinite(before) else float('nan')
+    reference, _ = _design(fit_store, fit_store.medians(), if_bin_hz, max_if_hz)
+    reference[:, ~np.isfinite(response)] = np.nan
+    reference_rows = _row_std(reference, np.isfinite(reference).sum(axis=1) >= min_observations)
+    candidates = keep & np.isfinite(reference_rows)
+    quiet = candidates & (reference_rows <= np.quantile(reference_rows[candidates], quiet_quantile)) if candidates.any() else candidates
+    selection = 'fit-store quiet quantile'
+    if quiet.sum() < min_quiet_cells:
+        quiet, selection = keep, 'all cells (too few quiet cells)'
+    paired = after_rows[quiet] - before_rows[quiet]
+    quiet_before = float(np.median(before_rows[quiet])) if quiet.any() else float('nan')
+    paired_median = float(np.median(paired)) if paired.size else float('nan')
+    paired_sd = _median_sd(paired)
+    allowed_increase = (math.sqrt(quiet_before ** 2 + se_typical ** 2) - quiet_before + 2 * paired_sd
+                        if math.isfinite(quiet_before) and math.isfinite(paired_sd) else float('nan'))
     passed = bool(fit['fully_identified'] and agreement['rms_db'] is not None
-                  and agreement['rms_db'] <= max_disagreement_db and after <= allowed)
+                  and agreement['rms_db'] <= max_disagreement_db and paired_median <= allowed_increase)
     return {'status': 'validated', 'passed': passed, 'agreement': agreement,
-            'max_disagreement_db': max_disagreement_db, 'spread_before_db': before,
-            'spread_after_db': after, 'max_allowed_spread_db': allowed, 'improvement_db': before - after,
+            'max_disagreement_db': max_disagreement_db,
+            'quiet_cells': {'selection': selection, 'quantile': quiet_quantile, 'cells': int(quiet.sum()),
+                            'spread_before_db': quiet_before,
+                            'spread_after_db': float(np.median(after_rows[quiet])) if quiet.any() else float('nan'),
+                            'paired_median_increase_db': paired_median, 'paired_sd_db': paired_sd,
+                            'allowed_increase_db': allowed_increase},
+            'spread_before_db': before, 'spread_after_db': after, 'improvement_db': before - after,
+            'improvement_sd_db': math.hypot(_median_sd(before_rows[keep], seed=1), _median_sd(after_rows[keep], seed=2)),
             'fully_identified': fit['fully_identified'], 'refit_fully_identified': refit['fully_identified'],
             'level_drift': drift, 'fit': fit,
             'scope': 'relative IF response, independent holdout acquisitions; not absolute calibration'}

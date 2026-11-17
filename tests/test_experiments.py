@@ -260,8 +260,32 @@ class ModelTests(unittest.TestCase):
                 check = mv.holdout_validation(fit, hold)
                 self.assertTrue(check['passed'], name)
                 self.assertLess(check['agreement']['rms_db'], .1)
-                self.assertLessEqual(check['spread_after_db'], check['max_allowed_spread_db'])
+                quiet = check['quiet_cells']
+                self.assertEqual(quiet['selection'], 'fit-store quiet quantile')
+                self.assertLessEqual(quiet['paired_median_increase_db'], quiet['allowed_increase_db'])
             self.assertLess(check['improvement_db'], .05)  # flat: valid, nothing to correct
+
+    def test_holdout_decides_on_quiet_cells_when_the_environment_dominates(self):
+        # Antenna-like input: 3/4 of the RF cells carry time-varying signals (1 dB per hop and
+        # pass), which dominate the all-cell dispersion. The decision must not flip with them.
+        def environment(st, seed):
+            rng = np.random.default_rng(seed)
+            for hop in st.hops.values():
+                for row in hop['passes']:
+                    row[250:] += rng.normal(0, 1, row.size - 250)
+            return st
+        with tempfile.TemporaryDirectory() as temp:
+            fit_files = scans(Path(temp) / 'fit', H)
+            hold_files = scans(Path(temp) / 'hold', H, seeds=(7, 8))
+            changed = scans(Path(temp) / 'changed', lambda f: H(f) + 1.0 * (f / 14e6), seeds=(7, 8))
+            for seed in range(5):
+                check = mv.holdout_validation(environment(store(fit_files), seed), environment(store(hold_files), 100 + seed))
+                self.assertTrue(check['passed'], (seed, check['quiet_cells'], check['agreement']))
+                self.assertEqual(check['quiet_cells']['selection'], 'fit-store quiet quantile')
+                self.assertGreater(check["spread_before_db"], 1.3 * check["quiet_cells"]["spread_before_db"])
+                self.assertGreater(check['improvement_sd_db'], 0)
+                bad = mv.holdout_validation(environment(store(fit_files), seed), environment(store(changed), 200 + seed))
+                self.assertFalse(bad['passed'], seed)
 
     def test_holdout_fails_when_the_receiver_response_changed(self):
         with tempfile.TemporaryDirectory() as temp:
