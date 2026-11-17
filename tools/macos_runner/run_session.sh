@@ -37,6 +37,8 @@ if ! [[ "$GAIN_DB" =~ ^[0-9]+(\.[0-9]+)?$ ]] || ! awk -v g="$GAIN_DB" 'BEGIN{exi
 case "$ANTENNA" in RX2|TX/RX) ;; *) echo "FEIL: ANTENNA må være RX2 eller TX/RX"; exit 2;; esac
 case "$INPUT" in antenna|terminated) ;; *) echo "FEIL: INPUT må være antenna eller terminated"; exit 2;; esac
 case "$PROCEDURE" in suite|baseline) ;; *) echo "FEIL: PROCEDURE må være suite eller baseline"; exit 2;; esac
+PLAN_ARGS="${PLAN_ARGS:-$(req_field plan_args)}"   # extra `experiments plan` flags, e.g. --no-telemetry
+case "$PLAN_ARGS" in *[!A-Za-z0-9\ .=_-]*) echo "FEIL: plan_args har ulovlige tegn"; exit 2;; esac
 DEVICE_KIND="${DEVICE_KIND:-$(req_field device)}"; DEVICE_KIND="${DEVICE_KIND:-b200}"
 BLADERF_JOB="${BLADERF_JOB:-$(req_field bladerf_job)}"; BLADERF_JOB="${BLADERF_JOB:-dense-dc+survey}"
 case "$DEVICE_KIND" in b200|bladerf) ;; *) echo "FEIL: device må være b200 eller bladerf"; exit 2;; esac
@@ -263,7 +265,7 @@ RESULT=$RESULT"
 fi
 SUITE="$OUTDIR/suite-$STAMP.json"
 SESSION="$OUTDIR/okt-$STAMP"
-"$PY" -m soapypower.experiments plan "$DEV" -O "$SUITE" --scan-seconds "$SCAN_SECONDS" --gain "$GAIN_DB" --antenna "$ANTENNA" --input "$INPUT" || { finish "RESULT=plan_failed"; exit 1; }
+"$PY" -m soapypower.experiments plan "$DEV" -O "$SUITE" --scan-seconds "$SCAN_SECONDS" --gain "$GAIN_DB" --antenna "$ANTENNA" --input "$INPUT" $PLAN_ARGS || { finish "RESULT=plan_failed"; exit 1; }
 "$PY" -m soapypower.experiments run "$SUITE" "$SESSION" --soapy-power "$WRAP"
 RUN=$?
 echo "== run exit $RUN"
