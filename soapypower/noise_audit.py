@@ -17,7 +17,7 @@ def _db(value):
 
 def analyze_iq(samples, sample_rate, fft_size=4096, segments=128, overlap=0.5,
                center_hz=0, amplitude_threshold=None, dc_exclude_bins=2,
-               dc_warning_db=10, variation_warning_db=6):
+               dc_warning_db=10, variation_warning_db=6, phase_features=False):
     """Analyze at most `segments` periodic-Hann frames using bounded frame work.
 
     All amplitude/sample statistics refer to the unique prefix used by those
@@ -127,7 +127,7 @@ def analyze_iq(samples, sample_rate, fft_size=4096, segments=128, overlap=0.5,
         warnings.append('radial_amplitude_threshold_exceeded_not_proof_of_clipping')
     if count < 2:
         warnings.append('insufficient_segments_for_variation')
-    return {
+    report = {
         'type': 'noise_diagnostic', 'version': 1, 'absolute_calibration': False,
         'automatic_correction_applied': False, 'noise_figure_db': None,
         'sample_rate_hz': sample_rate, 'center_hz': center_hz, 'fft_size': fft_size,
@@ -159,6 +159,31 @@ def analyze_iq(samples, sample_rate, fft_size=4096, segments=128, overlap=0.5,
                         'Overlapping segments are correlated; no confidence interval is inferred.']}
 
 
+    if phase_features:
+        from soapypower.coherent_features import coherent_features
+        features = coherent_features(samples[:used], sample_rate, fft_size=fft_size,
+                                     origin_exclusion_hz=min(250000., sample_rate*.01),
+                                     usable_halfwidth_hz=sample_rate*.25)
+        scalar_keys = ('sample_rate_hz', 'fft_size', 'train_samples', 'validation_samples',
+                       'train_frame_count', 'validation_frame_count',
+                       'training_sample_stop_exclusive', 'validation_sample_start',
+                       'short_bin_spacing_hz', 'fine_bin_spacing_hz',
+                       'short_enbw_hz', 'fine_enbw_hz', 'phase_lock_gate',
+                       'peak_excess_gate_db', 'dc_trial_mean_power_before',
+                       'dc_trial_mean_power_after', 'correction_applied_to_source')
+        report['coherent_features'] = {key: features[key] for key in scalar_keys}
+        report['coherent_features'].update(
+            candidates=features['candidates'],
+            candidate_selection='first half only; phase/frequency frozen for disjoint second half',
+            classification='stationary-line qualification, not a detector of all valid RF',
+            absolute_phase_calibrated=False, automatic_notch_applied=False,
+            limitations=['Failed candidates may be valid modulated or intermittent signals.',
+                         'Phase-lock gates are descriptive, not significance tests.',
+                         'A narrower ENBW raises line PSD height without increasing signal power.',
+                         'Source identity and RF/LO following need separate retune/reference evidence.'])
+    return report
+
+
 def analyze_file(path, **kwargs):
     samples = np.load(path, mmap_mode='r', allow_pickle=False)
     if not isinstance(samples, np.ndarray):
@@ -187,6 +212,8 @@ def parser():
     result.add_argument('--dc-exclude-bins', type=int, default=2)
     result.add_argument('--dc-warning-db', type=float, default=10)
     result.add_argument('--variation-warning-db', type=float, default=6)
+    result.add_argument('--coherent-features', action='store_true',
+                        help='train/held-out phase-qualified stationary-line diagnostics; no filtering')
     result.add_argument('-O', '--output', required=True)
     result.add_argument('--force', action='store_true')
     return result
@@ -199,7 +226,8 @@ def main(argv=None):
         report = analyze_file(args.input, sample_rate=args.sample_rate, fft_size=args.fft_size,
                               segments=args.segments, overlap=args.overlap, center_hz=args.center_hz,
                               amplitude_threshold=args.amplitude_threshold, dc_exclude_bins=args.dc_exclude_bins,
-                              dc_warning_db=args.dc_warning_db, variation_warning_db=args.variation_warning_db)
+                              dc_warning_db=args.dc_warning_db, variation_warning_db=args.variation_warning_db,
+                              phase_features=args.coherent_features)
         write_json(args.output, report, overwrite=args.force)
     except (ValueError, OSError, OverflowError) as error:
         command.error(str(error))

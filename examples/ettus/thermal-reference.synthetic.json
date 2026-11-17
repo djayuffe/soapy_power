@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "type": "thermal_reference_measurements",
+  "source": {
+    "reference": "SYNTHETIC fixture; not receiver calibration",
+    "reference_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "controlled_input": true,
+    "sensor_key": "rx:temp",
+    "context_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "response_scope": "whole_grid_scalar",
+    "max_sensor_age_s": 3
+  },
+  "measurements": [
+    {
+      "partition": "train",
+      "temperature_c": 20,
+      "correction_db": 0.85,
+      "capture_sha256": "ff396a5b52bc663a7c38a48e64fae9f804c726d2fbd53060deb383f46bdc93d7"
+    },
+    {
+      "partition": "train",
+      "temperature_c": 25,
+      "correction_db": 0.95,
+      "capture_sha256": "e03008f5c7a4001e3bfb6cf9d8b3c74237e6eb83b7febffc761d3fda9ef2a9f2"
+    },
+    {
+      "partition": "train",
+      "temperature_c": 30,
+      "correction_db": 1.05,
+      "capture_sha256": "24f77ce6cd59ff164a2ea997dac08c400e6deb9aab59f451758158df996d9aa0"
+    },
+    {
+      "partition": "train",
+      "temperature_c": 35,
+      "correction_db": 1.15,
+      "capture_sha256": "59287772bb7705fe9e175048ff184ae07aed72f7b0eb75345cf5000fdf29a3eb"
+    },
+    {
+      "partition": "validation",
+      "temperature_c": 22,
+      "correction_db": 0.89,
+      "capture_sha256": "ccdb1ab9347660b2cb8f49992bf7311ad76ed25b7522384fc0ae2b184472bbc5"
+    },
+    {
+      "partition": "validation",
+      "temperature_c": 28,
+      "correction_db": 1.01,
+      "capture_sha256": "6745224fe56c2cfe035f116191a669faf20e816274d0051877b51ca6a8812b33"
+    },
+    {
+      "partition": "validation",
+      "temperature_c": 34,
+      "correction_db": 1.13,
+      "capture_sha256": "0bc1b9c4b7fe4b7aa432419664d1ba2ec2a52a03ae5037ff088a30ddb96707f6"
+    }
+  ],
+  "max_validation_error_db": 0.1,
+  "max_correction_db": 2,
+  "reference_uncertainty_db": 0.02,
+  "temperature_uncertainty_c": 0.1
+}

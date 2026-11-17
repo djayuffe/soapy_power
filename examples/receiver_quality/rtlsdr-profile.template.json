@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "type": "receiver_scan_profile",
+  "reference": "TEMPLATE ONLY: replace identity and validate every gain/rate/IF policy on your receiver",
+  "identity": {
+    "driver": "rtlsdr",
+    "hardware": "R820T",
+    "serial": "REPLACE_WITH_OBSERVED_SERIAL"
+  },
+  "sample_rate_hz": 2560000,
+  "bandwidth_hz": 2560000,
+  "antenna": "RX",
+  "settings": {
+    "digital_agc": "false"
+  },
+  "bands": [
+    {
+      "start_hz": 24000000.0,
+      "stop_hz": 1764000001.0,
+      "gains": {
+        "TUNER": 19.7
+      }
+    }
+  ],
+  "gain_strategy": "ladder",
+  "gain_ladder": [
+    {
+      "TUNER": 19.7
+    },
+    {
+      "TUNER": 16.6
+    },
+    {
+      "TUNER": 15.7
+    },
+    {
+      "TUNER": 14.4
+    },
+    {
+      "TUNER": 12.5
+    },
+    {
+      "TUNER": 9.9
+    },
+    {
+      "TUNER": 8.7
+    },
+    {
+      "TUNER": 7.7
+    },
+    {
+      "TUNER": 3.7
+    },
+    {
+      "TUNER": 2.7
+    },
+    {
+      "TUNER": 1.4
+    },
+    {
+      "TUNER": 0
+    }
+  ]
+}

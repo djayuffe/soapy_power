@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "type": "receiver_scan_profile",
+  "reference": "TEMPLATE ONLY: RX XB-200 custom path must be independently validated; no manual DC anchors supplied",
+  "identity": {
+    "driver": "bladerf",
+    "hardware": "bladerf1",
+    "serial": "REPLACE_WITH_OBSERVED_SERIAL"
+  },
+  "sample_rate_hz": 28000000.0,
+  "bandwidth_hz": 28000000.0,
+  "antenna": "REPLACE_WITH_OBSERVED_ANTENNA",
+  "bands": [
+    {
+      "start_hz": 350000000.0,
+      "stop_hz": 550000000.0,
+      "gains": {
+        "lna": 3,
+        "rxvga1": 20,
+        "rxvga2": 0
+      }
+    }
+  ],
+  "gain_strategy": "bladerf1_stages"
+}

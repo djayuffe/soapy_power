@@ -165,7 +165,12 @@ assumptions, not an automatic “2 sigma = guaranteed accuracy” label.
 
 ## What software and AI can usefully improve next
 
-These are work packages, **not claims of implemented or calibrated behavior**.
+These work packages distinguish implemented primitives from complete physically
+validated policies. The 2026-11-17 integration adds runtime quality/RF-state
+guards, packet-level rejected IQ evidence, mask-aware planning, per-cell
+provenance fusion and held-out diagnostic spur hypotheses. See
+[IMPLEMENTATION_GAPS.md](IMPLEMENTATION_GAPS.md) for the current status; the
+remaining experimental policies below are not claims of calibrated behavior.
 
 1. **RF-state validity separate from transport integrity.** Record analog RF/BB
    tuning readbacks, lock before/after acquisition, temperature, correction state

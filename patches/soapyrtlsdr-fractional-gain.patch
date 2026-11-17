@@ -1,0 +1,31 @@
+--- a/Settings.cpp
++++ b/Settings.cpp
+@@ -27,6 +27,7 @@
+ #include <SoapySDR/Time.hpp>
+ #include <algorithm>
+ #include <cstring>
++#include <cmath>
+ 
+ SoapyRTLSDR::SoapyRTLSDR(const SoapySDR::Kwargs &args):
+     deviceId(-1),
+@@ -287,7 +288,10 @@
+     {
+         tunerGain = value;
+         SoapySDR_logf(SOAPY_SDR_DEBUG, "Setting RTL-SDR Tuner Gain: %f", tunerGain);
+-        rtlsdr_set_tuner_gain(dev, (int) tunerGain * 10.0);
++        const int nativeGain = static_cast<int>(std::lround(value * 10.0));
++        if (rtlsdr_set_tuner_gain(dev, nativeGain) != 0)
++            throw std::runtime_error("RTL-SDR tuner gain write failed");
++        tunerGain = rtlsdr_get_tuner_gain(dev) / 10.0;
+     }
+ }
+ 
+@@ -315,7 +319,7 @@
+ 
+     if (name == "TUNER")
+     {
+-        return tunerGain;
++        return rtlsdr_get_tuner_gain(dev) / 10.0;
+     }
+ 
+     return 0;

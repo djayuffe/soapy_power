@@ -1,6 +1,7 @@
 """Numerical, artifact and offline workflow regression tests."""
 import io
 import json
+import gzip
 import math
 import subprocess
 import sys
@@ -244,3 +245,20 @@ class OfflineWorkflowTests(unittest.TestCase):
         capture.write_text(json.dumps(data))
         with self.assertRaisesRegex(ValueError, 'AGC'):
             extract_context(capture)
+
+
+class CompressedRecordTests(unittest.TestCase):
+    def test_gzip_record_stream_preserves_validation_and_integration(self):
+        r=record()
+        with tempfile.TemporaryDirectory() as directory:
+            p=Path(directory)/'capture.jsonl.gz'
+            with gzip.open(p,'wt',encoding='utf-8') as stream:stream.write(json.dumps(r)+'\n')
+            decoded=list(read_records(p))
+            self.assertEqual(decoded,[validate_record(r)])
+            self.assertEqual(integrate_record(decoded[0]),integrate_record(r))
+
+    def test_late_invalid_compressed_record_keeps_line_number(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p=Path(directory)/'capture.jsonl.gz'
+            with gzip.open(p,'wt',encoding='utf-8') as stream:stream.write(json.dumps(record())+'\n{"bad":true}\n')
+            with self.assertRaisesRegex(ValueError,'line 2'):list(read_records(p))

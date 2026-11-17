@@ -87,8 +87,16 @@ class Frontend:
             raise RuntimeError('manual ' + suffix + ' readback is unavailable or invalid') from None
         if not math.isfinite(actual.real) or not math.isfinite(actual.imag):
             raise RuntimeError('nonfinite manual ' + suffix + ' readback')
-        driver = self.optional('getDriverKey')
-        quantum = (1 / (2048 if suffix == 'DCOffset' else 4096)) if driver == 'bladerf' else 1e-9
+        driver = str(self.optional('getDriverKey') or '').lower()
+        hardware = str(self.optional('getHardwareKey') or '').lower()
+        # bladeRF1 LMS RX DC controls use sign + 6 magnitude bits. libbladeRF
+        # discards five bits of its normalized int16 value, then Soapy scales
+        # readback by 2048: the delivered normalized step is 32/2048 = 1/64.
+        # Other bladeRF hardware must not inherit the LMS6002D quantization.
+        if driver == 'bladerf' and suffix == 'DCOffset' and hardware == 'bladerf1':
+            quantum = 1 / 64
+        else:
+            quantum = (1 / (2048 if suffix == 'DCOffset' else 4096)) if driver == 'bladerf' else 1e-9
         tolerance = quantum if self.manual_tolerance is None else self.manual_tolerance
         if any(abs(got - wanted) > tolerance + 1e-12 for got, wanted in zip((actual.real, actual.imag), requested)):
             raise RuntimeError('SDR did not apply requested manual ' + suffix)
@@ -137,6 +145,16 @@ class Frontend:
         value = self.optional('get' + suffix, self.direction, self.channel)
         return None if value is None else bool(value)
 
+    def native_chain(self, force=False):
+        from soapypower.telemetry import native_metadata
+        key=(getattr(self.wrapper,'sample_rate',None),getattr(self.wrapper,'bandwidth',None),
+             getattr(self.wrapper,'antenna',None),self.optional('getMasterClockRate'),
+             self.correction_state('DCOffsetMode'),self.correction_state('IQBalanceMode'))
+        if force or getattr(self,'_native_chain_key',None)!=key:
+            self._native_chain_key=key
+            self._native_chain_value=native_metadata(self,True)
+        return self._native_chain_value
+
     def context(self, device_settings, tune_args, lnb_lo, lnb_high_side, iq_conjugate):
         gains = None
         names = getattr(self.wrapper, 'list_gains', lambda: [])()
@@ -167,6 +185,16 @@ class Frontend:
             full_scale = finite(native[1], 'native full-scale', positive=True)
             info['soapypower_native_stream'] = {'format': native[0], 'full_scale': full_scale,
                                                'requested_format': 'CF32'}
+        chain=self.native_chain()
+        if chain['status']=='ok':
+            from soapypower.filter_model import validate_chain
+            from soapypower.telemetry import digest
+            observed=validate_chain(chain['value'])
+            info['soapypower_native_rx_chain']=observed
+            info['soapypower_native_chain_sha256']=digest(observed)
+            info['soapypower_native_stream']={'format':observed['native_format'],
+                'full_scale':observed['native_full_scale'],'requested_format':'CF32',
+                'source':'versioned_native_metadata','adc_effective_bits_inferred':False}
         hardware_time = self.optional('hasHardwareTime')
         if hardware_time is not None:
             info['soapypower_hardware_time_available'] = bool(hardware_time)
@@ -183,7 +211,7 @@ class Frontend:
         keys = set(device_settings)
         for info_item in self.optional('getSettingInfo') or []:
             key = getattr(info_item, 'key', None)
-            if isinstance(key, str) and key:
+            if isinstance(key, str) and key and not key.startswith('SOAPY_POWER_'):
                 keys.add(key)
         settings = {key: self.optional('readSetting', key) for key in sorted(keys)}
         gain_mode = (self.optional('getGainMode', self.direction, self.channel)
