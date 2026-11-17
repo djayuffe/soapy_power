@@ -10,7 +10,7 @@ from soapypower import floor_estimation as fe
 CELL_HZ = 1e6
 
 
-def load(path, usable=0.35, dc_hz=0.5e6):
+def load(path, usable=0.35, dc_hz=0.5e6, start_hz=70e6, stop_hz=6e9):
     cells, vals, hops, times, temps, rejected = [], [], set(), [], 0, 0
     tseries, rseries = [], []
     records = 0
@@ -25,7 +25,7 @@ def load(path, usable=0.35, dc_hz=0.5e6):
             freq = f0 + w * np.arange(p.size)
             center = 0.5 * (r['coverage_start_hz'] + r['coverage_stop_hz'])
             half = 0.5 * (r['coverage_stop_hz'] - r['coverage_start_hz'])
-            keep = (np.abs(freq - center) <= usable * 2 * half) & (np.abs(freq - center) >= dc_hz) & np.isfinite(p)
+            keep = (np.abs(freq - center) <= usable * 2 * half) & (np.abs(freq - center) >= dc_hz) & np.isfinite(p) & (freq >= start_hz) & (freq < stop_hz)
             idx = np.floor(freq[keep] / CELL_HZ).astype(np.int64)
             for c in np.unique(idx):
                 cells.append(c)
