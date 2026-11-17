@@ -23,8 +23,10 @@ CMAP = plt.get_cmap('turbo'); NORM = colors.Normalize(ZMIN, ZMAX)
 
 
 def load(path):
-    W = json.load(open(path)); f = W['start_mhz'] + W['cell_mhz'] * (np.arange(len(W['features-on']['grid'][0])) + .5); out = {}
+    W = json.load(open(path)); first = next(k for k in ('features-on', 'features-off') if k in W)
+    f = W['start_mhz'] + W['cell_mhz'] * (np.arange(len(W[first]['grid'][0])) + .5); out = {}
     for k in ('features-on', 'features-off'):
+        if k not in W: continue
         g = np.array([[np.nan if x is None else x for x in r] for r in W[k]['grid']], float); t = np.array([np.nan if x is None else x for x in W[k]['t0_s']], float)
         ok = np.isfinite(g).mean(1) > .5; out[k] = (g[ok], t[ok])
     return f, out
@@ -82,9 +84,10 @@ def build(f, g, t, lo, hi, title, nm, suite=None, step=1):
 
 def main():
     a = [x for x in sys.argv[1:] if not x.startswith('--')]; gif = '--gif' in sys.argv
-    path, outdir = a[0], Path(a[1]); outdir.mkdir(parents=True, exist_ok=True); suite = json.load(open(a[2]))['telemetry_on'] if len(a) > 2 else None
+    path, outdir = a[0], Path(a[1]); outdir.mkdir(parents=True, exist_ok=True); suite = json.load(open(a[2]))['telemetry_on'] if len(a) > 2 and Path(a[2]).exists() else None
     f, d = load(path); made = []
     for key, nm in (('features-on', 'ON'), ('features-off', 'OFF')):
+        if key not in d: continue
         g, t = d[key]
         for lo, hi, bn in BANDS:
             fig, ax = build(f, g, t, lo, hi, f'Vannfall 3D — features {nm} — {bn}', nm, suite if nm == 'ON' else None)
@@ -92,6 +95,7 @@ def main():
     if gif:
         from PIL import Image
         for key, nm, lo, hi, bn in (('features-on', 'ON', 70, 6000, 'fullrange'), ('features-on', 'ON', 70, 300, '70-300MHz')):
+            if key not in d: continue
             g, t = d[key]; fig, ax = build(f, g, t, lo, hi, f'Vannfall 3D — features {nm} — {bn}', nm, suite if (lo == 70 and hi == 300) else None, step=2 if hi > 1000 else 1); fig.set_size_inches(14, 9); fig.set_dpi(70); frames = []
             for k in range(48):
                 ph = 2 * np.pi * k / 48; ax.view_init(elev=26 + 6 * np.cos(ph), azim=-58 + 48 * np.sin(ph)); fig.canvas.draw(); frames.append(Image.fromarray(np.asarray(fig.canvas.buffer_rgba())[..., :3]).convert('P', palette=Image.ADAPTIVE, colors=200))

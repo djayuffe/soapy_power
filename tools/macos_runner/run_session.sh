@@ -281,6 +281,8 @@ if [ "$PROCEDURE" = fullrange ]; then
     echo "== $VARIANT exit $RC"; [ $RC -eq 0 ] || FAILED="$FAILED $VARIANT"
   done
   "$PY" "$REPO/tools/fullrange_compare.py" "$SESSION" --input "$INPUT" > "$SESSION/compare.json" 2> "$SESSION/compare.err"; echo "== compare exit $?"
+  # autogenerate the 3D waterfalls / intermittency / merged PDF into $SESSION/report (never fails the run; needs matplotlib)
+  [ -z "${NO_REPORT:-}" ] && { "$PY" "$REPO/tools/report_auto.py" "$SESSION" > "$SESSION/report.log" 2>&1; echo "== report exit $? ($(tail -n 1 "$SESSION/report.log" 2>/dev/null))"; }
   RESULT=done; [ -n "$FAILED" ] && RESULT="partial:$FAILED"
   finish "SESSION=$SESSION
 RESULT=$RESULT"

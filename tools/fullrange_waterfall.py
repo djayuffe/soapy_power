@@ -27,6 +27,8 @@ def run(path, usable=0.35, dc_hz=0.5e6):
 def main():
     sess=Path(sys.argv[1]); out={'cell_mhz':CELL,'start_mhz':F0,'stop_mhz':F1}
     for nm in ('features-on','features-off'):
+        if not (sess/(nm+'.jsonl')).exists():
+            print(nm,'missing',file=sys.stderr); continue
         G,T=run(sess/(nm+'.jsonl')); out[nm]={'passes':int(G.shape[0]),'t0_s':[None if np.isnan(x) else round(float(x),2) for x in T],
             'grid':[[None if np.isnan(x) else round(float(x),2) for x in row] for row in G]}
         print(nm,G.shape,np.isfinite(G).mean(),file=sys.stderr)
