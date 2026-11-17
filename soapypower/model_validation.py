@@ -957,7 +957,9 @@ def telemetry_summary(stores, dc_mask_hz=0.0, controlled_input=False, min_groups
                 continue
             x = np.array([r[0] for r in rows]); y = np.array([r[1] for r in rows])
             slope = float(np.polyfit(x - x[0], y, 1)[0] * 60) if np.ptp(x) > 0 and len(rows) >= 3 else None
-            trials.append({'source': source, 'records': len(rows), 'start_c': float(y[0]), 'end_c': float(y[-1]),
+            edge = max(1, len(rows) // 10)  # median of the first/last tenth: robust to one-off readings at open
+            trials.append({'source': source, 'records': len(rows), 'start_c': float(np.median(y[:edge])),
+                           'end_c': float(np.median(y[-edge:])), 'first_reading_c': float(y[0]),
                            'median_c': float(np.median(y)), 'seconds': float(np.ptp(x)), 'slope_c_per_min': slope})
         report['per_trial'] = trials
         slopes = [abs(r['slope_c_per_min']) for r in trials if r['slope_c_per_min'] is not None]

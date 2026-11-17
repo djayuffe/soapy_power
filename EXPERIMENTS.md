@@ -18,6 +18,18 @@ Evidence levels (see [MEASUREMENT_ROADMAP.md](MEASUREMENT_ROADMAP.md)):
   response. Applying it reduced the apparent dispersion only 3.08 → 3.05 dB: that
   dispersion is dominated by time variation of real signals between hop visits.
   Settling and image rejection were not measured (no generator).
+- Telemetry session (2026-11-17, same B200mini, antenna on RX2, 20 dB, 4 × 60 s, now on
+  Homebrew UHD 4.10 with the telemetry SoapyUHD module and the superseded SoapySDR 0.8.1
+  keg): all required checks passed under the revised holdout rule (below). Repeatability
+  σ 0.077 dB; holdout refit 0.051 dB RMS; the IF response agrees with the 2026-11-15
+  session (UHD 3.15) within 0.126 dB RMS gauge-free. Telemetry on all 5741 records: RFIC
+  temperature 46.3–47.2 °C in steps of 0.292 °C, no read while streaming, one processing
+  chain fingerprint, IQ tracking on throughout, analog LO within 0.15 Hz of the spectrum
+  origin. The first reading after every device open is 47.19 °C, one step above the rest
+  of the trial; the trial summary therefore uses the median of the first and last tenth.
+  Floor versus temperature within center: +0.024 ± 0.031 dB/°C (r = 0.01, diagnostic, an
+  antenna is not a controlled input). The same three LO-harmonic laws as on 2026-11-15
+  were attributed (LTE 800 3rd, GSM 900 5th, DVB-T 3rd).
 - Terminated session (2026-11-16, same receiver state, a bare 50 Ω resistor on RX2,
   4 × 60 s): all required checks passed; repeatability σ 0.084 dB; holdout refit
   0.066 dB RMS; the IF correction now reduced dispersion by 0.17 dB (0.03 dB with
@@ -83,8 +95,15 @@ Validation never reuses the fitted data:
 - **IF response:** fitted on the `fit` trials and refitted independently on the
   `holdout` trials, taken later. It passes when the fit is fully identified, the
   gauge-free RMS disagreement is at most 0.25 dB, and applying the fit to the holdout
-  does not raise the apparent RF dispersion beyond the response's own estimation noise.
-  A flat receiver passes with no improvement. A changed receiver fails.
+  does not raise the IF-slot dispersion of quiet cells beyond the response's own
+  estimation noise plus two bootstrap standard deviations of the paired change. Quiet
+  cells are the lowest quarter by dispersion in the *fit* trials, so their selection does
+  not depend on the holdout. A flat receiver passes with no improvement. A changed
+  receiver fails. The all-cell dispersion is reported with its bootstrap SD but does not
+  decide: with an antenna it is dominated by signals that change between hop visits. On
+  2026-11-17 it was 5.05 dB with a 0.094 dB SD. The rule before then allowed only
+  0.0005 dB of increase there and failed that session on noise (−0.011 dB), although the
+  quiet cells improved from 0.953 to 0.912 dB.
 - **Settling:** the model `|e(t)| = A·exp(−t/τ)` is fitted on even-indexed delays, and
   the chosen delay (with 1.25× margin) is verified on the odd-indexed delays. It fails
   if the model says the reference (longest delay) itself has not settled to 1/10 of
@@ -251,7 +270,12 @@ bash tools/macos_runner/uninstall.sh
   per file.
 - **Stack discovery:** `run_session.sh` tries each Python interpreter (plus Homebrew,
   `/usr/local` and MacPorts `site-packages`) with each SoapySDR module directory until
-  one enumerates exactly one B200. It drops an inherited `PYTHONPATH`, since another
+  one enumerates exactly one B200. After `brew upgrade` moved SoapySDR to 0.9 (Python
+  3.15), the 0.8-ABI modules only load against the superseded `Cellar/soapysdr/0.8*`
+  keg. The runner therefore also tries that keg's `site-packages`, with its `lib` and the
+  UHD keg libraries on `DYLD_LIBRARY_PATH` (exported in a subshell, never through
+  `env`). A SoapyUHD module in `sessions/b200-stack/modules` is tried first, with
+  `UHD_IMAGES_DIR=sessions/b200-stack/images`. `brew cleanup` would remove the keg. It drops an inherited `PYTHONPATH`, since another
   Python version's site-packages breaks imports. `setup` adds missing packages to a
   dedicated venv (`--system-site-packages`) and never to a system Python.
 - **Environment:** `install.sh` snapshots PATH and UHD/SoapySDR variables into the
@@ -289,7 +313,8 @@ dependencies.
 |---|---|---|
 | `repeatability` | even/odd pass halves, robust σ of cell differences (includes RF environment) | σ ≤ 0.5 dB |
 | `if_fit` | robust exact additive fit; component count | one component |
-| `if_holdout` | independent refit on later acquisitions | RMS ≤ 0.25 dB, dispersion not inflated |
+| `if_holdout` | independent refit on later acquisitions | RMS ≤ 0.25 dB, quiet-cell dispersion not inflated |
+| `telemetry` | per-record temperature, chain, LO mapping; floor vs temperature within center | informational |
 | `settling` | exponential fit, held-out delay verification | tolerance 0.1 dB |
 | `image_rejection` | tone vs mirror per hop, floor subtracted | informational |
 | `terminated_floor` | floor, flatness, steady and intermittent features (terminated input) | informational |
