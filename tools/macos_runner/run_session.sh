@@ -4,7 +4,9 @@
 # Environment: MODE=probe|setup|scan (default scan), SCAN_SECONDS (5-600, default 30),
 # GAIN_DB (0-70, default 20), ANTENNA (RX2 | TX/RX, default RX2),
 # INPUT (antenna | terminated, default antenna; what the operator connected to the port),
-# PROCEDURE (suite | baseline, default suite):
+# PROCEDURE (suite | baseline | fullrange, default suite):
+#   fullrange: B200 70 MHz-6 GHz, SCAN_SECONDS per variant, features-on (rf-state, headroom, coverage, telemetry policy)
+#             then features-off, compared by tools/fullrange_compare.py
 #   suite:    the 100-300 MHz experiment suite (plan, run, analyze)
 #   baseline: fixed-tune captures (110/150/190/230/270 MHz, 200 x 5 ms each, stream reopened
 #             per run like the survey: continuous 100 ms blocks overflowed at 56 MS/s) for
@@ -36,7 +38,7 @@ if ! [[ "$SCAN_SECONDS" =~ ^[0-9]+$ ]] || [ "$SCAN_SECONDS" -lt 5 ] || [ "$SCAN_
 if ! [[ "$GAIN_DB" =~ ^[0-9]+(\.[0-9]+)?$ ]] || ! awk -v g="$GAIN_DB" 'BEGIN{exit !(g>=0 && g<=70)}'; then echo "FEIL: GAIN_DB må være 0-70"; exit 2; fi
 case "$ANTENNA" in RX2|TX/RX) ;; *) echo "FEIL: ANTENNA må være RX2 eller TX/RX"; exit 2;; esac
 case "$INPUT" in antenna|terminated) ;; *) echo "FEIL: INPUT må være antenna eller terminated"; exit 2;; esac
-case "$PROCEDURE" in suite|baseline) ;; *) echo "FEIL: PROCEDURE må være suite eller baseline"; exit 2;; esac
+case "$PROCEDURE" in suite|baseline|fullrange) ;; *) echo "FEIL: PROCEDURE må være suite, baseline eller fullrange"; exit 2;; esac
 PLAN_ARGS="${PLAN_ARGS:-$(req_field plan_args)}"   # extra `experiments plan` flags, e.g. --no-telemetry
 case "$PLAN_ARGS" in *[!A-Za-z0-9\ .=_-]*) echo "FEIL: plan_args har ulovlige tegn"; exit 2;; esac
 DEVICE_KIND="${DEVICE_KIND:-$(req_field device)}"; DEVICE_KIND="${DEVICE_KIND:-b200}"
@@ -261,6 +263,26 @@ if [ "$PROCEDURE" = baseline ]; then
   finish "SESSION=$SESSION
 RESULT=$RESULT"
   echo "== ferdig: $SESSION ($RESULT)"
+  [ -z "$FAILED" ]; exit $?
+fi
+if [ "$PROCEDURE" = fullrange ]; then
+  SESSION="$OUTDIR/fullrange-$STAMP"; mkdir -p "$SESSION"
+  printf '%s\n' '{"version":1,"temperature_interval_s":1.0,"temperature_max_age_s":3.0}' > "$SESSION/telemetry-policy.json"
+  FAILED=""
+  for VARIANT in features-on features-off; do
+    OUT="$SESSION/$VARIANT.jsonl"
+    EXTRA=""; [ "$VARIANT" = features-on ] && EXTRA="--rf-state --headroom --headroom-retries 2 --ensure-coverage --telemetry-policy $SESSION/telemetry-policy.json"
+    # shellcheck disable=SC2046
+    "$PY" -c 'import sys;from soapypower.experiments import scan_argv;print("\0".join(scan_argv(sys.argv[1],70e6,6e9,float(sys.argv[2]),sys.argv[3],antenna=sys.argv[4],gain_db=float(sys.argv[5]),executable=sys.argv[6])))' \
+      "$DEV" "$SCAN_SECONDS" "$OUT" "$ANTENNA" "$GAIN_DB" "$WRAP" > "$SESSION/$VARIANT.argv0" || { FAILED="$FAILED $VARIANT"; continue; }
+    ARGS=(); while IFS= read -r -d '' a; do ARGS+=("$a"); done < "$SESSION/$VARIANT.argv0"
+    "${ARGS[@]}" $EXTRA; RC=$?
+    echo "== $VARIANT exit $RC"; [ $RC -eq 0 ] || FAILED="$FAILED $VARIANT"
+  done
+  "$PY" "$REPO/tools/fullrange_compare.py" "$SESSION" --input "$INPUT" > "$SESSION/compare.json" 2> "$SESSION/compare.err"; echo "== compare exit $?"
+  RESULT=done; [ -n "$FAILED" ] && RESULT="partial:$FAILED"
+  finish "SESSION=$SESSION
+RESULT=$RESULT"
   [ -z "$FAILED" ]; exit $?
 fi
 SUITE="$OUTDIR/suite-$STAMP.json"

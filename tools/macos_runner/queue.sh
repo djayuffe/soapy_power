@@ -27,7 +27,7 @@ done
 [[ "$GAIN" =~ ^[0-9]+(\.[0-9]+)?$ ]] && awk -v g="$GAIN" 'BEGIN{exit !(g>=0 && g<=70)}' || { echo "--gain: 0-70" >&2; exit 2; }
 case "$ANT" in RX2|TX/RX) ;; *) echo "--antenna: RX2 or TX/RX" >&2; exit 2;; esac
 case "$IN" in antenna|terminated) ;; *) echo "--input: antenna or terminated" >&2; exit 2;; esac
-case "$PROC" in suite|baseline) ;; *) echo "--procedure: suite or baseline" >&2; exit 2;; esac
+case "$PROC" in suite|baseline|fullrange) ;; *) echo "--procedure: suite, baseline or fullrange" >&2; exit 2;; esac
 case "$DEV" in b200|bladerf) ;; *) echo "--device: b200 or bladerf" >&2; exit 2;; esac
 case "$JOB" in dense-dc|survey|survey-anchor|dense-dc+survey) ;; *) echo "--bladerf-job: dense-dc, survey, survey-anchor or dense-dc+survey" >&2; exit 2;; esac
 [[ "$WAIT" =~ ^[0-9]+$ ]] || { echo "--wait: seconds" >&2; exit 2; }
