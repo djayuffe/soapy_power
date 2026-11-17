@@ -48,7 +48,9 @@ returns all ten values to 31 and the profile no longer applies.
 ## Procedures (macOS runner)
 
 Copy the stack and profile into the git-ignored `sessions/` (launchd jobs should not read
-`~/Documents`):
+`~/Documents`). The module links `libSoapySDR.0.8`: after a Homebrew upgrade to SoapySDR 0.9
+the runner finds the superseded `Cellar/soapysdr/0.8*` keg and loads that library and its
+Python bindings (it stays usable until `brew cleanup` removes it):
 
 ```
 sessions/bladerf-stack/modules/libbladeRFSupport.so   sessions/bladerf-stack/lib/libbladeRF.2.dylib

@@ -50,6 +50,30 @@ finish() { { echo "STAMP=$STAMP"; echo "LOG=$LOG"; echo "INPUT=$INPUT"; echo "PR
 echo "== soapy_power $MODE $STAMP  repo=$REPO  $(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null) $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null)"
 echo "   scan_seconds=$SCAN_SECONDS gain_db=$GAIN_DB antenna=$ANTENNA input=$INPUT procedure=$PROCEDURE device=$DEVICE_KIND  PATH=$PATH"
 
+# ---- Homebrew 0.8-ABI stack. `brew upgrade` moves /opt/homebrew/opt/soapysdr to 0.9 (Python 3.15 bindings,
+# modules0.9) but keeps the superseded 0.8 keg until `brew cleanup`. Modules built for 0.8 (SoapyUHD,
+# SoapyBladeRF) name libSoapySDR.0.8 by its opt path; dyld resolves it by leaf name through
+# DYLD_LIBRARY_PATH, and the keg's own site-packages supply matching Python bindings. DYLD_* is only ever
+# exported from bash, never passed through env(1) or /bin/sh arguments: SIP strips it there.
+KEG08=()
+for k in $(ls -d /opt/homebrew/Cellar/soapysdr/0.8* "$HOME"/.homebrew/Cellar/soapysdr/0.8* 2>/dev/null | sort -r); do
+  [ -f "$k/lib/libSoapySDR.0.8.dylib" ] && KEG08+=("$k")
+done
+UHDLIBS=""
+for d in $(ls -d /opt/homebrew/Cellar/uhd/*/lib "$HOME"/.homebrew/Cellar/uhd/*/lib 2>/dev/null | sort -r); do UHDLIBS="$UHDLIBS${UHDLIBS:+:}$d"; done
+echo "   soapysdr 0.8 keg: ${KEG08[*]+${KEG08[*]}}  uhd keg libs: ${UHDLIBS:-none}"
+keg_site() { [ -f "$1/lib/python$2/site-packages/SoapySDR.py" ] && echo "$1/lib/python$2/site-packages"; }
+# in_env SITE DYLD PLUGIN IMAGES -- command...: run with exactly that SoapySDR environment (subshell)
+in_env() {
+  ( site="$1"; dyl="$2"; plug="$3"; img="$4"; shift 5
+    unset PYTHONPATH SOAPY_SDR_PLUGIN_PATH
+    if [ -n "$site" ]; then export PYTHONPATH="$site"; fi
+    if [ -n "$dyl" ]; then export DYLD_LIBRARY_PATH="$dyl${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"; fi
+    if [ -n "$plug" ]; then export SOAPY_SDR_PLUGIN_PATH="$plug"; fi
+    if [ -n "$img" ]; then export UHD_IMAGES_DIR="$img"; fi
+    "$@" )
+}
+
 if [ "$DEVICE_KIND" = bladerf ]; then
   # ---- bladeRF1 + XB-200 (receive only): patched SoapyBladeRF module + its libbladeRF from sessions/
   STACK="$OUTDIR/bladerf-stack"; PROF="$OUTDIR/bladerf-profile"
@@ -58,14 +82,25 @@ if [ "$DEVICE_KIND" = bladerf ]; then
     [ -f "$f" ] || { echo "FEIL: mangler $f (se tools/bladerf/README.md)"; finish "RESULT=bladerf_stack_missing"; exit 1; }
   done
   unset PYTHONPATH
-  export SOAPY_SDR_PLUGIN_PATH="$STACK/modules"
-  export DYLD_LIBRARY_PATH="$STACK/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
-  PY=""
+  PY=""; BSITE=""; BDYLD=""
+  BTEST='import SoapySDR, numpy, simplesoapy, simplespectral
+print("RESULT", SoapySDR.getAPIVersion(), len(SoapySDR.Device.enumerate("driver=bladerf")))'
   for v in "$OUTDIR"/.venv*/bin/python /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3; do
-    if [ -x "$v" ] && "$v" -c 'import SoapySDR, numpy, simplesoapy, simplespectral' 2>/dev/null; then PY="$v"; break; fi
+    [ -x "$v" ] || continue
+    ver="$("$v" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)" || continue
+    for k in "" ${KEG08[@]+"${KEG08[@]}"}; do
+      site=""; dyl="$STACK/lib"
+      if [ -n "$k" ]; then site="$(keg_site "$k" "$ver")"; [ -n "$site" ] || continue; dyl="$STACK/lib:$k/lib"; fi
+      out="$(in_env "$site" "$dyl" "$STACK/modules" "" -- "$v" -c "$BTEST" 2>&1 | grep '^RESULT' | tail -1)"
+      read -r tag api nfound <<< "${out:-RESULT - 0}"
+      echo "  $([ "${nfound:-0}" -gt 0 ] 2>/dev/null && echo 'OK  ' || echo 'nei ') $v py$ver ${site:+[+$site]} api=$api bladerf=$nfound"
+      if [ "${nfound:-0}" -gt 0 ] 2>/dev/null; then PY="$v"; BSITE="$site"; BDYLD="$dyl"; break 2; fi
+    done
   done
-  [ -n "$PY" ] || { echo "FEIL: ingen Python med SoapySDR, numpy, simplesoapy og simplespectral"; finish "RESULT=no_python"; exit 1; }
-  export PYTHONPATH="$REPO:$REPO/tools/bladerf"
+  [ -n "$PY" ] || { echo "FEIL: ingen Python/SoapySDR 0.8-kombinasjon laster bladeRF-modulen og ser enheten"; finish "RESULT=no_python"; exit 1; }
+  export SOAPY_SDR_PLUGIN_PATH="$STACK/modules"
+  export DYLD_LIBRARY_PATH="$BDYLD${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+  export PYTHONPATH="$REPO:$REPO/tools/bladerf${BSITE:+:$BSITE}"
   SERIAL="$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1]))["serial"])' "$PROF/receiver-profile-final.json")"
   BDEV="driver=bladerf,serial=$SERIAL,xb200=custom"
   echo "python: $PY ($("$PY" --version 2>&1))  SOAPY_SDR_PLUGIN_PATH=$SOAPY_SDR_PLUGIN_PATH  DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
@@ -130,34 +165,44 @@ for dir in /opt/local/bin /usr/local/bin /opt/homebrew/bin "$HOME/.homebrew/bin"
   [ -x "$dir/python3" ] && CANDIDATES+=("$dir/python3")
 done
 for p in /opt/local/Library/Frameworks/Python.framework/Versions/*/bin/python3 /Library/Frameworks/Python.framework/Versions/*/bin/python3 "$HOME"/.pyenv/versions/*/bin/python3 /usr/bin/python3; do [ -x "$p" ] && CANDIDATES+=("$p"); done
+# sessions/b200-stack: a SoapyUHD module (e.g. patches/soapyuhd-native-telemetry.patch built against the
+# Homebrew UHD 4.x + SoapySDR 0.8 kegs) and the FPGA/firmware images of that UHD version (UHD_IMAGES_DIR).
+B200STACK="$OUTDIR/b200-stack"
 MODDIRS=()
-for d in /usr/local/lib/SoapySDR/modules0.8 /opt/local/lib/SoapySDR/modules0.8 /opt/homebrew/lib/SoapySDR/modules0.8 "$HOME/.homebrew/lib/SoapySDR/modules0.8"; do [ -d "$d" ] && MODDIRS+=("$d"); done
+for d in "$B200STACK/modules" /usr/local/lib/SoapySDR/modules0.8 /opt/local/lib/SoapySDR/modules0.8 /opt/homebrew/lib/SoapySDR/modules0.8 "$HOME/.homebrew/lib/SoapySDR/modules0.8"; do [ -d "$d" ] && MODDIRS+=("$d"); done
+images_for() { if [ "$1" = "$B200STACK/modules" ] && [ -d "$B200STACK/images" ]; then echo "$B200STACK/images"; fi; }
 UHD_TEST='import SoapySDR
 mods = list(SoapySDR.listModules())
 found = [dict(d) for d in SoapySDR.Device.enumerate("driver=uhd")]
 b2 = [d for d in found if "b200" in " ".join(map(str, d.values())).lower()]
 print("RESULT", SoapySDR.getAPIVersion(), len(mods), len(found), b2[0].get("serial", "-") if len(b2) == 1 else "-")'
-PY=""; SDRPATH=""; PLUGIN=""; SERIAL=""; SEEN=" "
+PY=""; SDRPATH=""; PLUGIN=""; SDRDYLD=""; IMAGES=""; SERIAL=""; SEEN=" "
 for c in ${CANDIDATES[@]+"${CANDIDATES[@]}"}; do
   [ -n "$c" ] || continue
   real="$(command -v "$c" 2>/dev/null || true)"; [ -n "$real" ] || continue
   case "$SEEN" in *" $real "*) continue;; esac; SEEN="$SEEN$real "
   ver="$("$real" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)" || { echo "  $real: starter ikke"; continue; }
-  for extra in "" /usr/local/lib/python$ver/site-packages /opt/homebrew/lib/python$ver/site-packages "$HOME/.homebrew/lib/python$ver/site-packages" /opt/local/lib/python$ver/site-packages; do
-    [ -z "$extra" ] || [ -d "$extra" ] || continue
-    imp="$(env ${extra:+PYTHONPATH="$extra"} "$real" -c 'import SoapySDR;print("ok", SoapySDR.getAPIVersion(), SoapySDR.__file__)' 2>&1 | tail -1)"
+  SITES=("|")
+  for d in /usr/local/lib/python$ver/site-packages /opt/homebrew/lib/python$ver/site-packages "$HOME/.homebrew/lib/python$ver/site-packages" /opt/local/lib/python$ver/site-packages; do [ -d "$d" ] && SITES+=("$d|"); done
+  for k in ${KEG08[@]+"${KEG08[@]}"}; do ks="$(keg_site "$k" "$ver")"; [ -n "$ks" ] && SITES+=("$ks|$k/lib${UHDLIBS:+:$UHDLIBS}"); done
+  for pair in "${SITES[@]}"; do
+    extra="${pair%%|*}"; dyl="${pair#*|}"
+    imp="$(in_env "$extra" "$dyl" "" "" -- "$real" -c 'import SoapySDR;print("ok", SoapySDR.getAPIVersion(), SoapySDR.__file__)' 2>&1 | tail -1)"
     case "$imp" in ok*) ;; *) echo "  nei  $real py$ver ${extra:+[+$extra]} $imp"; continue;; esac
     for plug in "" ${MODDIRS[@]+"${MODDIRS[@]}"}; do
-      out="$(env ${extra:+PYTHONPATH="$extra"} ${plug:+SOAPY_SDR_PLUGIN_PATH="$plug"} "$real" -c "$UHD_TEST" 2>&1 | grep '^RESULT' | tail -1)"
+      img="$(images_for "$plug")"
+      out="$(in_env "$extra" "$dyl" "$plug" "$img" -- "$real" -c "$UHD_TEST" 2>&1 | grep '^RESULT' | tail -1)"
       read -r tag api nmods nfound serial <<< "${out:-RESULT ? ? ? -}"
-      echo "  $([ "$serial" != - ] && echo 'OK  ' || echo 'nei ') $real py$ver ${extra:+[+$extra]} ${plug:+[plugins $plug]} api=$api moduler=$nmods uhd-enheter=$nfound b200=$serial  (${imp#ok })"
-      if [ "$serial" != - ] && [ -n "$serial" ]; then PY="$real"; SDRPATH="$extra"; PLUGIN="$plug"; SERIAL="$serial"; break 3; fi
+      echo "  $([ "$serial" != - ] && echo 'OK  ' || echo 'nei ') $real py$ver ${extra:+[+$extra]} ${dyl:+[dyld keg]} ${plug:+[plugins $plug]} api=$api moduler=$nmods uhd-enheter=$nfound b200=$serial  (${imp#ok })"
+      if [ "$serial" != - ] && [ -n "$serial" ]; then PY="$real"; SDRPATH="$extra"; SDRDYLD="$dyl"; PLUGIN="$plug"; IMAGES="$img"; SERIAL="$serial"; break 3; fi
     done
   done
 done
 if [ -z "$PY" ]; then echo "FEIL: ingen kombinasjon av Python/SoapySDR/modul ser en B200"; finish "RESULT=no_b200_stack"; exit 1; fi
 [ -n "$SDRPATH" ] && export PYTHONPATH="$SDRPATH"
 [ -n "$PLUGIN" ] && export SOAPY_SDR_PLUGIN_PATH="$PLUGIN"
+[ -n "$SDRDYLD" ] && export DYLD_LIBRARY_PATH="$SDRDYLD${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+[ -n "$IMAGES" ] && export UHD_IMAGES_DIR="$IMAGES"
 deps() { "$1" -c 'import importlib.util as u;print(" ".join(m for m in ("numpy","simplesoapy","simplespectral") if u.find_spec(m) is None))'; }
 MISSING="$(deps "$PY")"
 if [ -n "$MISSING" ]; then
@@ -170,7 +215,7 @@ if [ -n "$MISSING" ]; then
   if [ -x "$VENV/bin/python" ]; then PY="$VENV/bin/python"; MISSING="$(deps "$PY")"; fi
 fi
 if [ -n "$MISSING" ]; then echo "FEIL: $PY mangler: $MISSING (send en setup-forespørsel)"; finish "RESULT=missing_packages:$MISSING;PY=$PY;SERIAL=$SERIAL"; exit 1; fi
-echo "python: $PY ($("$PY" --version 2>&1)) PYTHONPATH=${PYTHONPATH:-} SOAPY_SDR_PLUGIN_PATH=${SOAPY_SDR_PLUGIN_PATH:-}"
+echo "python: $PY ($("$PY" --version 2>&1)) PYTHONPATH=${PYTHONPATH:-} SOAPY_SDR_PLUGIN_PATH=${SOAPY_SDR_PLUGIN_PATH:-} DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH:-}"
 export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
 DEV="driver=uhd,type=b200,serial=$SERIAL,recv_frame_size=16360,num_recv_frames=1024"
 echo "device: $DEV   UHD_IMAGES_DIR=${UHD_IMAGES_DIR:-<unset>}"
@@ -183,6 +228,7 @@ WRAP="$OUTDIR/.soapy_power-$STAMP"
   for v in DYLD_LIBRARY_PATH DYLD_FALLBACK_LIBRARY_PATH; do if [ -n "${!v:-}" ]; then printf 'export %s=%q\n' "$v" "${!v}"; fi; done
   printf 'export PYTHONPATH=%q\n' "$PYTHONPATH"
   if [ -n "${SOAPY_SDR_PLUGIN_PATH:-}" ]; then printf 'export SOAPY_SDR_PLUGIN_PATH=%q\n' "$SOAPY_SDR_PLUGIN_PATH"; fi
+  if [ -n "${UHD_IMAGES_DIR:-}" ]; then printf 'export UHD_IMAGES_DIR=%q\n' "$UHD_IMAGES_DIR"; fi
   printf 'exec %q -m soapypower "$@"\n' "$PY"
 } > "$WRAP"
 chmod +x "$WRAP"
