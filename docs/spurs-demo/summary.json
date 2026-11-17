@@ -1,0 +1,148 @@
+{
+ "version": 1,
+ "scope": "synthetic demo; no hardware, no automatic exclusions",
+ "scenario_scores": {
+  "T1 no signal (50 ohm)": {
+   "tp": 0,
+   "fp": 0,
+   "missed": 0,
+   "kind_errors": 0
+  },
+  "T2 200 MHz-band in-band tone": {
+   "tp": 1,
+   "fp": 0,
+   "missed": 0,
+   "kind_errors": 0
+  },
+  "T3 800 MHz out-of-band tone": {
+   "tp": 1,
+   "fp": 0,
+   "missed": 0,
+   "kind_errors": 0
+  },
+  "T4 two in-band tones": {
+   "tp": 2,
+   "fp": 0,
+   "missed": 0,
+   "kind_errors": 0
+  },
+  "T5 strong near-band neighbour (FM surrogate)": {
+   "tp": 2,
+   "fp": 0,
+   "missed": 0,
+   "kind_errors": 0
+  }
+ },
+ "scenario_reports": {
+  "T1 no signal (50 ohm)": {
+   "signals": 0,
+   "intermod": 0,
+   "spurs": 0,
+   "unconfirmed": 0,
+   "floor_change_db": -0.030652571414488544
+  },
+  "T2 200 MHz-band in-band tone": {
+   "signals": 1,
+   "intermod": 0,
+   "spurs": 0,
+   "unconfirmed": 0,
+   "floor_change_db": -0.006163808403504016
+  },
+  "T3 800 MHz out-of-band tone": {
+   "signals": 0,
+   "intermod": 0,
+   "spurs": 1,
+   "unconfirmed": 0,
+   "floor_change_db": -0.0018128529416658083
+  },
+  "T4 two in-band tones": {
+   "signals": 2,
+   "intermod": 0,
+   "spurs": 1,
+   "unconfirmed": 0,
+   "floor_change_db": 0.013914836658742038
+  },
+  "T5 strong near-band neighbour (FM surrogate)": {
+   "signals": 1,
+   "intermod": 0,
+   "spurs": 1,
+   "unconfirmed": 0,
+   "floor_change_db": -0.0008939228399793971
+  }
+ },
+ "drive_order": {
+  "diagnostics": {
+   "peaks_per_capture": [
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2
+   ],
+   "candidate_tracks": 2,
+   "signals": 1,
+   "intermod": 1,
+   "spurs": 0,
+   "unconfirmed": 0
+  },
+  "tracks": [
+   {
+    "attribution": "signal",
+    "drive_kind": "linear",
+    "slope_db_per_db": 1.0994297602498126,
+    "order": 1,
+    "source_hz": 265999218.75
+   },
+   {
+    "attribution": "intermod",
+    "drive_kind": "nonlinear-3",
+    "slope_db_per_db": 2.8411680736030087,
+    "order": 3,
+    "source_hz": 268000781.25
+   }
+  ]
+ },
+ "temperature_fit": {
+  "status": "fit",
+  "slope_db_per_c": -0.020230919156782243,
+  "slope_sd_db": 0.002038227341877556,
+  "slope_range_db": [
+   -0.020236217510104387,
+   -0.020230919156782243
+  ],
+  "drift_db_per_sqrt_s": 0.0,
+  "drift_range_db": 3.9898639947466563e-16,
+  "confounded": false,
+  "temperature_time_correlation": -0.6755117070697425,
+  "drift_temperature_correlation": -0.021409081696739062,
+  "sigma_db": 0.029885653107940877,
+  "mean_nis": 1.0005777344558673,
+  "reference_temperature_c": 44.013186219075266,
+  "records": 96,
+  "groups": 16,
+  "scope": "relative level, not calibrated; slope valid for this receiver state and sensor"
+ },
+ "figures": {
+  "spur_slope": "docs/spurs-demo/spur_slope.png",
+  "before_after": "docs/spurs-demo/before_after.png",
+  "decision_flow": "docs/spurs-demo/decision_flow.png",
+  "mixing_diagram": "docs/spurs-demo/mixing_diagram.png",
+  "floor_vs_temperature": "docs/spurs-demo/floor_vs_temperature.png",
+  "drive_order": "docs/spurs-demo/drive_order.png"
+ },
+ "not_run": [
+  "T1-T5 hardware tests",
+  "50 ohm termination",
+  "signal generator"
+ ]
+}

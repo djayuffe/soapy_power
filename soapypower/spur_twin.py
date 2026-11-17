@@ -136,14 +136,17 @@ def scenarios():
     """T1-T5 of the plan, frequencies in Hz. expected: (kind, if_hz at the reference LO)."""
     lo = 260e6
     los = [lo, lo + 2e6, lo - 2e6]
-    tones = {
-        'T1 no signal (50 ohm)': (),
-        'T2 200 MHz-band in-band tone': ((lo + 9e6, 40.0),),
-        'T3 800 MHz out-of-band tone': ((800e6, 45.0),),
-        'T4 two in-band tones': ((lo - 6e6, 40.0), (lo + 11e6, 40.0)),
-        'T5 strong FM-band neighbour': ((lo + 18e6, 55.0),),
+    fm_lo = 191e6
+    fm_los = [fm_lo, fm_lo + 2e6, fm_lo - 2e6]
+    matrix = {
+        'T1 no signal (50 ohm)': ((), los),
+        'T2 200 MHz-band in-band tone': (((fm_lo + 9e6, 40.0),), fm_los),
+        'T3 800 MHz out-of-band tone': (((800e6, 45.0),), los),
+        'T4 two in-band tones': (((lo - 6e6, 40.0), (lo + 11e6, 40.0)), los),
+        'T5 strong near-band neighbour (FM surrogate)': (((lo + 18e6, 55.0),), los),
     }
-    return {name: dict(tones=t, los=los, expected=_expected(t, lo)) for name, t in tones.items()}
+    return {name: dict(tones=t, los=l, expected=_expected(t, l[0]))
+            for name, (t, l) in matrix.items()}
 
 
 def score(found, expected, step_hz):

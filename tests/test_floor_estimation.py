@@ -1,10 +1,13 @@
 import math
+import pathlib
+import tempfile
 import unittest
+
 import numpy as np
+
 from soapypower import floor_estimation as fe
 from soapypower import spur_twin as st
 from soapypower.model_validation import HopStore, synthetic_scan, telemetry_summary
-import tempfile, pathlib
 
 
 class FloorTests(unittest.TestCase):
@@ -90,6 +93,92 @@ class FloorTests(unittest.TestCase):
             report = telemetry_summary([store], controlled_input=True, min_groups=3)
         self.assertIn('floor_vs_temperature_kalman', report)
         self.assertEqual(report['floor_vs_temperature_kalman']['status'], 'fit')
+
+
+class FloorEstimationTests(unittest.TestCase):
+    def test_median_bias_for_exponential_noise(self):
+        self.assertAlmostEqual(fe.median_to_mean_db(2.0),
+                               10.0 * math.log10(math.log(2.0)), places=9)
+        self.assertLess(fe.median_to_mean_db(2.0), 0.0)
+
+    def test_min_hold_bias_grows_with_number_of_sweeps(self):
+        values = [fe.min_hold_to_mean_db(n, 2.0) for n in (2, 3, 8)]
+        self.assertTrue(all(v < 0 for v in values))
+        self.assertGreater(values[0], values[1])
+        self.assertGreater(values[1], values[2])
+
+    def test_floor_estimate_is_bias_corrected_with_spurs(self):
+        rng = np.random.default_rng(4)
+        p = rng.exponential(2.0, 12000)
+        p[:120] *= 50.0
+        est = fe.floor_estimate(p, dof=2.0)
+        self.assertAlmostEqual(est['mean_linear'], 2.0, delta=0.08)
+        self.assertGreater(est['spur_bins_excluded'], 50)
+        self.assertLess(est['median_db_uncorrected'], est['mean_db'])
+        self.assertLess(est['ci_db'][0], est['mean_db'])
+        self.assertGreater(est['ci_db'][1], est['mean_db'])
+
+    def test_fdr_controls_false_alarms_on_noise(self):
+        rng = np.random.default_rng(5)
+        p = rng.exponential(1.0, 5000)
+        det = fe.detect_peaks(p, 1.0, dof=2.0, alpha=0.01, method='bh')
+        self.assertLessEqual(det['index'].size, 50)
+        bon = fe.detect_peaks(p, 1.0, dof=2.0, alpha=0.01, method='bonferroni')
+        self.assertLessEqual(bon['index'].size, 2)
+
+    def test_injected_peak_is_detected_without_masking_neighbours(self):
+        rng = np.random.default_rng(6)
+        p = rng.exponential(1.0, 4000)
+        p[1234] = 40.0
+        det = fe.detect_peaks(p, 1.0, dof=2.0, alpha=0.001, method='bh')
+        self.assertIn(1234, det['index'].tolist())
+        groups = fe.group_peaks(det['index'])
+        self.assertTrue(any(1234 in g for g in groups))
+
+    def test_classify_lo_slope_signal_image_and_harmonic(self):
+        lo = np.array([258e6, 260e6, 262e6])
+        signal = fe.classify_lo_slope(lo, np.array([11e6, 9e6, 7e6]), resolution_hz=10e3)
+        self.assertEqual(signal['status'], 'classified')
+        self.assertEqual(signal['kind'], 'signal')
+        self.assertEqual(signal['order'], 1)
+        self.assertEqual(signal['sign'], 1)
+        self.assertAlmostEqual(signal['source_hz'], 269e6)
+        image = fe.classify_lo_slope(lo, np.array([-11e6, -9e6, -7e6]), resolution_hz=10e3)
+        self.assertEqual(image['kind'], 'image')
+        spur = fe.classify_lo_slope(lo, np.array([26e6, 20e6, 14e6]), resolution_hz=10e3)
+        self.assertEqual(spur['kind'], 'lo_harmonic')
+        self.assertEqual(spur['order'], 3)
+        self.assertAlmostEqual(spur['source_hz'], 800e6)
+
+    def test_classify_lo_slope_needs_enough_diversity(self):
+        result = fe.classify_lo_slope([260e6, 260.01e6], [9e6, 9.1e6],
+                                      resolution_hz=10e3)
+        self.assertEqual(result['status'], 'unidentifiable')
+
+    def test_drive_order_recovers_slope(self):
+        drive = np.array([0.0, -5.0, -10.0, -15.0])
+        result = fe.drive_order(drive, 2.0 * drive + 4.0)
+        self.assertEqual(result['order'], 2)
+        self.assertAlmostEqual(result['slope_db_per_db'], 2.0, places=9)
+        self.assertEqual(fe.drive_order([1.0], [2.0])['status'], 'unidentifiable')
+
+    def test_kalman_floor_temperature_fit(self):
+        rng = np.random.default_rng(8)
+        times = np.arange(80, dtype=float) * 20.0
+        temp = 44.0 + 3.0 * np.sin(2.0 * math.pi * times / 800.0) + rng.normal(0, 0.05, times.size)
+        floor = 0.25 + 0.03 * np.sin(2.0 * math.pi * times / 300.0) - 0.020 * (temp - 45.0) + rng.normal(0, 0.02, times.size)
+        groups = (times // 80).astype(int)
+        fit = fe.floor_temperature_kalman(times, temp, floor, groups)
+        self.assertEqual(fit['status'], 'fit')
+        self.assertAlmostEqual(fit['slope_db_per_c'], -0.020, delta=0.008)
+        self.assertFalse(fit['confounded'])
+
+    def test_kalman_flags_confounded_temperature_time_trend(self):
+        times = np.arange(80, dtype=float) * 10.0
+        temp = 30.0 + 0.02 * times
+        floor = 0.1 - 0.01 * (temp - temp.mean()) + np.linspace(0, 0.2, times.size)
+        fit = fe.floor_temperature_kalman(times, temp, floor, np.zeros(times.size, dtype=int))
+        self.assertTrue(fit['confounded'])
 
 
 class TwinTests(unittest.TestCase):

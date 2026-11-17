@@ -43,6 +43,12 @@ antennas, measured tone and hot/cold calibration workflows.
 `REMEDIATION.md <REMEDIATION.md>`_ documents JSON v2, binary v3, exact targets
 and partial/timing/queue integrity policies.
 
+See `SPURS.md <SPURS.md>`_ for the direct-conversion signal/spur model,
+square-wave LO harmonics, IQ images, intermodulation, Bayesian/sparse inference,
+D-optimal experiment design and the ``soapy_power_spurs`` demo/analyze/plan
+commands. The demo and tests are synthetic; the controlled T1-T5 hardware
+programme and the 150-160 MHz control experiment have not been run.
+
 The ``soapy_power_calibration`` command provides offline ``context``, ``build``,
 ``validate``, ``integrate``, ``baseline``, ``compare`` and ``from-captures`` routines without opening a radio. Run
 ``soapy_power_calibration --help`` for commands. Profiles are constructed from

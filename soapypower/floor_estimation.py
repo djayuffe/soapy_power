@@ -139,7 +139,7 @@ def floor_estimate(power_linear, dof=None, confidence=0.95, correlation_bins=1.0
             break
         # median of the retained, untruncated-side-equivalent: rank shift for the removed upper tail
         removed = (p.size - kept.size) / p.size
-        rank = 0.5 * (1 - removed) / (1 - removed) if removed < 0.5 else 0.5
+        rank = min(0.999999, 0.5 / (1.0 - removed)) if removed < 0.5 else 0.5
         mean_hat = float(np.quantile(kept, rank)) / mtm
     n_eff = max(kept.size / max(correlation_bins, 1.0), 8.0)
     z = _normal_quantile(0.5 + confidence / 2.0)
