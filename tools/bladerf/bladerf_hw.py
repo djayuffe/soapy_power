@@ -1,7 +1,7 @@
 """Receive-only bladeRF1 capture helper on soapy_power with stage, DC and LMS-state readback.
 
 Run with SOAPY_SDR_PLUGIN_PATH pointing at a SoapyBladeRF module built with
-soapybladerf-0.4.1-lms-state.patch (it reports lms_dc_state_at_open), and the libbladeRF it
+patches/soapybladerf-lms-state.patch (it reports lms_dc_state_at_open), and the libbladeRF it
 was linked against first on the library path. Nothing here transmits or writes flash.
 """
 import io

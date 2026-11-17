@@ -24,8 +24,9 @@ class StreamLifecycleTests(unittest.TestCase):
             for _ in range(2):
                 future, _, _ = sdr.psd(10000)
                 future.result(timeout=2)
+                self.assertFalse(sdr.device.is_streaming)
             self.assertEqual(start.call_count, 2)
-            self.assertEqual(stop.call_count, 2)
+            self.assertEqual(stop.call_count, 3)  # setup stream, then each completed hop
             self.assertEqual(raw.frequency_args, [{'OFFSET': '32'}]*2)
             self.assertTrue(sdr._last_integrity['stream_reopened_per_hop'])
 

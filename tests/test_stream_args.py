@@ -16,13 +16,17 @@ class StreamArgumentTests(unittest.TestCase):
         self.assertIs(sdr.device.stream_args,native)
         self.assertEqual(native,{'buffers':'128','buflen':'65536','transfers':'16'})
         sdr.setup(64,4,max_threads=1)
-        self.assertEqual(sdr.measurement_context()['stream_args'],native)
+        context=sdr.measurement_context()
+        self.assertEqual(context['hardware_info']['soapypower_stream_args'],native)
+        from soapypower.calibration import require_reference_context
+        require_reference_context(context)
         sdr.stop()
 
     def test_empty_default_does_not_change_legacy_context(self):
         sdr,_=self.capable_receiver()
         sdr.setup(64,4,max_threads=1)
         self.assertNotIn('stream_args',sdr.measurement_context())
+        self.assertNotIn('soapypower_stream_args',sdr.measurement_context()['hardware_info'])
         sdr.stop()
 
     def test_invalid_stream_argument_values_fail_before_device_open(self):

@@ -1,6 +1,15 @@
-diff -ru a/bladeRF_Settings.cpp b/bladeRF_Settings.cpp
---- a/bladeRF_Settings.cpp	2026-11-16 16:56:06.600208879 +0100
-+++ b/bladeRF_Settings.cpp	2026-11-16 16:09:39.000000000 +0100
+--- a/bladeRF_SoapySDR.hpp
++++ b/bladeRF_SoapySDR.hpp
+@@ -363,6 +363,7 @@
+     std::string _xb200Mode;
+     std::string _samplingMode;
+     std::string _loopbackMode;
++    std::string _lmsDcStateAtOpen;
+ 
+     bladerf *_dev;
+ };
+--- a/bladeRF_Settings.cpp
++++ b/bladeRF_Settings.cpp
 @@ -76,6 +76,23 @@
      //initialize the sample rates to something
      this->setSampleRate(SOAPY_SDR_RX, 0, 4e6);
@@ -37,14 +46,3 @@ diff -ru a/bladeRF_Settings.cpp b/bladeRF_Settings.cpp
  
      {
          bladerf_serial serial;
-diff -ru a/bladeRF_SoapySDR.hpp b/bladeRF_SoapySDR.hpp
---- a/bladeRF_SoapySDR.hpp	2026-11-16 16:56:06.600208879 +0100
-+++ b/bladeRF_SoapySDR.hpp	2026-11-16 16:09:39.000000000 +0100
-@@ -363,6 +363,7 @@
-     std::string _xb200Mode;
-     std::string _samplingMode;
-     std::string _loopbackMode;
-+    std::string _lmsDcStateAtOpen;
- 
-     bladerf *_dev;
- };

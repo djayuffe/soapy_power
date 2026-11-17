@@ -12,7 +12,7 @@ figure).
 | `bladerf_dense_dc.py` | Per-center DC calibration at survey gains, with independent verification |
 | `bladerf_scan.py` | Timed survey (anchor DC, or `--dc-table` dense DC) plus IQ captures |
 | `bladerf_compare.py` | Per-center comparison of two surveys: throughput, headroom, DC residual, floor |
-| `soapybladerf-0.4.1-lms-state.patch` | SoapyBladeRF: reports the LMS DC calibration state at open |
+| `../../patches/soapybladerf-lms-state.patch` | SoapyBladeRF 0.4.1: reports the LMS DC calibration state at open |
 
 ## Stack (as measured)
 
@@ -24,7 +24,7 @@ figure).
 
 ```sh
 git clone https://github.com/pothosware/SoapyBladeRF && cd SoapyBladeRF
-git checkout soapy-bladerf-0.4.1 && git apply -p1 /path/to/soapy_power/tools/bladerf/soapybladerf-0.4.1-lms-state.patch
+git checkout soapy-bladerf-0.4.1 && git apply -p1 /path/to/soapy_power/patches/soapybladerf-lms-state.patch
 cmake -B build -DLIBBLADERF_INCLUDE_DIR=… -DLIBBLADERF_LIBRARY=…/libbladeRF.2.dylib && cmake --build build
 ```
 

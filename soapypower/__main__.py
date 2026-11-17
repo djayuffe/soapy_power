@@ -361,6 +361,19 @@ def setup_argument_parser():
     other_title.add_argument('--fft-overlap', metavar='PERCENT', type=float, default=50,
                              help='Welch\'s method overlap between segments (default: %(default)s)')
 
+    quality = parser.add_argument_group('Receiver quality and measured controls')
+    quality.add_argument('--telemetry-policy', help='Typed telemetry polling/validity policy JSON')
+    quality.add_argument('--settling-model', help='Reference-validated settling model; unmatched steps use configured delay')
+    quality.add_argument('--rf-state', action='store_true', help='Record advertised RF/BB tuning and sensor snapshots before/after each hop')
+    quality.add_argument('--ensure-coverage', action='store_true', help='Plan overlapping positive-weight coverage outside the DC exclusion')
+    quality.add_argument('--usable-halfwidth', type=float_with_multiplier, help='Trusted IF halfwidth for coverage planning (Hz)')
+    quality.add_argument('--headroom', action='store_true', help='Reject unsafe raw IQ before publishing a hop')
+    quality.add_argument('--headroom-max', type=float, default=.85)
+    quality.add_argument('--headroom-p999', type=float, default=.60)
+    quality.add_argument('--headroom-retries', type=int, default=0, help='Bounded retries using an explicit profile backoff')
+    quality.add_argument('--headroom-workspace', type=int, default=64*1024**2)
+    quality.add_argument('--rejection-evidence', help='Fresh directory for durable rejected/partial IQ')
+    quality.add_argument('--receiver-profile', help='Measured state-bound receiver scan profile JSON')
     return parser
 
 
@@ -404,6 +417,24 @@ def validate_arguments(parser, args):
         parser.error('master clock rate must be finite and positive')
     if args.manual_correction_tolerance is not None and (not math.isfinite(args.manual_correction_tolerance) or args.manual_correction_tolerance < 0):
         parser.error('manual correction tolerance must be finite and nonnegative')
+    if args.settling_model:
+        from soapypower.telemetry_models import validate_settling
+        try:validate_settling(args.settling_model)
+        except (ValueError,OSError,KeyError,TypeError) as error:parser.error(str(error))
+    if args.telemetry_policy:
+        from soapypower.telemetry import TelemetryPolicy
+        try:TelemetryPolicy(args.telemetry_policy)
+        except (ValueError,OSError) as error:parser.error(str(error))
+    if args.headroom or args.receiver_profile:
+        from soapypower.acquisition_quality import QualityPolicy
+        try:
+            QualityPolicy(dict(max_component=args.headroom_max, p999_component=args.headroom_p999,
+                max_retries=args.headroom_retries, workspace_bytes=args.headroom_workspace,
+                evidence_dir=args.rejection_evidence))
+        except ValueError as error:
+            parser.error(str(error))
+    elif args.rejection_evidence or args.headroom_retries:
+        parser.error('rejection evidence / retries require --headroom or --receiver-profile')
     if args.calibration and args.agc:
         parser.error('absolute calibration requires fixed gain, not AGC')
     if args.fft_window in ('kaiser', 'tukey') and args.fft_window_param is None:
@@ -511,7 +542,20 @@ def main():
             parser.error(str(error))
 
     if args.total_time:
-        args.time = args.total_time / len(sdr.freq_plan(args.freq[0], args.freq[1], args.bins, args.overlap, quiet=True))
+        if args.ensure_coverage:
+            from soapypower.coverage import masked_frequency_plan
+            from soapypower.numerics import crop_bins
+            df = sdr.device.sample_rate/args.bins
+            half = (args.bins-crop_bins(args.bins,args.overlap if args.crop else 0))*df/2
+            half = half if args.usable_halfwidth is None else args.usable_halfwidth
+            direction = -1 if args.lnb_high_side else 1
+            tuner = sdr.device.get_frequency_range() if hasattr(sdr.device,'get_frequency_range') else None
+            rf_range = sorted(args.lnb_lo+direction*x for x in tuner) if tuner is not None else None
+            plan = masked_frequency_plan(*args.freq,half,df,args.dc_mask_width,
+                direction*(-args.dc_offset if args.iq_conjugate else args.dc_offset),rf_range)
+        else:
+            plan = sdr.freq_plan(args.freq[0], args.freq[1], args.bins, args.overlap, quiet=True)
+        args.time = args.total_time / len(plan)
 
     if args.time:
         args.repeats = sdr.time_to_repeats(args.bins, args.time)
@@ -542,7 +586,13 @@ def main():
             reference_lock_sensor=args.reference_lock_sensor,
             timestamp_tolerance_samples=args.timestamp_tolerance_samples,
             require_timestamps=args.require_timestamps, workspace_budget_bytes=args.workspace_budget,
-            allow_estimated_dc=args.allow_estimated_dc
+            allow_estimated_dc=args.allow_estimated_dc,
+            receiver_profile=args.receiver_profile, ensure_coverage=args.ensure_coverage, observe_rf_state=args.rf_state,
+            telemetry_policy=args.telemetry_policy, settling_model=args.settling_model,
+            usable_halfwidth=args.usable_halfwidth,
+            quality_policy=(dict(max_component=args.headroom_max, p999_component=args.headroom_p999,
+                max_retries=args.headroom_retries, workspace_bytes=args.headroom_workspace,
+                evidence_dir=args.rejection_evidence) if args.headroom or args.receiver_profile else None)
         )
     except (ValueError, RuntimeError, OSError) as error:
         if args.debug:

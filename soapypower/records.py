@@ -1,6 +1,7 @@
 """Validate JSON spectrum records and integrate measured bins in linear power."""
 import math
 from fractions import Fraction
+import gzip
 from pathlib import Path
 
 import numpy
@@ -71,7 +72,9 @@ def validate_record(record):
 
 
 def read_records(path):
-    with Path(path).open(encoding='utf-8') as stream:
+    path = Path(path)
+    source = gzip.open(path, 'rt', encoding='utf-8') if path.suffix.lower() == '.gz' else path.open(encoding='utf-8')
+    with source as stream:
         found = False
         for line_number, line in enumerate(stream, 1):
             if not line.strip():

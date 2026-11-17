@@ -312,3 +312,41 @@ clock/frequency accuracy, absolute phase calibration and source identification
 remain separate measurements. A trial subtraction of the first-half sample
 mean worsened held-out sample-mean power in seven of nine snapshots; that trial
 was not applied to the source or scanning pipeline.
+
+## Full receive operation
+
+`full_operation.py` combines native-IQ preflight, independent phase holdouts,
+RF retunes, native DC on/off and 0/20/40 dB gain observations with a guarded
+five-minute full-driver-range receive survey. It defaults to RX2, 28 MS/s,
+8192-bin Hann, a 500 kHz displayed-origin exclusion and usable IF +/-12 MHz.
+It creates a measured receiver-control seed profile and keeps accepted IQ,
+quality/RF/timestamp metadata, commands and compressed JSONL in a fresh output
+folder. Configure matching Soapy/UHD Python bindings, module and images first.
+
+```sh
+python examples/ettus/full_operation.py \
+  --device 'driver=uhd,type=b200,serial=YOUR_SERIAL,recv_frame_size=16360,num_recv_frames=1024' \
+  --output /new/output/ettus-operation --seconds 300
+```
+
+The reported combined RF/DSP tuning range depends on the configured rate; the
+example retains that observed range alongside the nominal 70-6000 MHz region.
+Outside-nominal observations are not an extension of the manufacturer's
+calibrated specifications. The gain/DC observations use the attached antenna:
+they are not absolute gain, NF or vector calibration. Known physical references
+remain necessary for the corresponding calibration APIs.
+
+With `--reopen-stream`, streaming now stops immediately after the unique IQ
+samples are acquired. RF readbacks, FFT completion, quality statistics, evidence
+publication and output run with USB reception stopped; the next hop starts a
+fresh stream after tuning. This avoids accumulating unwanted samples during
+host processing. A completed five-minute 28 MS/s session exercised this path;
+short smoke tests alone do not certify sustained 56 MS/s operation.
+
+Offline record readers accept `.jsonl.gz` as well as plain JSONL, including the
+heatmap, context extraction and fractional channel-integration tools. The
+provenance combiner and other analysis commands are documented in
+[receiver quality examples](../receiver_quality/README.md).
+
+See [telemetry policies and reference models](TELEMETRY.md) for typed sensors,
+warmup/validity gates, native filter phase, and the isolated SoapyUHD extension.
