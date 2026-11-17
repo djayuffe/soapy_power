@@ -990,6 +990,15 @@ def telemetry_summary(stores, dc_mask_hz=0.0, controlled_input=False, min_groups
                               interpretation=('receiver gain/noise drift with temperature' if controlled_input
                                               else 'diagnostic only: antenna input is not a controlled source'))
         report['floor_vs_temperature'] = regression
+        rows = [(e['time_s'], e['temperature_c'], e['floor_db'], e['key']) for e in temps
+                if e.get('floor_db') is not None and e.get('time_s') is not None]
+        if len(rows) >= 8 and used >= min_groups:
+            from soapypower.floor_estimation import floor_temperature_kalman
+            a = list(zip(*rows))
+            kal = floor_temperature_kalman(a[0], a[1], a[2], a[3])
+            kal['interpretation'] = ('as floor_vs_temperature, with a slowly drifting offset removed' if controlled_input
+                                     else 'diagnostic only: antenna input is not a controlled source')
+            report['floor_vs_temperature_kalman'] = kal
     lo = np.array([e['analog_lo_baseband_hz'] for e in entries if e.get('analog_lo_baseband_hz') is not None])
     if lo.size:
         report['lo_mapping'] = {'records': int(lo.size), 'max_abs_analog_lo_offset_hz': float(np.abs(lo).max()),

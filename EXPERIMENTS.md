@@ -327,3 +327,32 @@ harmonic-response rejection, and large-retune settling. Strong broadcast
 signals in 100–300 MHz (FM, DAB) can drive the receiver nonlinear; then `G` depends on
 `S` and the additive model is violated. Use lower gain, or a terminated input for the
 IF-response trials.
+
+## Bias-free floor, FDR peaks and mixing-order classification (2026-11-17)
+
+`soapypower/floor_estimation.py`, `soapypower/spur_twin.py`, `tools/benchmark_floor_spur.py`.
+Relative levels only; nothing here is calibrated.
+
+* **Floor.** A bin averaged over K segments is Gamma(K): its dB-median sits 10log10(median/mean) below the true
+  mean level (-1.59 dB at dof 2, -0.29 dB at 10, -0.05 dB at 64) and a 2-sweep min-hold -3.0/-1.2/-0.45 dB.
+  `floor_estimate` returns the mean level (median corrected for the dof, dof estimated from the data unless
+  given, spur bins excluded) with a distribution-free CI.
+* **Peaks.** `detect_peaks(method='bh'|'bonferroni'|'fixed')`: Benjamini-Hochberg or family-wise control instead of
+  "N dB above floor". Cost: weak lines (4-8 dB at dof 8) are found less often; see the benchmark.
+* **Mixing order.** `classify_lo_slope`: IF vs LO slope -n (RF-fixed n=1), +1 (image), odd n (LO harmonic), >= 3 LO
+  settings. `drive_order`: level vs drive slope gives the intermodulation order. `spur_twin.analyze` is the
+  pipeline; `scenarios()` is the T1-T5 matrix.
+* **Floor vs temperature.** `floor_temperature_kalman` (random-walk offset + constant slope, RTS smoother, drift by
+  marginal likelihood) is reported next to the OLS value as `floor_vs_temperature_kalman`. A temperature that only
+  rises is indistinguishable from drift (`confounded: true`): then neither estimate is trustworthy.
+* Reproduce: `PYTHONPATH=. python tools/benchmark_floor_spur.py`.
+
+| measure (synthetic) | before (legacy) | after |
+|---|---|---|
+| median floor bias, dof 2 / 10 / 64 | -1.59 / -0.29 / -0.045 dB | +0.002 / +0.002 / 0.000 dB |
+| 2-sweep min-hold bias, dof 2 / 10 / 64 | -3.01 / -1.22 / -0.45 dB | +0.002 / +0.003 / 0.000 dB |
+| false alarms per noise bin (dof 8) | 2.6e-4 (fixed 6 dB) | 1.0e-5 (BH 0.01), ~0 (Bonferroni) |
+| detection of +8 dB / +12 dB lines | 80 % / 97 % | 60 % / 96 % (BH) |
+| T1-T5, 360 true peaks | 120 mislabelled (spur and image read as signal) | 0 mislabelled, 0 false, 0 missed |
+| floor-vs-T slope error, oscillating T | 0.019-0.022 dB/C (OLS) | 0.010-0.015 dB/C (Kalman) |
+| floor-vs-T slope, monotone T | 0.076-0.089 dB/C error, no warning | 0.061-0.068 dB/C error, flagged confounded 100 % |
