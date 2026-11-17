@@ -12,6 +12,7 @@ CELL_HZ = 1e6
 
 def load(path, usable=0.35, dc_hz=0.5e6):
     cells, vals, hops, times, temps, rejected = [], [], set(), [], 0, 0
+    tseries, rseries = [], []
     records = 0
     with open(path) as f:
         for line in f:
@@ -31,12 +32,14 @@ def load(path, usable=0.35, dc_hz=0.5e6):
                 vals.append(float(np.mean(p[keep][idx == c])))
             hops.add(round(center))
             times.append(r['time_start'])
+            rseries.append((r['time_start'], round(center)))
             meta = r.get('metadata') or {}
             rs = (meta.get('rf_state') or {}).get('after') or {}
             if (rs.get('validity') or {}).get('temperature_c') is not None:
                 temps += 1
+                tseries.append((r['time_start'], float(rs['validity']['temperature_c'])))
     return {'records': records, 'hops': len(hops), 'cells': np.array(cells), 'vals': np.array(vals),
-            'time_first': times[0] if times else None, 'time_last': times[-1] if times else None, 'temperature_records': temps}
+            'time_first': times[0] if times else None, 'time_last': times[-1] if times else None, 'temperature_records': temps, 'tseries': tseries, 'rseries': rseries}
 
 
 def levels(d):
@@ -46,6 +49,26 @@ def levels(d):
     for u in np.unique(c):
         out[int(u)] = float(np.median(v[c == u]))
     return out
+
+
+def counts_of(d, cells):
+    u, n = np.unique(d['cells'], return_counts=True)
+    m = dict(zip(u.tolist(), n.tolist()))
+    return [m.get(int(c), 0) for c in cells]
+
+
+def _series(rows, t0, step=25):
+    from datetime import datetime
+    if not rows:
+        return []
+    a = datetime.fromisoformat(t0)
+    return [[round((datetime.fromisoformat(t) - a).total_seconds(), 2), round(v, 3)] for t, v in rows[::step]]
+
+
+def _hops(rows, t0, step=20):
+    from datetime import datetime
+    a = datetime.fromisoformat(t0)
+    return [[round((datetime.fromisoformat(t) - a).total_seconds(), 2), c / 1e6] for t, c in rows[::step]]
 
 
 def summarize(name, d):
@@ -64,7 +87,10 @@ def summarize(name, d):
             'span_mhz': [float(cells.min()), float(cells.max())] if cells.size else None,
             'cell_level_median_db': float(np.median(db)) if db.size else None,
             'cell_level_p5_p95_db': [float(np.percentile(db, 5)), float(np.percentile(db, 95))] if db.size else None,
-            'temperature_records': d['temperature_records']}, lv
+            'temperature_records': d['temperature_records'],
+            'cell_mhz': [int(c) for c in cells], 'cell_level_db': [round(float(x), 3) for x in db],
+            'cell_observations': [int(n) for n in counts_of(d, cells)],
+            'temperature_series': _series(d['tseries'], d['time_first']), 'hop_series': _hops(d['rseries'], d['time_first'])}, lv
 
 
 def main(argv=None):
