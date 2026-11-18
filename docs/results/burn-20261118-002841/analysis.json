@@ -1,0 +1,430 @@
+{
+  "calibrated": false,
+  "checks": {
+    "if_fit": {
+      "anchor_if_hz": -200000.0,
+      "fully_identified": true,
+      "identifiable_components": 1,
+      "identified_slots": 424,
+      "if_bin_hz": 100000.0,
+      "max_if_hz": 21273437.50000003,
+      "median_redundancy": 12.0,
+      "observed_slots": 424,
+      "origin_sources": [
+        "frequency_grid"
+      ],
+      "passed": true,
+      "residual_mad_db": 0.3659277959080563,
+      "status": "fit",
+      "usable_cells": 2000
+    },
+    "if_holdout": {
+      "agreement": {
+        "common_slots": 424,
+        "max_abs_db": 0.26266208927378176,
+        "p95_abs_db": 0.12142468585307158,
+        "rms_db": 0.05078995142727112,
+        "rms_normalized": 0.6956595258937391
+      },
+      "fully_identified": true,
+      "improvement_db": 0.086303103429898,
+      "improvement_sd_db": 0.1072860302789296,
+      "level_drift": {
+        "cells": 23138,
+        "median_db": -0.03689869054096562,
+        "p95_abs_db": 1.217632393120724,
+        "scope": "includes RF environment changes; a stable physical input isolates receiver drift",
+        "status": "measured"
+      },
+      "max_disagreement_db": 0.25,
+      "passed": true,
+      "quiet_cells": {
+        "allowed_increase_db": 0.022051086173844294,
+        "cells": 500,
+        "paired_median_increase_db": -0.1764580888966411,
+        "paired_sd_db": 0.009845966192721363,
+        "quantile": 0.25,
+        "selection": "fit-store quiet quantile",
+        "spread_after_db": 0.31482629916512916,
+        "spread_before_db": 0.5252566172164479
+      },
+      "refit_fully_identified": true,
+      "scope": "relative IF response, independent holdout acquisitions; not absolute calibration",
+      "spread_after_db": 3.197209075634761,
+      "spread_before_db": 3.283512179064659,
+      "status": "validated"
+    },
+    "repeatability": {
+      "bias_db": -0.0005659900078001101,
+      "cells": 23138,
+      "max_sigma_db": 0.5,
+      "p95_abs_db": 0.19051054697924052,
+      "passed": true,
+      "passes": 231,
+      "scope": "includes RF environment variation between passes",
+      "sigma_db": 0.031730921159411556,
+      "status": "measured"
+    },
+    "spurious_responses": {
+      "first_round": null,
+      "gating": false,
+      "identified": [
+        {
+          "attributed_events": 171839,
+          "identified": true,
+          "kind": "harmonic",
+          "order": 3,
+          "sign": 1,
+          "source_bands_hz": [
+            [
+              335250000.0,
+              336250000.0
+            ],
+            [
+              390250000.0,
+              390750000.0
+            ],
+            [
+              392250000.0,
+              392750000.0
+            ],
+            [
+              393250000.0,
+              393750000.0
+            ],
+            [
+              394250000.0,
+              394750000.0
+            ],
+            [
+              478750000.0,
+              479250000.0
+            ],
+            [
+              482250000.0,
+              483750000.0
+            ],
+            [
+              758250000.0,
+              760250000.0
+            ],
+            [
+              760250000.0,
+              767750000.0
+            ],
+            [
+              768250000.0,
+              774750000.0
+            ],
+            [
+              775250000.0,
+              777750000.0
+            ],
+            [
+              786250000.0,
+              786750000.0
+            ],
+            [
+              791250000.0,
+              800750000.0
+            ],
+            [
+              801250000.0,
+              810750000.0
+            ],
+            [
+              811250000.0,
+              820750000.0
+            ]
+          ],
+          "top_sources_hz": [
+            814000000.0,
+            797500000.0,
+            811500000.0,
+            809500000.0,
+            798000000.0,
+            795500000.0
+          ]
+        },
+        {
+          "attributed_events": 34717,
+          "identified": true,
+          "kind": "harmonic",
+          "order": 3,
+          "sign": -1,
+          "source_bands_hz": [
+            [
+              451250000.0,
+              451750000.0
+            ],
+            [
+              456750000.0,
+              459250000.0
+            ],
+            [
+              463750000.0,
+              464250000.0
+            ],
+            [
+              465750000.0,
+              466250000.0
+            ],
+            [
+              467250000.0,
+              468250000.0
+            ],
+            [
+              472250000.0,
+              472750000.0
+            ],
+            [
+              478750000.0,
+              479250000.0
+            ],
+            [
+              479250000.0,
+              481750000.0
+            ],
+            [
+              482250000.0,
+              488750000.0
+            ]
+          ],
+          "top_sources_hz": [
+            488000000.0,
+            488500000.0,
+            481000000.0,
+            481500000.0,
+            487500000.0,
+            482500000.0
+          ]
+        },
+        {
+          "attributed_events": 18999,
+          "identified": true,
+          "kind": "harmonic",
+          "order": 5,
+          "sign": -1,
+          "source_bands_hz": [
+            [
+              758250000.0,
+              759250000.0
+            ],
+            [
+              759250000.0,
+              761250000.0
+            ],
+            [
+              762250000.0,
+              763250000.0
+            ],
+            [
+              764750000.0,
+              766250000.0
+            ],
+            [
+              793750000.0,
+              796250000.0
+            ],
+            [
+              796750000.0,
+              797250000.0
+            ],
+            [
+              813750000.0,
+              818250000.0
+            ]
+          ],
+          "top_sources_hz": [
+            816500000.0,
+            817000000.0,
+            816000000.0,
+            815500000.0,
+            817500000.0,
+            815000000.0
+          ]
+        }
+      ],
+      "masked_hops": 47,
+      "masked_observations": 15196,
+      "rounds": [
+        {
+          "excess_observations": 601236,
+          "identified": [
+            [
+              3,
+              1,
+              171839
+            ],
+            [
+              3,
+              -1,
+              34717
+            ],
+            [
+              5,
+              -1,
+              18999
+            ]
+          ],
+          "image_rejected": "no in-band parent >= 20 dB above the floor"
+        },
+        {
+          "excess_observations": 105062,
+          "identified": [
+            [
+              3,
+              -1,
+              3113
+            ],
+            [
+              3,
+              1,
+              1387
+            ],
+            [
+              5,
+              -1,
+              109
+            ]
+          ],
+          "image_rejected": "no in-band parent >= 20 dB above the floor"
+        },
+        {
+          "excess_observations": 96576,
+          "identified": [
+            [
+              3,
+              1,
+              452
+            ]
+          ],
+          "image_rejected": "no in-band parent >= 20 dB above the floor"
+        },
+        {
+          "excess_observations": 96180,
+          "identified": [],
+          "image_rejected": "no in-band parent >= 20 dB above the floor"
+        }
+      ],
+      "scope": "mixing-law attribution of excess observations; source frequencies are inferred, not measured",
+      "status": "tested",
+      "threshold_db": 6.0
+    },
+    "telemetry": {
+      "absolute_temperature_calibrated": false,
+      "applied_as_correction": false,
+      "chain_fingerprints": [
+        "8fce2fd9de9e8daae6280ecf4065fe03d3c9bec48b3caa48dd2cec6bb7cbc0b4"
+      ],
+      "chain_stable": true,
+      "controlled_input": false,
+      "floor_vs_temperature": {
+        "centers": 59,
+        "correlation": -0.01708958220245487,
+        "explained_fraction": 0.0002920538198544623,
+        "interpretation": "diagnostic only: antenna input is not a controlled source",
+        "observations": 28996,
+        "slope_db_per_c": -0.0553579404531651,
+        "slope_se_db": 0.019039949971670918,
+        "status": "fit",
+        "within_center_temperature_sd_c": 0.2505679838623571
+      },
+      "floor_vs_temperature_kalman": {
+        "confounded": false,
+        "drift_db_per_sqrt_s": 0.0263693576617912,
+        "drift_range_db": 0.40617581084725884,
+        "drift_temperature_correlation": -0.06186976189033903,
+        "groups": 59,
+        "interpretation": "diagnostic only: antenna input is not a controlled source",
+        "mean_nis": 1.0033100525149095,
+        "records": 28996,
+        "reference_temperature_c": 47.222017206028426,
+        "scope": "relative level, not calibrated; slope valid for this receiver state and sensor",
+        "sigma_db": 0.8053486282683194,
+        "slope_db_per_c": 0.029723074180795627,
+        "slope_range_db": [
+          0.029723074180795627,
+          0.029723074180795627
+        ],
+        "slope_sd_db": 0.022399462021783157,
+        "status": "fit",
+        "temperature_time_correlation": -0.4791677383707359
+      },
+      "gating": false,
+      "iq_tracking_states": [
+        true
+      ],
+      "lo_mapping": {
+        "dc_mask_hz": 500000.0,
+        "max_abs_analog_lo_offset_hz": 0.1434236764907837,
+        "records": 28996,
+        "records_lo_outside_dc_mask": 0
+      },
+      "max_abs_trial_slope_c_per_min": 0.06246927414383257,
+      "per_trial": [
+        {
+          "end_c": 47.485382,
+          "first_reading_c": 48.070175,
+          "median_c": 47.48538,
+          "records": 7566,
+          "seconds": 299.92214179039,
+          "slope_c_per_min": 0.04666624725858388,
+          "source": "grid-a-fit.jsonl",
+          "start_c": 47.192986
+        },
+        {
+          "end_c": 47.192986,
+          "first_reading_c": 47.777779,
+          "median_c": 47.192986,
+          "records": 7562,
+          "seconds": 299.9095540046692,
+          "slope_c_per_min": 0.016249144212875124,
+          "source": "grid-a-holdout.jsonl",
+          "start_c": 47.192986
+        },
+        {
+          "end_c": 47.192986,
+          "first_reading_c": 48.070175,
+          "median_c": 47.192986,
+          "records": 6958,
+          "seconds": 299.9340269565582,
+          "slope_c_per_min": -0.018727822142594268,
+          "source": "grid-b-fit.jsonl",
+          "start_c": 47.192986
+        },
+        {
+          "end_c": 46.900586,
+          "first_reading_c": 48.070175,
+          "median_c": 47.192986,
+          "records": 6910,
+          "seconds": 299.9167001247406,
+          "slope_c_per_min": -0.06246927414383257,
+          "source": "grid-b-holdout.jsonl",
+          "start_c": 47.192986
+        }
+      ],
+      "records": 28996,
+      "records_with_fresh_temperature": 28996,
+      "status": "measured",
+      "temperature_max_c": 48.070175,
+      "temperature_median_c": 47.192986,
+      "temperature_min_c": 46.315788,
+      "temperature_reads_while_streaming": 0,
+      "temperature_span_c": 1.7543870000000013
+    }
+  },
+  "data_source": "acquired",
+  "evidence_level": "hardware-observed: relative, uncalibrated",
+  "input": "antenna",
+  "input_source": "planned",
+  "kind": "experiment_analysis",
+  "ledger_sha256": "732d3d983f0e5d6a21392b8850ceb1794f32df27d20930183ccf686eeb7af2e0",
+  "passed": true,
+  "required": [
+    "repeatability",
+    "if_fit",
+    "if_holdout"
+  ],
+  "version": 1
+}

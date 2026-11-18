@@ -1,0 +1,209 @@
+{
+  "id": "burn-20261118-002841",
+  "kind": "burn_test",
+  "date_local": "2026-11-18",
+  "session": "sessions/okt-20261118-002841",
+  "raw_data_committed": false,
+  "evidence": {
+    "level": "hardware-observed: relative, uncalibrated",
+    "data_source": "acquired",
+    "calibrated": false,
+    "input": {
+      "kind": "antenna",
+      "port": "RX2",
+      "gain_db": 20.0,
+      "controlled": false,
+      "note": "antenna input; external RF changes are part of the series"
+    }
+  },
+  "software": {
+    "commit": "155e1ad",
+    "describe": "v1.6.1-62-g155e1ad",
+    "soapysdr": "0.8.1",
+    "uhd": "4.11"
+  },
+  "hardware": {
+    "device": "B200mini",
+    "serial": "30B2A32",
+    "driver": "uhd",
+    "clock_source": "internal",
+    "native_chain_sha256": "8fce2fd9de9e8daae6280ecf4065fe03d3c9bec48b3caa48dd2cec6bb7cbc0b4"
+  },
+  "acquisition": {
+    "band_hz": [100000000.0, 300000000.0],
+    "scan_seconds_per_trial": 300.0,
+    "started_utc": "2026-11-17T23:28:42.559350+00:00",
+    "finished_utc": "2026-11-17T23:50:47.019569+00:00",
+    "total_records": 28996,
+    "trials": [
+      {"id": "grid-a-fit", "role": "fit", "seconds": 301.9, "records": 7566},
+      {"id": "grid-b-fit", "role": "fit", "seconds": 301.8, "records": 6958},
+      {"id": "grid-a-holdout", "role": "holdout", "seconds": 302.0, "records": 7562},
+      {"id": "grid-b-holdout", "role": "holdout", "seconds": 301.9, "records": 6910}
+    ]
+  },
+  "result": {
+    "passed": true,
+    "required": ["repeatability", "if_fit", "if_holdout"],
+    "checks": {
+      "repeatability": {
+        "status": "measured",
+        "passed": true,
+        "sigma_db": 0.031730921159411556,
+        "bias_db": -0.0005659900078001101,
+        "p95_abs_db": 0.19051054697924052,
+        "passes": 231,
+        "cells": 23138,
+        "limit_sigma_db": 0.5,
+        "scope": "includes RF environment variation between passes"
+      },
+      "if_fit": {
+        "status": "fit",
+        "passed": true,
+        "identifiable_components": 1,
+        "fully_identified": true,
+        "identified_slots": 424,
+        "observed_slots": 424,
+        "median_redundancy": 12.0,
+        "residual_mad_db": 0.3659277959080563
+      },
+      "if_holdout": {
+        "status": "validated",
+        "passed": true,
+        "rms_db": 0.05078995142727112,
+        "p95_abs_db": 0.12142468585307158,
+        "max_abs_db": 0.26266208927378176,
+        "improvement_db": 0.086303103429898,
+        "limit_rms_db": 0.25,
+        "fully_identified": true,
+        "scope": "relative IF response, independent holdout acquisitions; not absolute calibration"
+      },
+      "level_drift": {
+        "status": "measured",
+        "median_db": -0.03689869054096562,
+        "p95_abs_db": 1.217632393120724,
+        "cells": 23138,
+        "scope": "includes RF environment changes; a stable physical input isolates receiver drift"
+      },
+      "quiet_cells": {
+        "cells": 500,
+        "selection": "fit-store quiet quantile",
+        "paired_median_increase_db": -0.1764580888966411,
+        "paired_sd_db": 0.009845966192721363,
+        "allowed_increase_db": 0.022051086173844294
+      }
+    }
+  },
+  "telemetry": {
+    "status": "measured",
+    "records": 28996,
+    "records_with_fresh_temperature": 28996,
+    "temperature_min_c": 46.315788,
+    "temperature_max_c": 48.070175,
+    "temperature_median_c": 47.192986,
+    "temperature_span_c": 1.7543870000000013,
+    "temperature_quantisation_levels": 7,
+    "temperature_step_c": 0.2924,
+    "max_abs_trial_slope_c_per_min": 0.06246927414383257,
+    "chain_stable": true,
+    "lo_mapping": {
+      "dc_mask_hz": 500000.0,
+      "max_abs_analog_lo_offset_hz": 0.1434236764907837,
+      "records_lo_outside_dc_mask": 0
+    },
+    "floor_vs_temperature_ols": {
+      "status": "fit",
+      "slope_db_per_c": -0.0553579404531651,
+      "slope_se_db": 0.019039949971670918,
+      "correlation": -0.01708958220245487,
+      "explained_fraction": 0.0002920538198544623,
+      "observations": 28996,
+      "centers": 59,
+      "interpretation": "diagnostic only: antenna input is not a controlled source"
+    },
+    "floor_vs_temperature_kalman": {
+      "status": "fit",
+      "slope_db_per_c": 0.029723074180795627,
+      "slope_sd_db": 0.022399462021783157,
+      "confounded": false,
+      "drift_range_db": 0.40617581084725884,
+      "drift_db_per_sqrt_s": 0.0263693576617912,
+      "drift_temperature_correlation": -0.06186976189033903,
+      "mean_nis": 1.0033100525149095,
+      "groups": 59,
+      "records": 28996,
+      "interpretation": "diagnostic only: antenna input is not a controlled source"
+    },
+    "applied_as_correction": false,
+    "absolute_temperature_calibrated": false
+  },
+  "spurious_responses": {
+    "status": "tested",
+    "gating": false,
+    "threshold_db": 6.0,
+    "masked_observations": 15196,
+    "masked_hops": 47,
+    "image_rejected": "no in-band parent >= 20 dB above the floor",
+    "identified": [
+      {"order": 3, "sign": 1, "attributed_events": 171839,
+       "top_sources_hz": [814000000.0, 797500000.0, 811500000.0, 809500000.0, 798000000.0, 795500000.0]},
+      {"order": 3, "sign": -1, "attributed_events": 34717,
+       "top_sources_hz": [488000000.0, 488500000.0, 481000000.0, 481500000.0, 487500000.0, 482500000.0]},
+      {"order": 5, "sign": -1, "attributed_events": 18999,
+       "top_sources_hz": [816500000.0, 817000000.0, 816000000.0, 815500000.0, 817500000.0, 815000000.0]}
+    ],
+    "automatic_notch": false,
+    "observations_excluded_from_metrics": false,
+    "scope": "mixing-law attribution of excess observations; source frequencies are inferred, not measured"
+  },
+  "floor_proxy": {
+    "definition": "median power over +/-100 kHz at 130 MHz when that RF is within 5 MHz of the tuned centre",
+    "calibrated": false,
+    "median_db": -132.536,
+    "p5_db": -133.669,
+    "p95_db": -131.933,
+    "p5_p95_span_db": 1.736,
+    "full_span_db": 2.948,
+    "points": 1448,
+    "per_trial": {
+      "grid-a-fit": {"points": 261, "median_db": -132.5011, "slope_db_per_min": 0.02674},
+      "grid-a-holdout": {"points": 261, "median_db": -132.5466, "slope_db_per_min": -0.00007},
+      "grid-b-fit": {"points": 464, "median_db": -132.8200, "slope_db_per_min": 0.00221},
+      "grid-b-holdout": {"points": 462, "median_db": -132.4921, "slope_db_per_min": 0.02223}
+    },
+    "note": "relative proxy; contains residual IF shape and environmental change, not a calibrated floor"
+  },
+  "prior_attempt": {
+    "session": "sessions/okt-20261118-000121",
+    "goal": "4 x 600 s",
+    "outcome": "failed",
+    "grid_a_fit": {"status": "accepted", "seconds": 602.0, "records": 14889},
+    "grid_b_fit": [
+      {"status": "failed", "seconds": 374.1, "error": "SDR overflow: samples were dropped; refusing discontinuous IQ"},
+      {"status": "failed", "seconds": 393.3, "error": "SDR overflow: samples were dropped; refusing discontinuous IQ"}
+    ],
+    "raw_files": "retained as .jsonl.zst (5.75 GiB -> 2.10 GiB)",
+    "cause": "unresolved; filesystem was 99% full at the time, not reproduced after cleanup"
+  },
+  "limits": [
+    "Antenna input: external signals and interference are part of the series; a stable physical input is required to isolate receiver drift.",
+    "Four 300 s trials only; not a multi-hour soak, and 600 s per-trial behaviour was not reproduced.",
+    "Thermal slopes use a coarsely quantised sensor (seven levels) and one receiver state; they do not transfer to another gain, antenna, band or unit.",
+    "Spurious identifications are inferred, not source-measured, and are not used to remove data.",
+    "The 150-160 MHz behaviour remains unresolved; a controlled 50 ohm input and/or alternating ON/OFF runs are required.",
+    "Single device (30B2A32), single gain (20 dB), RX2, 100-300 MHz.",
+    "Relative and uncalibrated: no dBm, noise figure, absolute floor or traceability."
+  ],
+  "artifacts": [
+    "README.md",
+    "analysis.json",
+    "ledger.json",
+    "if_response.json",
+    "cell_levels.json",
+    "burn_series.json",
+    "burn.png",
+    "make_burn_plot.py"
+  ],
+  "ledger_sha256": "732d3d983f0e5d6a21392b8850ceb1794f32df27d20930183ccf686eeb7af2e0",
+  "reproduce": "tools/macos_runner/queue.sh scan --seconds 300 --gain 20 --antenna RX2 --input antenna --procedure suite --wait 1800"
+}
