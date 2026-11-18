@@ -2,7 +2,7 @@
 # launchd job: runs requests from $SPR_SESSIONS/queue/*.json one at a time.
 # Request: an XML property list (plutil-readable; JSON is not) named <id>.json with keys
 #   mode (probe|setup|scan), scan_seconds, gain_db, antenna, input (antenna|terminated),
-#   procedure (suite|baseline); run_session.sh itself reads and validates the optional keys
+#   procedure (suite|baseline|fullrange); run_session.sh itself reads and validates the optional keys
 #   device (b200|bladerf) and bladerf_job from the request.
 # Only these validated parameters reach tools/macos_runner/run_session.sh in the repo
 # (fixes need no reinstall; the repo's Python code runs on every scan anyway).
@@ -36,7 +36,7 @@ while :; do
   if ! [[ "$SECS" =~ ^[0-9]+$ ]] || ! [[ "$GAIN" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then reject "bad number"; continue; fi
   case "$ANT" in RX2|TX/RX) ;; *) reject "bad antenna"; continue;; esac
   case "$IN" in antenna|terminated) ;; *) reject "bad input"; continue;; esac
-  case "$PROC" in suite|baseline) ;; *) reject "bad procedure"; continue;; esac
+  case "$PROC" in suite|baseline|fullrange) ;; *) reject "bad procedure"; continue;; esac
   echo "{\"id\":\"$ID\",\"state\":\"running\",\"mode\":\"$MODE\",\"started_utc\":\"$(now)\",\"pid\":$$}" > "$STATUS"
   rm -f "$SPR_SESSIONS/last-run.env"
   SCRIPT="$SPR_REPO/tools/macos_runner/run_session.sh"

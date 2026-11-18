@@ -1,0 +1,292 @@
+{
+ "session": "sessions/fullrange-20261118-111658",
+ "kind": "fullrange_telemetry",
+ "records": 5125,
+ "passes": 24,
+ "seconds": 299.94,
+ "temperature": {
+  "readings": 5125,
+  "missing": 0,
+  "min_c": 41.345,
+  "max_c": 42.807,
+  "median_c": 41.9298,
+  "span_c": 1.462,
+  "first_c": 42.807,
+  "last_c": 41.9298,
+  "quantisation_levels": 8,
+  "step_c": 0.2924,
+  "pass_mean_range_c": 0.3821,
+  "fresh_readings": 5125,
+  "polled_while_streaming": 0,
+  "validity_failures": 0,
+  "sensor_note": "RFIC sensor is quantised to 8 levels in this run (~0.292 C step); the fast comb is quantisation/dither, not resolved thermal dynamics."
+ },
+ "chain": {
+  "fingerprints": [
+   "8fce2fd9de9e8daae6280ecf4065fe03d3c9bec48b3caa48dd2cec6bb7cbc0b4"
+  ],
+  "stable": true
+ },
+ "drift": {
+  "passes": 24,
+  "range_db": 0.025,
+  "ols_slope_db_per_c": -0.009106,
+  "ols_se_db": 0.010219,
+  "correlation": -0.1866,
+  "note": "diagnostic only: antenna input; drift is whole-band median after per-cell frequency removal"
+ },
+ "pass_sigma_db": {
+  "median": 0.223,
+  "p95": 1.1158,
+  "max": 15.0893
+ },
+ "band_150_160": {
+  "on_per_pass_min_db": -133.63,
+  "on_per_pass_max_db": -114.85,
+  "on_per_pass_range_db": 18.78,
+  "off_per_pass_median_db": -131.17,
+  "note": "cause unresolved; controlled 50 ohm or alternating ON/OFF source run required"
+ },
+ "per_pass": [
+  {
+   "pass": 0,
+   "start_s": 0.0,
+   "end_s": 12.27,
+   "mean_c": 41.9516,
+   "min_c": 41.345,
+   "max_c": 42.807,
+   "slope_c_per_min": -0.56141,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 1,
+   "start_s": 12.4,
+   "end_s": 24.67,
+   "mean_c": 42.0033,
+   "min_c": 41.9298,
+   "max_c": 42.5146,
+   "slope_c_per_min": -1.01698,
+   "drift_db": 0.01
+  },
+  {
+   "pass": 2,
+   "start_s": 24.79,
+   "end_s": 37.13,
+   "mean_c": 41.9951,
+   "min_c": 41.6374,
+   "max_c": 42.5146,
+   "slope_c_per_min": -0.26595,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 3,
+   "start_s": 37.25,
+   "end_s": 49.63,
+   "mean_c": 42.0386,
+   "min_c": 41.6374,
+   "max_c": 42.807,
+   "slope_c_per_min": 2.2575,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 4,
+   "start_s": 49.76,
+   "end_s": 62.08,
+   "mean_c": 42.1161,
+   "min_c": 41.9298,
+   "max_c": 42.807,
+   "slope_c_per_min": 1.41272,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 5,
+   "start_s": 62.21,
+   "end_s": 74.53,
+   "mean_c": 42.025,
+   "min_c": 41.9298,
+   "max_c": 42.2222,
+   "slope_c_per_min": 0.46191,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 6,
+   "start_s": 74.65,
+   "end_s": 87.04,
+   "mean_c": 42.0509,
+   "min_c": 41.9298,
+   "max_c": 42.5146,
+   "slope_c_per_min": -0.13265,
+   "drift_db": -0.005
+  },
+  {
+   "pass": 7,
+   "start_s": 87.17,
+   "end_s": 99.51,
+   "mean_c": 42.1447,
+   "min_c": 41.9298,
+   "max_c": 42.807,
+   "slope_c_per_min": -2.93388,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 8,
+   "start_s": 99.64,
+   "end_s": 111.97,
+   "mean_c": 42.1243,
+   "min_c": 41.6374,
+   "max_c": 42.807,
+   "slope_c_per_min": -2.21678,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 9,
+   "start_s": 112.09,
+   "end_s": 124.47,
+   "mean_c": 42.3093,
+   "min_c": 41.6374,
+   "max_c": 42.807,
+   "slope_c_per_min": 1.43768,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 10,
+   "start_s": 124.6,
+   "end_s": 136.95,
+   "mean_c": 42.2657,
+   "min_c": 41.9298,
+   "max_c": 42.5146,
+   "slope_c_per_min": -1.15812,
+   "drift_db": -0.005
+  },
+  {
+   "pass": 11,
+   "start_s": 137.08,
+   "end_s": 149.52,
+   "mean_c": 42.3079,
+   "min_c": 41.9298,
+   "max_c": 42.807,
+   "slope_c_per_min": 0.45907,
+   "drift_db": 0.01
+  },
+  {
+   "pass": 12,
+   "start_s": 149.65,
+   "end_s": 162.15,
+   "mean_c": 42.195,
+   "min_c": 41.6374,
+   "max_c": 42.807,
+   "slope_c_per_min": -2.00104,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 13,
+   "start_s": 162.27,
+   "end_s": 174.95,
+   "mean_c": 42.074,
+   "min_c": 41.6374,
+   "max_c": 42.5146,
+   "slope_c_per_min": -0.57905,
+   "drift_db": 0.005
+  },
+  {
+   "pass": 14,
+   "start_s": 175.08,
+   "end_s": 187.7,
+   "mean_c": 42.0481,
+   "min_c": 41.9298,
+   "max_c": 42.5146,
+   "slope_c_per_min": -0.7184,
+   "drift_db": 0.005
+  },
+  {
+   "pass": 15,
+   "start_s": 187.83,
+   "end_s": 200.37,
+   "mean_c": 42.1148,
+   "min_c": 41.9298,
+   "max_c": 42.807,
+   "slope_c_per_min": -0.52789,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 16,
+   "start_s": 200.49,
+   "end_s": 213.06,
+   "mean_c": 42.0019,
+   "min_c": 41.6374,
+   "max_c": 42.807,
+   "slope_c_per_min": 0.7542,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 17,
+   "start_s": 213.2,
+   "end_s": 225.75,
+   "mean_c": 42.1637,
+   "min_c": 41.9298,
+   "max_c": 42.807,
+   "slope_c_per_min": 1.63889,
+   "drift_db": 0.015
+  },
+  {
+   "pass": 18,
+   "start_s": 225.88,
+   "end_s": 238.44,
+   "mean_c": 42.1189,
+   "min_c": 41.9298,
+   "max_c": 42.807,
+   "slope_c_per_min": -0.02626,
+   "drift_db": 0.0
+  },
+  {
+   "pass": 19,
+   "start_s": 238.58,
+   "end_s": 251.12,
+   "mean_c": 42.2399,
+   "min_c": 41.9298,
+   "max_c": 42.807,
+   "slope_c_per_min": -0.9621,
+   "drift_db": 0.005
+  },
+  {
+   "pass": 20,
+   "start_s": 251.3,
+   "end_s": 263.89,
+   "mean_c": 42.1882,
+   "min_c": 41.9298,
+   "max_c": 42.807,
+   "slope_c_per_min": -1.39148,
+   "drift_db": -0.005
+  },
+  {
+   "pass": 21,
+   "start_s": 264.02,
+   "end_s": 276.58,
+   "mean_c": 42.2848,
+   "min_c": 41.6374,
+   "max_c": 42.807,
+   "slope_c_per_min": -2.44257,
+   "drift_db": -0.005
+  },
+  {
+   "pass": 22,
+   "start_s": 276.71,
+   "end_s": 289.26,
+   "mean_c": 42.3337,
+   "min_c": 41.9298,
+   "max_c": 42.807,
+   "slope_c_per_min": -0.11361,
+   "drift_db": -0.01
+  },
+  {
+   "pass": 23,
+   "start_s": 289.39,
+   "end_s": 299.94,
+   "mean_c": 42.1524,
+   "min_c": 41.9298,
+   "max_c": 42.5146,
+   "slope_c_per_min": 0.21175,
+   "drift_db": 0.0
+  }
+ ]
+}

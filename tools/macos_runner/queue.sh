@@ -1,7 +1,7 @@
 #!/bin/bash
 # Queue one request for the launchd runner and optionally wait for the result.
 #   tools/macos_runner/queue.sh probe|setup|scan [--seconds N] [--gain DB]
-#       [--antenna RX2|TX/RX] [--input antenna|terminated] [--procedure suite|baseline]
+#       [--antenna RX2|TX/RX] [--input antenna|terminated] [--procedure suite|baseline|fullrange]
 #       [--device b200|bladerf] [--bladerf-job dense-dc|survey|survey-anchor|dense-dc+survey]
 #       [--plan-args "--no-telemetry"] [--wait SECONDS]
 # Prints the request id. With --wait: prints the status JSON and the run log tail;
