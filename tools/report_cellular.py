@@ -888,7 +888,8 @@ def survey_figure(summ, meta):
              fontsize=8.8, color=MUTED, ha='left', va='top')
     fig.text(.045, .916,
              'Band names are nominal; no decoding, cell identity, ARFCN or operator attribution.  '
-             'Masks: 8 MHz capture edge, ±1.5 MHz DC, <50 % coverage; no signal notch or level correction.',
+             'Shading is the 25th–75th percentile across passes; masks: 8 MHz capture edge, ±1.5 MHz DC, <50 % coverage.  '
+             'No signal notch or level correction.',
              fontsize=8.8, color=MUTED, ha='left', va='top')
 
     for i, b in enumerate(SURVEY_BANDS):
