@@ -5,11 +5,15 @@ The input was an antenna on RX2; ON and OFF are sequential 300 s windows, not
 simultaneous measurements. All levels are relative. No dBm, noise figure,
 absolute floor or traceability is claimed.
 
-Band and channel names are **nominal allocations** (LTE B20/B8/B3/B1/B7,
-GSM 900/1800 downlink). No decoding, cell identity, ARFCN or operator
-attribution is attempted.
+Band and channel names are **nominal allocations** (LTE B20/B8/B3/B1/B7/B28/B5/
+B32/B21/B2/B40/B42, GSM 850/900/1800/1900 downlink). No decoding, cell identity,
+ARFCN or operator attribution is attempted.
 
 ![Cellular LTE/GSM dashboard](cellular_lte_gsm.png)
+
+![Cellular survey of additional nominal bands](cellular_survey.png)
+
+![Cellular detail: narrow features and pass variability](cellular_detail.png)
 
 ## Scope and method
 
@@ -17,7 +21,8 @@ attribution is attempted.
 |---|---|
 | Session | `fullrange-20261118-111658` |
 | Device | B200mini `30B2A32`, antenna `RX2`, 20 dB |
-| Bands | LTE 800 (B20), 900 MHz (GSM 900 / LTE B8), 1800 MHz (GSM 1800 / LTE B3), LTE 2100 (B1), LTE 2600 (B7) — nominal downlink ranges |
+| Deep dive | LTE 800 (B20), 900 MHz (GSM 900 / LTE B8), 1800 MHz (GSM 1800 / LTE B3), LTE 2100 (B1), LTE 2600 (B7) — nominal downlink ranges |
+| Survey | 700 MHz (B28 lower, 758–791), 850 MHz (GSM 850 / B5, 869–894), 1500 MHz (B32/B21, 1452–1518), 1900 MHz (GSM 1900 / B2, 1930–1990), 2300 MHz (B40, 2300–2400), 3500 MHz (B42/n78, 3400–3600) — nominal |
 | Grid | 0.05 MHz LTE; 0.02 MHz GSM |
 | ON | 5,125 records, 24 pass groups (last incomplete) |
 | OFF | 7,061 records, 9 pass groups (last incomplete) |
@@ -41,6 +46,16 @@ A **narrow component** is an isolated local maximum with a 3 dB width of at
 most 0.5 MHz and both 0.2–0.5 MHz side windows at least 9 dB below the peak.
 Plateau ripple is not counted. Floors are the 10th percentile of the
 pass-median spectrum over covered cells.
+
+Where ON and OFF detected extents differ, the **matched common span** is their
+intersection. The reported Δ is ON−OFF over that intersection, so a weak-edge
+extent difference does not masquerade as a level difference. The own-span
+medians are listed separately for reference.
+
+**Pass-to-pass σ** is the temporal standard deviation of each cell across pass
+groups, summarised over covered cells. It measures how much the band changed
+between passes, not measurement noise, and it is not an uncertainty on the
+median.
 
 ## Coverage and floors
 
@@ -73,25 +88,26 @@ Peak is the maximum pass-median cell, not a calibrated level.
 
 ## Wideband blocks
 
-| Band | ON span (MHz) | OFF span (MHz) | ON med | OFF med | Δ | ON pk | OFF pk | Note |
+| Band | ON span (MHz) | OFF span (MHz) | ON med | OFF med | Δ common | ON pk | OFF pk | Note |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | LTE 800 | 801.30–810.50 | 801.30–810.50 | -110.5 | -109.2 | -1.2 | -97.5 | -95.3 | — |
 | LTE 800 | 811.30–820.50 | 811.30–820.50 | -111.5 | -112.1 | +0.6 | -100.1 | -100.7 | — |
 | 900 MHz | 930.34–939.92 | 930.34–939.88 | -104.4 | -104.4 | 0.0 | -98.1 | -98.0 | — |
-| 900 MHz | 954.38–959.50 | 950.50–959.50 | -128.3 | -129.1 | +0.7 | -125.8 | -125.5 | OFF extends lower |
-| 1800 MHz | 1811.48–1820.12 | 1811.12–1820.12 | -125.5 | -125.3 | -0.2 | -120.9 | -119.7 | — |
+| 900 MHz | 954.38–959.50 | 950.50–959.50 | -128.3 | -129.1 | -0.2 | -125.8 | -125.5 | OFF extends lower |
+| 1800 MHz | 1811.48–1820.12 | 1811.12–1820.12 | -125.5 | -125.3 | -0.3 | -120.9 | -119.7 | — |
 | 1800 MHz | 1820.98–1839.02 | 1820.98–1839.02 | -122.1 | -121.8 | -0.3 | -119.2 | -118.0 | — |
 | 1800 MHz | 1840.72–1859.02 | 1840.70–1859.02 | -123.9 | -122.1 | -1.9 | -107.8 | -106.7 | contains narrow |
-| 1800 MHz | 1862.18–1876.06 | 1861.00–1878.94 | -127.0 | -127.7 | +0.8 | -118.5 | -119.9 | OFF extends both edges |
-| LTE 2100 | 2114.00–2129.05 | 2110.95–2129.05 | -122.8 | -121.1 | -1.7 | -119.6 | -117.8 | ON lower-edge gap |
+| 1800 MHz | 1862.18–1876.06 | 1861.00–1878.94 | -127.0 | -127.7 | +0.5 | -118.5 | -119.9 | OFF extends both edges |
+| LTE 2100 | 2114.00–2129.05 | 2110.95–2129.05 | -122.8 | -121.1 | -1.8 | -119.6 | -117.8 | ON lower-edge gap |
 | LTE 2600 | — | — | — | — | — | — | — | no cell above +6 dB |
 
 Extents are threshold crossings on the median spectrum, not channel bandwidths.
-ON/OFF medians use each variant's own detected sub-blocks; the spans show their
-unions. A masked interval inside a span (for example 935.9–938.9 MHz in the
-900 MHz block) is a measurement gap, not an emission gap. The 900 MHz
-945.2–949.9 MHz span is a cluster of isolated narrow components, not a wideband
-block.
+Δ is the ON−OFF difference over the matched common span (the intersection of
+the two extents), so unequal extents do not bias it. The ON and OFF medians are
+each variant's own sub-block values and are shown for reference. A masked
+interval inside a span (for example 935.9–938.9 MHz in the 900 MHz block) is a
+measurement gap, not an emission gap. The 900 MHz 945.2–949.9 MHz span is a
+cluster of isolated narrow components, not a wideband block.
 
 ## Narrow components
 
@@ -168,6 +184,81 @@ ripple is excluded and is not counted as distinct carriers.
   No wideband or narrow block is claimed. Absence of a threshold crossing is
   not proof that no signal exists below the threshold.
 
+## Survey: additional nominal bands
+
+![Cellular survey](cellular_survey.png)
+
+The survey applies the same cells, masks, floor, block and narrow rules to six
+further nominal downlink windows. The same 11-band metrics are tabulated below.
+
+| Band | Nominal allocation | MHz | Cover ON/OFF | Floor ON | Floor OFF | Peak + ON | Peak + OFF | Detected spans (MHz) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| LTE 800 | B20 | 791–821 | 90/100% | -119.23 | -117.63 | +21.8 | +22.4 | 801.30–810.50; 811.30–820.50 |
+| 900 MHz | GSM 900 / LTE B8 | 925–960 | 91/100% | -134.98 | -135.03 | +54.3 | +54.0 | 930.34–939.92; ON 954.38–959.50 / OFF 950.50–959.50; 5 narrow |
+| 1800 MHz | GSM 1800 / LTE B3 | 1805–1880 | 90/100% | -133.79 | -133.95 | +26.0 | +27.3 | ON 1811.48–1820.12 / OFF 1811.12–1820.12; 1820.98–1839.02; 1840.72–1859.02; ON 1862.18–1876.06 / OFF 1861.00–1878.94; 1 narrow |
+| LTE 2100 | B1 | 2110–2170 | 85/100% | -134.86 | -134.92 | +15.2 | +17.1 | ON 2114.00–2129.05 / OFF 2110.95–2129.05 |
+| LTE 2600 | B7 | 2620–2690 | 92/100% | -135.37 | -135.08 | +2.4 | +2.3 | none above +6 dB |
+| 700 MHz | LTE B28 lower | 758–791 | 91/100% | -135.06 | -135.30 | +32.5 | +32.9 | 761.55–765.35 OFF; ON 770.95–777.80 / OFF 768.15–777.80 |
+| 850 MHz | GSM 850 / LTE B5 | 869–894 | 88/100% | -135.46 | -135.43 | +1.3 | +3.3 | none above +6 dB |
+| 1500 MHz | LTE B32 / B21 | 1452–1518 | 91/100% | -135.32 | -135.24 | +0.9 | +0.9 | none above +6 dB |
+| 1900 MHz | GSM 1900 / LTE B2 | 1930–1990 | 90/100% | -135.49 | -134.91 | +1.7 | +1.1 | none above +6 dB |
+| 2300 MHz | LTE B40 | 2300–2400 | 88/100% | -135.56 | -135.20 | +1.2 | +0.5 | none above +6 dB |
+| 3500 MHz | LTE B42 / n78 | 3400–3600 | 89/100% | -135.31 | -135.03 | +1.0 | +0.5 | none above +6 dB |
+
+"Detected spans" lists threshold crossings only. "none above +6 dB" means no
+cell reached the seed threshold; it is not proof that no signal exists below
+that threshold.
+
+- **700 MHz (B28 lower, 758–791 MHz)**: the only survey window with a threshold-defined block. ON 770.95–777.80 (6.85 MHz, median -104.2 dB); OFF 768.15–777.80 (9.65 MHz, median -106.6 dB). A weak OFF-only span at 761.55–765.35 (median -126.1 dB) is below the ON threshold. The ON gap 768.02–770.92 MHz is the ±1.5 MHz DC mask around the 769.47 MHz hop; the matched common-span Δ is +3.3 dB over 770.95–777.80 MHz. The survey stops at 791 MHz to avoid duplicating LTE 800; nominal B28 extends to 803 MHz.
+- **850 MHz (GSM 850 / LTE B5, 869–894 MHz)**: no cell reaches floor +6 dB. ON peak +1.3 dB, OFF +3.3 dB. Floors differ by -0.03 dB. Pass-to-pass σ is 0.41 dB ON and 0.18 dB OFF. Absence of a crossing is not proof that no signal exists below the threshold.
+- **1500 MHz (LTE B32 / B21, 1452–1518 MHz)**: no cell reaches floor +6 dB. ON peak +0.9 dB, OFF +0.9 dB. Floors differ by -0.08 dB. Pass-to-pass σ is 0.28 dB ON and 0.13 dB OFF. Absence of a crossing is not proof that no signal exists below the threshold.
+- **1900 MHz (GSM 1900 / LTE B2, 1930–1990 MHz)**: no cell reaches floor +6 dB. ON peak +1.7 dB, OFF +1.1 dB. Floors differ by -0.58 dB. Pass-to-pass σ is 0.35 dB ON and 0.20 dB OFF. Absence of a crossing is not proof that no signal exists below the threshold.
+- **2300 MHz (LTE B40, 2300–2400 MHz)**: no cell reaches floor +6 dB. ON peak +1.2 dB, OFF +0.5 dB. Floors differ by -0.37 dB. Pass-to-pass σ is 0.33 dB ON and 0.14 dB OFF. Absence of a crossing is not proof that no signal exists below the threshold.
+- **3500 MHz (LTE B42 / n78, 3400–3600 MHz)**: no cell reaches floor +6 dB. ON peak +1.0 dB, OFF +0.5 dB. Floors differ by -0.28 dB. Pass-to-pass σ is 0.34 dB ON and 0.13 dB OFF. Absence of a crossing is not proof that no signal exists below the threshold.
+
+## Narrow-feature detail
+
+![Cellular detail](cellular_detail.png)
+
+The detail figure zooms the 900 MHz narrow cluster, the 926.91 MHz ON-only
+component, the 1840.89 MHz component, the 1859–1862 MHz ON DC-mask break, the
+700 MHz block with its ON DC mask, and the LTE 2100 lower edge. It also plots
+pass-to-pass σ for the five deep-dive bands.
+
+- The 900 MHz cluster components are stable in ON: 947.81 MHz is present in
+  100 % of ON passes and 926.91 MHz is absent from OFF. The cluster is not a
+  wideband block.
+- The 1840.89 MHz component sits inside the 1800 MHz plateau and is present on
+  both sides within about 1 dB; it is not evidence of a separate carrier.
+- The 1859–1862 MHz break and the LTE 2100 lower edge coincide with ON DC masks.
+  OFF shows a shallow dip at 1859–1862 MHz and a clear lower edge at 2110.95 MHz.
+  Neither is treated as an emission difference.
+- The 700 MHz ON gap 768.02–770.92 MHz is the DC mask around the 769.47 MHz hop.
+  The matched common-span Δ over 770.95–777.80 MHz is
+  +3.3 dB; the own-span medians are not a like-for-like
+  difference because the ON extent excludes the masked lower edge.
+
+## Pass variability
+
+| Band | σ ON med | σ ON p95 | σ OFF med | σ OFF p95 | ON/OFF | Class |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| LTE 800 | 3.52 | 5.21 | 1.55 | 3.72 | 2.27× | active |
+| 900 MHz | 0.91 | 2.32 | 0.56 | 1.65 | 1.63× | active |
+| 1800 MHz | 2.96 | 4.91 | 1.38 | 3.38 | 2.15× | active |
+| LTE 2100 | 3.17 | 5.54 | 1.23 | 4.49 | 2.58× | active |
+| LTE 2600 | 0.40 | 1.30 | 0.14 | 1.82 | 2.78× | no crossing |
+| 700 MHz | 4.54 | 15.28 | 5.39 | 10.34 | 0.84× | active |
+| 850 MHz | 0.41 | 0.58 | 0.18 | 0.29 | 2.25× | no crossing |
+| 1500 MHz | 0.28 | 0.40 | 0.13 | 0.20 | 2.18× | no crossing |
+| 1900 MHz | 0.35 | 0.50 | 0.20 | 0.32 | 1.73× | no crossing |
+| 2300 MHz | 0.33 | 0.48 | 0.14 | 0.21 | 2.46× | no crossing |
+| 3500 MHz | 0.34 | 0.47 | 0.13 | 0.21 | 2.56× | no crossing |
+
+σ is temporal variability across passes, not measurement noise or an uncertainty
+on the median. Bands with detected structure are much less stable than windows
+without a threshold crossing. Because ON and OFF are sequential, σ also includes
+RF-environment change and is not attributed to the feature bundle.
+
 ## ON/OFF comparison
 
 - ON and OFF are sequential 300 s windows, not simultaneous. Differences
@@ -178,14 +269,16 @@ ripple is excluded and is not counted as distinct carriers.
   LTE 2100 +0.06 dB,
   LTE 2600 -0.30 dB.
   The LTE 800 value comes from the elevated lower edge described above.
-- Wideband block medians differ by at most 1.9 dB (the 1840.7–1859.0 MHz block);
-  the LTE 2100 block differs by 1.7 dB. No correction is applied.
+- Matched common-span block medians differ by at most 1.9 dB; the largest is 1800 MHz over 1840.72–1859.02 MHz. No correction is applied.
 - Narrow components are present in both variants within 1.7 dB except 926.91 MHz,
   which is ON-only. The 1840.89 MHz component is 1.1 dB lower in ON.
 - The 900 MHz 954 MHz block and the 1800 MHz 1862 MHz block have different
-  ON/OFF extents. The 900 MHz difference is at a near-threshold edge; the
-  1800 MHz upper edge is weak and method-sensitive, and its 1859–1862 MHz
-  break coincides with the ON DC mask. These are not a uniform level shift.
+  ON/OFF extents. The 900 MHz own-span medians differ by +0.7 dB,
+  but over the matched common span the difference is -0.2 dB;
+  the own-span value is an extent effect at a near-threshold edge. The 1800 MHz
+  upper edge is weak and method-sensitive: +0.8 dB own-span,
+  +0.5 dB common-span, and its 1859–1862 MHz break
+  coincides with the ON DC mask. These are not a uniform level shift.
 
 ## 150–160 MHz
 
@@ -202,8 +295,8 @@ requires a controlled 50 Ω input and/or an alternating ON/OFF source.
   soak test.
 - Nominal band labels; no decoding, cell identity, ARFCN or operator attribution.
 - No per-feature ablation; the ON/OFF hop plans differ.
-- LTE 2600 has no threshold crossing; that is not proof of absence below the
-  threshold.
+- LTE 2600 and five of the six survey windows have no threshold crossing; that is
+  not proof of absence below the threshold.
 - The 8 MHz capture-edge, ±1.5 MHz DC and <50 % coverage masks are
   measurement-quality masks, not signal notches. No level correction is applied.
 - 150–160 MHz remains unresolved.
@@ -214,6 +307,8 @@ requires a controlled 50 Ω input and/or an alternating ON/OFF source.
 env -u PYTHONPATH sessions/.venv/bin/python tools/report_cellular.py \
     sessions/fullrange-20261118-111658 \
     --out docs/results/fullrange-20261118-111658/cellular_lte_gsm.png \
+    --survey-out docs/results/fullrange-20261118-111658/cellular_survey.png \
+    --detail-out docs/results/fullrange-20261118-111658/cellular_detail.png \
     --md docs/results/fullrange-20261118-111658/CELLULAR.md
 ```
 

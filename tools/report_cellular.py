@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Cellular downlink dashboard for a fullrange session.
 
-Extracts LTE 800 / 900 MHz / 1800 MHz / LTE 2100 / LTE 2600 from the raw
-features-on and features-off JSONL captures, detects wideband blocks and
-isolated narrow components, and writes a dashboard plus a detailed markdown
+Extracts the five deep-dive bands (LTE 800 / 900 MHz / 1800 MHz / LTE 2100 /
+LTE 2600) and six survey windows (700 / 850 / 1500 / 1900 / 2300 / 3500 MHz)
+from the raw features-on and features-off JSONL captures. Detects wideband
+blocks and isolated narrow components, adds matched common-span ON/OFF deltas
+and pass-to-pass variability, and writes three figures plus a detailed markdown
 report. Relative, uncalibrated levels only; nominal band labels; no decoding,
 cell identity, operator attribution, notch, exclusion or level correction.
 
-usage: report_cellular.py SESSION [--out PNG] [--md MD] [--use-cache]
+usage: report_cellular.py SESSION [--out PNG] [--survey-out PNG]
+                               [--detail-out PNG] [--md MD] [--use-cache]
 """
 import argparse
 import json
@@ -58,6 +61,29 @@ BANDS = [
          tick='LTE2600'),
 ]
 
+SURVEY_BANDS = [
+    dict(key='b28', name='700 MHz', alloc='LTE B28 lower downlink', b0=758.0, b1=791.0,
+         res=0.05, block_start=758.0, narrow=False, color='#2dd4bf', xstep=5,
+         tick='700'),
+    dict(key='b5', name='850 MHz', alloc='GSM 850 / LTE B5 downlink', b0=869.0, b1=894.0,
+         res=0.02, block_start=869.0, narrow=True, color='#f472b6', xstep=5,
+         tick='850'),
+    dict(key='b32', name='1500 MHz', alloc='LTE B32 / B21 downlink', b0=1452.0, b1=1518.0,
+         res=0.05, block_start=1452.0, narrow=False, color='#818cf8', xstep=10,
+         tick='1500'),
+    dict(key='b2', name='1900 MHz', alloc='GSM 1900 / LTE B2 downlink', b0=1930.0, b1=1990.0,
+         res=0.02, block_start=1930.0, narrow=True, color='#f59e0b', xstep=10,
+         tick='1900'),
+    dict(key='b40', name='2300 MHz', alloc='LTE B40 downlink', b0=2300.0, b1=2400.0,
+         res=0.05, block_start=2300.0, narrow=False, color='#22d3ee', xstep=20,
+         tick='2300'),
+    dict(key='b42', name='3500 MHz', alloc='LTE B42 / n78 downlink', b0=3400.0, b1=3600.0,
+         res=0.05, block_start=3400.0, narrow=False, color='#e879f9', xstep=50,
+         tick='3500'),
+]
+
+ALL_BANDS = BANDS + SURVEY_BANDS
+
 EDGE_HZ = 8e6
 DC_HZ = 1.5e6
 COVER_MIN = 0.5
@@ -94,6 +120,10 @@ def fmt_delta(x):
     if abs(x) < 0.05:
         return '0.0'
     return f'{x:+.1f}'
+
+
+def fmt_sigma(x):
+    return '—' if not np.isfinite(x) else f'{x:.2f}'
 
 
 def md_table(headers, rows, aligns=None):
@@ -137,8 +167,9 @@ def card_frame(ax, edge):
     ax.axis('off')
     ax.add_patch(Rectangle((0, 0), 1, 1, transform=ax.transAxes,
                            fc=CARD, ec=edge, lw=1.1))
-def extract(path, edge_hz=EDGE_HZ, dc_hz=DC_HZ):
+def extract(path, edge_hz=EDGE_HZ, dc_hz=DC_HZ, bands=None):
     """Aggregate every band into per-pass, per-cell mean dB values."""
+    bands = ALL_BANDS if bands is None else bands
     passes = []
     prev = None
     cur = None
@@ -157,7 +188,7 @@ def extract(path, edge_hz=EDGE_HZ, dc_hz=DC_HZ):
                 cur = {'sums': {}, 'cnts': {},
                        't_start': r.get('time_start'),
                        't_stop': r.get('time_stop')}
-                for b in BANDS:
+                for b in bands:
                     n = int(np.ceil((b['b1'] - b['b0']) / b['res']))
                     cur['sums'][b['key']] = np.zeros(n)
                     cur['cnts'][b['key']] = np.zeros(n)
@@ -170,7 +201,7 @@ def extract(path, edge_hz=EDGE_HZ, dc_hz=DC_HZ):
             w = float(r['bin_width_hz'])
             start = float(r['start_hz'])
             stop = float(r['stop_hz'])
-            for b in BANDS:
+            for b in bands:
                 step = b['res'] * 1e6
                 lo = max(b['b0'] * 1e6, start + edge_hz)
                 hi = min(b['b1'] * 1e6, stop - edge_hz)
@@ -192,7 +223,7 @@ def extract(path, edge_hz=EDGE_HZ, dc_hz=DC_HZ):
                 cur['sums'][b['key']] += np.bincount(idx, weights=vals[m], minlength=n)
                 cur['cnts'][b['key']] += np.bincount(idx, minlength=n)
     out = {}
-    for b in BANDS:
+    for b in bands:
         arr = np.full((len(passes), passes[0]['cnts'][b['key']].size), np.nan)
         for i, p in enumerate(passes):
             ok = p['cnts'][b['key']] > 0
@@ -213,13 +244,15 @@ def band_metrics(mat, b):
         raise ValueError(f"no covered cells in {b['name']}")
     med = np.nanmedian(mat, axis=0)
     p10 = np.nanpercentile(mat, 10, axis=0)
+    p25 = np.nanpercentile(mat, 25, axis=0)
+    p75 = np.nanpercentile(mat, 75, axis=0)
     p90 = np.nanpercentile(mat, 90, axis=0)
     p95 = np.nanpercentile(mat, 95, axis=0)
     floor = float(np.nanpercentile(med[ok], 10))
     thr = floor + BLOCK_SEED_DB
     peak_i = int(np.nanargmax(np.where(ok, med, np.nan)))
     return dict(
-        f=f, cov=cov, ok=ok, med=med, p10=p10, p90=p90, p95=p95,
+        f=f, cov=cov, ok=ok, med=med, p10=p10, p25=p25, p75=p75, p90=p90, p95=p95,
         floor=floor, thr=thr, peak=float(med[peak_i]),
         peak_f=float(f[peak_i]), bandmed=float(np.nanmedian(med[ok])),
         persist=float(np.mean(med[ok] > thr)),
@@ -404,6 +437,60 @@ def match_blocks(on_blocks, off_blocks, b):
             note=note, on=ons, off=offs,
         ))
     return sorted(rows, key=lambda d: d['on_span'][0] if d['on_span'] else d['off_span'][0])
+
+
+def add_common_stats(rows, m_on, m_off):
+    """Add matched common-span medians so unequal extents do not bias Δ.
+
+    The ON and OFF extents are threshold crossings on separate spectra. Where
+    they differ, comparing each variant's own sub-block median confuses an
+    extent difference with a level difference. The common span is the
+    intersection of the two extents; its median is the like-for-like number.
+    """
+    for r in rows:
+        spans = [s for s in (r['on_span'], r['off_span']) if s]
+        if r['on_span'] and r['off_span']:
+            lo = max(r['on_span'][0], r['off_span'][0])
+            hi = min(r['on_span'][1], r['off_span'][1])
+            if hi <= lo:  # disjoint extents: fall back to the union
+                lo = min(s[0] for s in spans)
+                hi = max(s[1] for s in spans)
+        else:
+            lo = min(s[0] for s in spans)
+            hi = max(s[1] for s in spans)
+        vals = {}
+        for tag, m in (('on', m_on), ('off', m_off)):
+            sel = ((m['f'] >= lo - 1e-9) & (m['f'] <= hi + 1e-9)
+                   & m['ok'] & np.isfinite(m['med']))
+            vals[tag] = float(np.median(m['med'][sel])) if sel.any() else None
+        r['common_span'] = (lo, hi)
+        r['on_med_common'] = vals['on']
+        r['off_med_common'] = vals['off']
+        both = bool(r['on_span'] and r['off_span'])
+        r['d_common'] = (vals['on'] - vals['off']
+                         if both and None not in vals.values() else None)
+        if (r['on_span'] and r['off_span']
+                and (r['on_span'][0] > r['off_span'][0] + 0.5
+                     or r['on_span'][1] < r['off_span'][1] - 0.5)):
+            r['common_note'] = 'extents differ; Δ uses intersection'
+        else:
+            r['common_note'] = ''
+    return rows
+
+
+def pass_variability(mat, m):
+    """Per-cell pass-to-pass σ; temporal variability, not measurement noise."""
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        sd = np.nanstd(mat, axis=0, ddof=1)
+    sel = m['ok'] & np.isfinite(sd)
+    if not sel.any():
+        return dict(med=float('nan'), p95=float('nan'), max=float('nan'), n=0)
+    return dict(med=float(np.median(sd[sel])),
+                p95=float(np.percentile(sd[sel], 95)),
+                max=float(np.max(sd[sel])), n=int(sel.sum()))
+
+
 def band_card(ax, b, m_on, m_off, n_wb, n_narrow, n_cluster):
     card_frame(ax, b['color'])
     ax.text(.045, .92, b['name'], transform=ax.transAxes, color=b['color'],
@@ -452,10 +539,14 @@ def method_card(ax):
         y -= .052 * (wrapped.count('\n') + 1) + .025
 
 
-def spectrum_panel(ax, b, m_on, m_off, blocks, narrows, rows):
+def spectrum_panel(ax, b, m_on, m_off, blocks, narrows, rows, spread='p10p90'):
     f = m_on['f']
-    ax.fill_between(f, m_on['p10'], m_on['p90'], color=ON, alpha=.16, lw=0)
-    ax.fill_between(f, m_off['p10'], m_off['p90'], color=OFF, alpha=.07, lw=0)
+    if spread == 'iqr':
+        ax.fill_between(f, m_on['p25'], m_on['p75'], color=ON, alpha=.22, lw=0)
+        ax.fill_between(f, m_off['p25'], m_off['p75'], color=OFF, alpha=.10, lw=0)
+    else:
+        ax.fill_between(f, m_on['p10'], m_on['p90'], color=ON, alpha=.16, lw=0)
+        ax.fill_between(f, m_off['p10'], m_off['p90'], color=OFF, alpha=.07, lw=0)
     ax.plot(f, np.where(m_on['ok'], m_on['med'], np.nan), color=ON, lw=.85,
             label='ON median')
     ax.plot(f, np.where(m_off['ok'], m_off['med'], np.nan), color=OFF, lw=.85,
@@ -598,7 +689,7 @@ def occupancy_panel(ax, summ):
               loc='upper center', bbox_to_anchor=(.5, 1.0))
 
 
-def draw_table(ax, title, headers, rows, widths, fontsize=6.3, footnote=''):
+def draw_table(ax, title, headers, rows, widths, fontsize=6.3, footnote='', wrap=0):
     ax.axis('off')
     ax.set_title(title, color=FG, fontsize=10.2, fontweight='bold', loc='left', pad=5)
     table = ax.table(cellText=rows, colLabels=headers, cellLoc='left',
@@ -614,8 +705,9 @@ def draw_table(ax, title, headers, rows, widths, fontsize=6.3, footnote=''):
             cell.set_facecolor('#0b1426' if r % 2 else '#0e1830')
             cell.set_text_props(color=FG)
     if footnote:
-        ax.text(0, .005, footnote, transform=ax.transAxes, fontsize=6.4,
-                color=MUTED, va='bottom')
+        txt = textwrap.fill(footnote, wrap) if wrap else footnote
+        ax.text(0, .005, txt, transform=ax.transAxes, fontsize=6.4,
+                color=MUTED, va='bottom', linespacing=1.25)
 
 
 def interpretation(ax, summ, rows, narrow_rows):
@@ -665,8 +757,8 @@ def figure_tables(summ, rows_all):
         off_span = fmt_span(*r['off_span']) if r['off_span'] else '—'
         on_med = f"{r['on_med']:.1f}" if r['on_med'] is not None else '—'
         off_med = f"{r['off_med']:.1f}" if r['off_med'] is not None else '—'
-        delta = (fmt_delta(r['on_med']-r['off_med'])
-                 if r['on_med'] is not None and r['off_med'] is not None else '—')
+        delta = (fmt_delta(r['d_common'])
+                 if r.get('d_common') is not None else '—')
         on_pk = f"{r['on_pk']:.1f}" if r['on_pk'] is not None else '—'
         off_pk = f"{r['off_pk']:.1f}" if r['off_pk'] is not None else '—'
         wide_rows.append([r['name'], on_span, off_span, on_med, off_med, delta,
@@ -743,13 +835,14 @@ def make_figure(summ, on_data, blocks, narrows, rows, wide_rows, narrow_rows, me
     draw_table(
         fig.add_subplot(gs[7, :7]),
         'Wideband blocks — threshold crossings on the pass-median spectrum',
-        ['Band', 'ON span', 'OFF span', 'ON med', 'OFF med', 'Δ', 'ON pk', 'OFF pk', 'Note'],
+        ['Band', 'ON span', 'OFF span', 'ON med', 'OFF med', 'Δ common', 'ON pk', 'OFF pk', 'Note'],
         wide_rows,
         [.11, .135, .135, .075, .075, .065, .075, .075, .26],
         fontsize=6.2,
-        footnote='Extents are not channel bandwidths. ON/OFF medians use each variant’s own sub-blocks; the spans show their unions. '
-                 'A masked interval inside a span (e.g., 935.9–938.9 MHz) is a measurement gap, not an emission gap. '
-                 'The 900 MHz 945.2–949.9 MHz span is a cluster of isolated narrow components, not a wideband block.',
+        footnote='Extents are threshold crossings, not channel bandwidths. Δ is ON−OFF over the matched common span; '
+                 'the medians are each variant’s own sub-blocks. Masked intervals are measurement gaps, not emission gaps. '
+                 'The 945.2–949.9 MHz span is a narrow cluster, not a block.',
+        wrap=200,
     )
     draw_table(
         fig.add_subplot(gs[7, 7:]),
@@ -760,6 +853,7 @@ def make_figure(summ, on_data, blocks, narrows, rows, wide_rows, narrow_rows, me
         fontsize=6.2,
         footnote='Isolated local maxima only. The 930–940 and 1849–1859 MHz plateau ripple is excluded. '
                  'The 945.2–949.9 MHz cluster is listed here, not as a wideband block.',
+        wrap=145,
     )
 
     interpretation(fig.add_subplot(gs[8, :]), summ, rows, narrow_rows)
@@ -769,6 +863,364 @@ def make_figure(summ, on_data, blocks, narrows, rows, wide_rows, narrow_rows, me
              'Band names are nominal.  No automatic notch or level correction.  The 150–160 MHz behaviour remains unresolved.',
              color=MUTED, fontsize=7.8)
     return fig
+def survey_figure(summ, meta):
+    plt.rcParams.update({
+        'figure.facecolor': BG, 'savefig.facecolor': BG, 'text.color': FG,
+        'axes.facecolor': PANEL, 'axes.edgecolor': GRID, 'axes.labelcolor': MUTED,
+        'xtick.color': MUTED, 'ytick.color': MUTED, 'grid.color': GRID,
+        'font.family': 'DejaVu Sans', 'axes.titleweight': 'bold',
+    })
+    fig = plt.figure(figsize=(24, 22), dpi=100)
+    gs = GridSpec(5, 2, figure=fig, top=.882, bottom=.036, left=.045, right=.985,
+                  hspace=.54, wspace=.18, height_ratios=[1, 1, 1, .95, 1.22])
+
+    fig.text(.045, .980, 'CELLULAR SURVEY  ·  ADDITIONAL NOMINAL BANDS', fontsize=24,
+             fontweight='bold', color=FG, ha='left', va='top')
+    bits = [meta.get('date'), f"B200mini {meta.get('device')}" if meta.get('device') else 'B200mini',
+            f"ON {meta.get('on_records'):,} rec / {meta.get('on_passes')} passes",
+            f"OFF {meta.get('off_records'):,} rec / {meta.get('off_passes')} passes",
+            'relative, uncalibrated']
+    fig.text(.045, .952, '  ·  '.join(b for b in bits if b),
+             fontsize=10.0, color=MUTED, ha='left', va='top')
+    fig.text(.045, .932,
+             'Survey of six further nominal downlink windows on the same sequential ON/OFF captures.  '
+             'No threshold crossing is reported as absence of a crossing, not proof of no signal.',
+             fontsize=8.8, color=MUTED, ha='left', va='top')
+    fig.text(.045, .916,
+             'Band names are nominal; no decoding, cell identity, ARFCN or operator attribution.  '
+             'Masks: 8 MHz capture edge, ±1.5 MHz DC, <50 % coverage; no signal notch or level correction.',
+             fontsize=8.8, color=MUTED, ha='left', va='top')
+
+    for i, b in enumerate(SURVEY_BANDS):
+        s = summ[b['key']]
+        ax = fig.add_subplot(gs[i // 2, i % 2])
+        spectrum_panel(ax, b, s['on'], s['off'], s['rows'], s['narrow_on'], s['rows'],
+                       spread='iqr')
+        if not s['rows'] and not s['narrow_on']:
+            ax.text(.5, .50,
+                    f"no cell above floor+6 dB\npeak +{s['on']['peak']-s['on']['floor']:.1f} dB "
+                    f"(ON), +{s['off']['peak']-s['off']['floor']:.1f} dB (OFF)",
+                    transform=ax.transAxes, ha='center', va='center', color=GOLD,
+                    fontsize=8.4, bbox=dict(facecolor=BG, edgecolor=GRID, alpha=.88, pad=4))
+        note(ax, f"σ across passes {s['sigma_on']['med']:.2f} / {s['sigma_off']['med']:.2f} dB",
+             'upper right', size=6.6)
+        if b['key'] == 'b28':
+            for r in s['rows']:
+                if r['on_span']:
+                    ax.axvspan(*r['on_span'], color=GREEN, alpha=.10, lw=0)
+
+    order = sorted(ALL_BANDS, key=lambda b: summ[b['key']]['sigma_on']['med'],
+                   reverse=True)
+    ax = fig.add_subplot(gs[3, 0])
+    y = np.arange(len(order))[::-1]
+    son = [summ[b['key']]['sigma_on']['med'] for b in order]
+    soff = [summ[b['key']]['sigma_off']['med'] for b in order]
+    ax.barh(y + .19, son, height=.36, color=ON, label='ON')
+    ax.barh(y - .19, soff, height=.36, color=OFF, label='OFF', alpha=.85)
+    for yi, a, c in zip(y, son, soff):
+        ax.text(a + .10, yi + .19, f'{a:.2f}', color=ON, fontsize=6.5, va='center')
+        ax.text(c + .10, yi - .19, f'{c:.2f}', color=OFF, fontsize=6.5, va='center')
+    ax.set_yticks(y)
+    ax.set_yticklabels([b['tick'] for b in order], fontsize=7.2)
+    ax.set_xlim(0, max(son + soff) * 1.16)
+    style(ax, 'Pass-to-pass σ, all 11 bands (median over covered cells)', 'dB', None)
+    ax.legend(frameon=False, fontsize=7.2, labelcolor=MUTED, ncol=2, loc='lower right')
+
+    ax = fig.add_subplot(gs[3, 1])
+    ax.axis('off')
+    ax.set_title('What the survey adds — and what it cannot say', color=FG,
+                 fontsize=11.4, fontweight='bold', loc='left', pad=5)
+    s7 = summ['b28']
+    b7 = [r for r in s7['rows'] if r['on_span']]
+    b7on = [r for r in b7 if r['on_span'] and r['on_span'][0] > 767][0]
+    b7off = [r for r in b7 if r['off_span'] and r['off_span'][0] > 767][0]
+    b7weak = [r for r in s7['rows'] if r['off_span'] and r['off_span'][0] < 767]
+    weak = (f" plus a weak OFF span {fmt_span(*b7weak[0]['off_span'])} "
+            f"(median {b7weak[0]['off_med']:.1f} dB)." if b7weak else '.')
+    empty = [b for b in SURVEY_BANDS if not summ[b['key']]['rows']
+             and not summ[b['key']]['narrow_on']]
+    empty_txt = ', '.join(f"{b['name']} +{summ[b['key']]['on']['peak']-summ[b['key']]['on']['floor']:.1f}"
+                          for b in empty)
+    tx = [
+        f"• Only the 700 MHz B28 window shows a threshold-defined block: ON "
+        f"{fmt_span(*b7on['on_span'])} ({b7on['on_span'][1]-b7on['on_span'][0]:.2f} MHz, median "
+        f"{b7on['on_med']:.1f} dB), OFF {fmt_span(*b7off['off_span'])} "
+        f"({b7off['off_span'][1]-b7off['off_span'][0]:.2f} MHz, median {b7off['off_med']:.1f} dB){weak}",
+        f"• The ON lower-edge gap 768.02–770.92 MHz in the 700 MHz block is the ±1.5 MHz DC mask "
+        f"around the 769.47 MHz hop, not an emission difference. The matched common-span Δ is "
+        f"{fmt_delta(b7on['d_common'])} dB over {fmt_span(*b7on['common_span'])} MHz.",
+        f"• No cell reaches floor+6 dB in {len(empty)} of the six windows. ON peak above floor: {empty_txt} dB. "
+        "Absence of a crossing is not proof that no signal exists below the threshold.",
+        "• 700 MHz is surveyed as 758–791 MHz to avoid duplicating LTE 800 (791–821 MHz); nominal B28 extends to 803 MHz. "
+        "850/1900 MHz use the 0.02 MHz GSM grid; the others use 0.05 MHz. 8 MHz capture-edge, ±1.5 MHz DC and <50 % coverage masks apply.",
+        "• σ is pass-to-pass temporal variability, not measurement noise. The active 700 MHz window is far less "
+        "stable than the five windows without a threshold crossing; both ON and OFF include RF-environment change.",
+        "• The broad 700 MHz shading is that same variability: the active sub-band moves between passes, so the "
+        "distribution across passes is wider than any one pass. It is not a claim of simultaneous wideband emission.",
+    ]
+    ytxt = .95
+    for line in tx:
+        wrapped = textwrap.fill(line, 104)
+        ax.text(0, ytxt, wrapped, transform=ax.transAxes, color=FG, fontsize=7.6,
+                va='top', linespacing=1.36)
+        ytxt -= .055 * (wrapped.count('\n') + 1) + .028
+
+    def detected(s):
+        if not s['rows'] and not s['narrow_on']:
+            return 'none above +6 dB'
+        parts = []
+        for r in s['rows']:
+            if r['on_span'] and r['off_span']:
+                diff = (abs(r['on_span'][0] - r['off_span'][0]) > .1
+                        or abs(r['on_span'][1] - r['off_span'][1]) > .1)
+                parts.append(fmt_span(*r['on_span']) + ('*' if diff else ''))
+            elif r['on_span']:
+                parts.append(fmt_span(*r['on_span']) + ' ON')
+            else:
+                parts.append(fmt_span(*r['off_span']) + ' OFF')
+        if s['narrow_on']:
+            parts.append(f"{len(s['narrow_on'])} narrow")
+        return '; '.join(parts)
+
+    rows = []
+    for b in ALL_BANDS:
+        s = summ[b['key']]
+        on, off = s['on'], s['off']
+        rows.append([b['name'], b['alloc'].replace(' downlink', ''),
+                     f"{b['b0']:.0f}–{b['b1']:.0f}",
+                     f"{100*on['cover']:.0f}/{100*off['cover']:.0f}%",
+                     f"{on['floor']:.1f}", f"{off['floor']:.1f}",
+                     f"+{on['peak']-on['floor']:.1f}", f"+{off['peak']-off['floor']:.1f}",
+                     detected(s),
+                     f"{s['sigma_on']['med']:.2f}", f"{s['sigma_off']['med']:.2f}"])
+    draw_table(
+        fig.add_subplot(gs[4, :]),
+        'All 11 monitored windows — nominal ranges, floors, peaks and pass variability',
+        ['Band', 'Nominal allocation', 'MHz', 'Cover ON/OFF', 'Floor ON', 'Floor OFF',
+         'Peak + ON', 'Peak + OFF', 'Detected spans (MHz)', 'σ ON', 'σ OFF'],
+        rows,
+        [.075, .155, .06, .075, .06, .06, .06, .06, .26, .05, .05],
+        fontsize=6.4,
+        footnote='Floors and peaks are relative dB. "none above +6 dB" is an absence of a threshold crossing, not proof of no signal. '
+                 '* ON and OFF detected extents differ; the dashboard wideband table lists both. '
+                 'σ is the median per-cell standard deviation across passes (temporal variability, not measurement noise). '
+                 'Peak is the maximum pass-median cell, not a calibrated level.',
+    )
+
+    fig.text(.045, .010,
+             'Relative, uncalibrated levels (no dBm, noise figure or traceability).  Antenna input; sequential ON/OFF; single device, gain and antenna.  '
+             'Nominal band names; no decoding, cell identity, ARFCN or operator attribution.  No automatic notch or level correction.  '
+             'The 150–160 MHz behaviour remains unresolved.',
+             color=MUTED, fontsize=7.6)
+    return fig
+
+
+def zoom_panel(ax, b, m_on, m_off, lo, hi, title, marks=(), spans=(),
+               xstep=None, note_text='', legend=False):
+    f = m_on['f']
+    sel = (f >= lo) & (f <= hi)
+    xs = f[sel]
+    ax.fill_between(xs, m_on['p25'][sel], m_on['p75'][sel], color=ON, alpha=.22, lw=0)
+    ax.fill_between(xs, m_off['p25'][sel], m_off['p75'][sel], color=OFF, alpha=.10, lw=0)
+    ax.plot(xs, np.where(m_on['ok'][sel], m_on['med'][sel], np.nan), color=ON, lw=1.0,
+            label='ON median')
+    ax.plot(xs, np.where(m_off['ok'][sel], m_off['med'][sel], np.nan), color=OFF,
+            lw=1.0, label='OFF median', alpha=.9)
+    for a, c in spans:
+        ax.axvspan(max(a, lo), min(c, hi), color=GREEN, alpha=.075, lw=0)
+    bad = ~m_on['ok'][sel]
+    i = 0
+    while i < len(bad):
+        if bad[i]:
+            j = i
+            while j + 1 < len(bad) and bad[j + 1]:
+                j += 1
+            ax.axvspan(xs[i] - b['res'] / 2, xs[j] + b['res'] / 2,
+                       color='#64748b', alpha=.22, lw=0)
+            i = j + 1
+        else:
+            i += 1
+    for x, lab in marks:
+        if lo <= x <= hi:
+            ax.axvline(x, color=GOLD, lw=.7, ls=':', alpha=.8)
+            ax.text(x, .985, lab, transform=ax.get_xaxis_transform(), color=GOLD,
+                    fontsize=6.2, rotation=90, ha='right', va='top')
+    vis = sel & np.isfinite(m_on['med'])
+    vlo = min(m_on['floor'], np.nanmin(m_on['p10'][sel & np.isfinite(m_on['p10'])])) - 1.5
+    hi_candidates = [m_on['floor'] + BLOCK_SEED_DB + 2]
+    for m in (m_on, m_off):
+        v = sel & m['ok'] & np.isfinite(m['med'])
+        if v.any():
+            hi_candidates.append(float(np.percentile(m['med'][v], 99.5)))
+    ax.set_xlim(lo, hi)
+    ax.set_ylim(vlo, max(hi_candidates) + 2)
+    if xstep is None:
+        width = hi - lo
+        xstep = .2 if width <= 1.4 else .5 if width <= 3 else 1 if width <= 8 else 2
+    ax.set_xticks(np.arange(lo, hi + 1e-9, xstep))
+    style(ax, title, 'RF (MHz)', 'dB (relative)')
+    if legend:
+        ax.legend(frameon=False, fontsize=6.6, labelcolor=MUTED, ncol=2,
+                  loc='lower left', handlelength=1.5, columnspacing=.9)
+    if note_text:
+        note(ax, note_text, 'lower right', size=6.5)
+
+
+def detail_figure(summ, meta):
+    plt.rcParams.update({
+        'figure.facecolor': BG, 'savefig.facecolor': BG, 'text.color': FG,
+        'axes.facecolor': PANEL, 'axes.edgecolor': GRID, 'axes.labelcolor': MUTED,
+        'xtick.color': MUTED, 'ytick.color': MUTED, 'grid.color': GRID,
+        'font.family': 'DejaVu Sans', 'axes.titleweight': 'bold',
+    })
+    fig = plt.figure(figsize=(24, 18.5), dpi=100)
+    gs = GridSpec(4, 6, figure=fig, top=.882, bottom=.040, left=.045, right=.985,
+                  hspace=.56, wspace=.44, height_ratios=[1, 1, .92, .52])
+
+    fig.text(.045, .980, 'CELLULAR DETAIL  ·  NARROW FEATURES AND PASS VARIABILITY',
+             fontsize=24, fontweight='bold', color=FG, ha='left', va='top')
+    bits = [meta.get('date'), f"B200mini {meta.get('device')}" if meta.get('device') else 'B200mini',
+            f"ON {meta.get('on_records'):,} rec / {meta.get('on_passes')} passes",
+            f"OFF {meta.get('off_records'):,} rec / {meta.get('off_passes')} passes",
+            'relative, uncalibrated']
+    fig.text(.045, .952, '  ·  '.join(b for b in bits if b),
+             fontsize=10.0, color=MUTED, ha='left', va='top')
+    fig.text(.045, .932,
+             'Zooms use the same pass-median spectra as the dashboard.  Shading is the 25th–75th percentile across passes; '
+             'grey bands are measurement masks, not signal notches.',
+             fontsize=8.8, color=MUTED, ha='left', va='top')
+    fig.text(.045, .916,
+             'Band names are nominal; no decoding, cell identity, ARFCN or operator attribution.  '
+             'No correction is applied; ON and OFF are sequential windows.',
+             fontsize=8.8, color=MUTED, ha='left', va='top')
+
+    s900 = summ['gsm900']
+    s18 = summ['mhz1800']
+    s7 = summ['b28']
+    s21 = summ['lte2100']
+    cluster = [c for c in s900['narrow_on'] if 944.5 <= c['f'] <= 950.5]
+    n926 = [c for c in s900['narrow_on'] if abs(c['f'] - 926.91) < .2][0]
+    n947 = max(cluster, key=lambda c: c['level'])
+    n1840 = [c for c in s18['narrow_on'] if abs(c['f'] - 1840.89) < .2][0]
+    g18 = [r for r in s18['rows'] if r['on_span']]
+    r1859 = [r for r in g18 if r['on_span'][0] < 1855 < r['on_span'][1]][0]
+    r1862 = [r for r in g18 if r['on_span'][0] > 1860][0]
+    r700 = [r for r in s7['rows'] if r['on_span'] and r['on_span'][0] > 767][0]
+    r21 = s21['rows'][0]
+
+    zooms = [
+        ('gsm900', 944.4, 950.6, '900 MHz · narrow cluster 945.2–949.9',
+         [(c['f'], f"{c['f']:.2f}") for c in cluster],
+         [(cluster[0]['f'] - .2, cluster[-1]['f'] + .2)],
+         f"{n947['f']:.2f}: +{n947['above']:.1f} dB, {n947['w3']:.2f} MHz", True),
+        ('gsm900', 926.55, 927.25, '926.91 MHz · ON-only component',
+         [(n926['f'], f"{n926['f']:.2f}")], [],
+         f"ON +{n926['above']:.1f} dB; OFF at floor", False),
+        ('mhz1800', 1840.3, 1841.5, '1840.89 MHz · narrow component',
+         [(n1840['f'], f"{n1840['f']:.2f}")], [],
+         f"+{n1840['above']:.1f} dB, {n1840['w3']:.2f} MHz", False),
+        ('mhz1800', 1858.2, 1863.0, '1859–1862 MHz · ON DC-mask break',
+         [(r1859['on_span'][1], f"{r1859['on_span'][1]:.2f}"),
+          (r1862['on_span'][0], f"{r1862['on_span'][0]:.2f}")],
+         [(r1859['on_span'][0], r1859['on_span'][1]),
+          (r1862['on_span'][0], r1862['on_span'][1])],
+         'OFF shows a shallow dip, not a gap', False),
+        ('b28', 766.5, 779.0, '700 MHz · block and ON DC mask',
+         [(r700['on_span'][0], f"{r700['on_span'][0]:.2f}"),
+          (r700['on_span'][1], f"{r700['on_span'][1]:.2f}")],
+         [(r700['on_span'][0], r700['on_span'][1])],
+         f"common-span Δ {fmt_delta(r700['d_common'])} dB\nIQR = activity varies across passes", False),
+        ('lte2100', 2109.5, 2117.0, 'LTE 2100 · lower edge and DC mask',
+         [(r21['on_span'][0], f"ON {r21['on_span'][0]:.2f}"),
+          (r21['off_span'][0], f"OFF {r21['off_span'][0]:.2f}")],
+         [(r21['off_span'][0], r21['off_span'][1])],
+         'ON lower edge is the 2112.5 MHz DC mask', False),
+    ]
+    for i, (key, lo, hi, title, marks, spans, note_text, legend) in enumerate(zooms):
+        b = [x for x in ALL_BANDS if x['key'] == key][0]
+        s = summ[key]
+        ax = fig.add_subplot(gs[i // 3, (i % 3) * 2:(i % 3) * 2 + 2])
+        zoom_panel(ax, b, s['on'], s['off'], lo, hi, title, marks, spans,
+                   note_text=note_text, legend=legend)
+
+    ax = fig.add_subplot(gs[2, :3])
+    names = [b for b in BANDS]
+    y = np.arange(len(names))[::-1]
+    son = [summ[b['key']]['sigma_on']['med'] for b in names]
+    soff = [summ[b['key']]['sigma_off']['med'] for b in names]
+    p95o = [summ[b['key']]['sigma_on']['p95'] for b in names]
+    p95f = [summ[b['key']]['sigma_off']['p95'] for b in names]
+    ax.barh(y + .19, son, height=.36, color=ON, label='ON median σ')
+    ax.barh(y - .19, soff, height=.36, color=OFF, label='OFF median σ', alpha=.85)
+    ax.plot(p95o, y + .19, '|', color=ON, ms=11, mew=1.5, label='ON p95')
+    ax.plot(p95f, y - .19, '|', color=OFF, ms=11, mew=1.5, label='OFF p95')
+    for yi, a, c in zip(y, son, soff):
+        ax.text(a + .08, yi + .19, f'{a:.2f}', color=ON, fontsize=6.6, va='center')
+        ax.text(c + .08, yi - .19, f'{c:.2f}', color=OFF, fontsize=6.6, va='center')
+    ax.set_yticks(y)
+    ax.set_yticklabels([b['tick'] for b in names], fontsize=7.6)
+    ax.set_xlim(0, max(p95o + p95f) * 1.12)
+    style(ax, 'Pass-to-pass σ in the five deep-dive bands', 'dB', None)
+    ax.legend(frameon=False, fontsize=6.9, labelcolor=MUTED, ncol=4,
+              loc='lower right', columnspacing=.8)
+
+    rows = []
+    for b in names:
+        s = summ[b['key']]
+        rows.append([b['name'], f"{s['sigma_on']['med']:.2f}", f"{s['sigma_on']['p95']:.2f}",
+                     f"{s['sigma_off']['med']:.2f}", f"{s['sigma_off']['p95']:.2f}",
+                     f"{s['sigma_on']['med']/s['sigma_off']['med']:.2f}×"])
+    draw_table(
+        fig.add_subplot(gs[2, 3:]),
+        'Pass variability — median and 95th percentile per cell',
+        ['Band', 'σ ON med', 'σ ON p95', 'σ OFF med', 'σ OFF p95', 'ON/OFF'],
+        rows,
+        [.22, .15, .15, .15, .15, .18],
+        fontsize=7.2,
+        footnote='σ is the temporal standard deviation of each cell across passes, then summarised over covered cells. '
+                 'It is not measurement noise or an uncertainty on the median.',
+    )
+
+    ax = fig.add_subplot(gs[3, :])
+    ax.axis('off')
+    ax.set_title('Detail notes — measurement gaps are not emission gaps', color=FG,
+                 fontsize=11.4, fontweight='bold', loc='left', pad=5)
+    d900 = (f"{n947['f']:.2f} is +{n947['above']:.1f} dB and {n947['w3']:.2f} MHz wide, present in "
+            f"{100*n947['pers']:.0f} % of ON passes; "
+            f"{n926['f']:.2f} is ON-only (+{n926['above']:.1f} dB, at the OFF floor).")
+    tx = [
+        f"• 900 MHz: the 945.20–949.92 MHz span is a cluster of {len(cluster)} isolated narrow components, not a block. {d900} "
+        "The 930–940 MHz plateau ripple is not a set of carriers.",
+        f"• 1800 MHz: {n1840['f']:.2f} is +{n1840['above']:.1f} dB and {n1840['w3']:.2f} MHz wide, inside the plateau. "
+        "The 1859.2–1862.2 MHz break coincides with the ON DC mask; OFF shows a shallow dip, so no emission gap is claimed on ON. "
+        "The 1862–1879 MHz tail is weak and threshold-sensitive.",
+        f"• 700 MHz: ON {fmt_span(*r700['on_span'])} and OFF {fmt_span(*r700['off_span'])}. The ON gap 768.02–770.92 MHz is the DC mask "
+        f"around the 769.47 MHz hop. The matched common-span Δ is {fmt_delta(r700['d_common'])} dB over "
+        f"{fmt_span(*r700['common_span'])} MHz; the own-span medians are not a like-for-like difference.",
+        f"• LTE 2100: ON starts at {r21['on_span'][0]:.2f} MHz and OFF at {r21['off_span'][0]:.2f} MHz. The missing ON lower edge "
+        "is the ±1.5 MHz DC mask at 2112.5 MHz, not an emission difference.",
+        "• σ is temporal signal variability, not measurement noise. Active bands (LTE 800, 900, 1800, LTE 2100) are much less stable "
+        "than the two windows without a threshold crossing (LTE 2600 and most survey windows). ON and OFF are sequential, so σ includes "
+        "RF-environment change; no correction or attribution is made.",
+    ]
+    ytxt = .95
+    fig.canvas.draw()
+    ax_in = ax.get_window_extent().height / fig.dpi
+    line_step = (8.0 * 1.36 / 72.0) / ax_in
+    for line in tx:
+        wrapped = textwrap.fill(line, 196)
+        ax.text(0, ytxt, wrapped, transform=ax.transAxes, color=FG, fontsize=8.0,
+                va='top', linespacing=1.36)
+        ytxt -= line_step * (wrapped.count('\n') + 1) + .010
+
+    fig.text(.045, .010,
+             'Relative, uncalibrated levels (no dBm, noise figure or traceability).  Antenna input; sequential ON/OFF; single device, gain and antenna.  '
+             'Nominal band names; no decoding, cell identity, ARFCN or operator attribution.  No automatic notch or level correction.  '
+             'The 150–160 MHz behaviour remains unresolved.',
+             color=MUTED, fontsize=7.6)
+    return fig
+
+
 def write_markdown(path, meta, summ, rows_all):
     def rng(b):
         return f"{b['b0']:.0f}–{b['b1']:.0f}"
@@ -795,8 +1247,8 @@ def write_markdown(path, meta, summ, rows_all):
         off_span = fmt_span(*r['off_span']) if r['off_span'] else '—'
         on_med = f"{r['on_med']:.1f}" if r['on_med'] is not None else '—'
         off_med = f"{r['off_med']:.1f}" if r['off_med'] is not None else '—'
-        delta = (fmt_delta(r['on_med']-r['off_med'])
-                 if r['on_med'] is not None and r['off_med'] is not None else '—')
+        delta = (fmt_delta(r['d_common'])
+                 if r.get('d_common') is not None else '—')
         on_pk = f"{r['on_pk']:.1f}" if r['on_pk'] is not None else '—'
         off_pk = f"{r['off_pk']:.1f}" if r['off_pk'] is not None else '—'
         wb_rows.append([r['name'], on_span, off_span, on_med, off_med, delta,
@@ -842,9 +1294,82 @@ def write_markdown(path, meta, summ, rows_all):
     b954 = [r for r in g900 if r['on_span'] and r['on_span'][0] > 950][0]
     b1840 = [r for r in g18 if r['on_span'] and r['on_span'][0] < 1845][0]
     b1862 = [r for r in g18 if r['on_span'] and r['on_span'][0] > 1860][0]
+    own954 = b954['on_med'] - b954['off_med']
+    own1862 = b1862['on_med'] - b1862['off_med']
     m26 = summ['lte2600']['on']
     p26o = m26['peak'] - m26['floor']
     p26f = summ['lte2600']['off']['peak'] - summ['lte2600']['off']['floor']
+
+    def spans_of(s):
+        if not s['rows'] and not s['narrow_on']:
+            return 'none above +6 dB'
+        parts = []
+        for r in s['rows']:
+            if r['on_span'] and r['off_span']:
+                diff = (abs(r['on_span'][0] - r['off_span'][0]) > .1
+                        or abs(r['on_span'][1] - r['off_span'][1]) > .1)
+                parts.append(f"ON {fmt_span(*r['on_span'])} / OFF {fmt_span(*r['off_span'])}"
+                             if diff else fmt_span(*r['on_span']))
+            elif r['on_span']:
+                parts.append(f"{fmt_span(*r['on_span'])} ON")
+            else:
+                parts.append(f"{fmt_span(*r['off_span'])} OFF")
+        if s['narrow_on']:
+            parts.append(f"{len(s['narrow_on'])} narrow")
+        return '; '.join(parts)
+
+    all_rows = []
+    sigma_rows = []
+    for b in ALL_BANDS:
+        s = summ[b['key']]
+        on, off = s['on'], s['off']
+        all_rows.append([b['name'], b['alloc'].replace(' downlink', ''), rng(b),
+                         f"{100*on['cover']:.0f}/{100*off['cover']:.0f}%",
+                         f"{on['floor']:.2f}", f"{off['floor']:.2f}",
+                         f"+{on['peak']-on['floor']:.1f}", f"+{off['peak']-off['floor']:.1f}",
+                         spans_of(s)])
+        sigma_rows.append([b['name'], f"{s['sigma_on']['med']:.2f}",
+                           f"{s['sigma_on']['p95']:.2f}", f"{s['sigma_off']['med']:.2f}",
+                           f"{s['sigma_off']['p95']:.2f}",
+                           f"{s['sigma_on']['med']/s['sigma_off']['med']:.2f}×",
+                           'active' if s['rows'] or s['narrow_on'] else 'no crossing'])
+
+    s7 = summ['b28']
+    r7 = [r for r in s7['rows'] if r['on_span'] and r['on_span'][0] > 767][0]
+    r7w = [r for r in s7['rows'] if r['off_span'] and r['off_span'][0] < 767]
+    survey_lines = [
+        f"- **700 MHz (B28 lower, 758–791 MHz)**: the only survey window with a "
+        f"threshold-defined block. ON {fmt_span(*r7['on_span'])} "
+        f"({r7['on_span'][1]-r7['on_span'][0]:.2f} MHz, median {r7['on_med']:.1f} dB); "
+        f"OFF {fmt_span(*r7['off_span'])} "
+        f"({r7['off_span'][1]-r7['off_span'][0]:.2f} MHz, median {r7['off_med']:.1f} dB)."
+        + (f" A weak OFF-only span at {fmt_span(*r7w[0]['off_span'])} (median "
+           f"{r7w[0]['off_med']:.1f} dB) is below the ON threshold." if r7w else "")
+        + f" The ON gap 768.02–770.92 MHz is the ±1.5 MHz DC mask around the "
+        f"769.47 MHz hop; the matched common-span Δ is {fmt_delta(r7['d_common'])} dB "
+        f"over {fmt_span(*r7['common_span'])} MHz. The survey stops at 791 MHz to "
+        "avoid duplicating LTE 800; nominal B28 extends to 803 MHz.",
+    ]
+    for b in SURVEY_BANDS[1:]:
+        s = summ[b['key']]
+        on, off = s['on'], s['off']
+        survey_lines.append(
+            f"- **{b['name']} ({b['alloc'].replace(' downlink', '')}, "
+            f"{b['b0']:.0f}–{b['b1']:.0f} MHz)**: no cell reaches floor +6 dB. "
+            f"ON peak +{on['peak']-on['floor']:.1f} dB, OFF +{off['peak']-off['floor']:.1f} dB. "
+            f"Floors differ by {on['floor']-off['floor']:+.2f} dB. "
+            f"Pass-to-pass σ is {s['sigma_on']['med']:.2f} dB ON and "
+            f"{s['sigma_off']['med']:.2f} dB OFF. Absence of a crossing is not "
+            "proof that no signal exists below the threshold.")
+    survey_notes = '\n'.join(survey_lines)
+
+    dd = [(abs(r['d_common']), r) for r in rows_all if r.get('d_common') is not None]
+    dmax, drow = max(dd, key=lambda x: x[0]) if dd else (0.0, None)
+    dmax_txt = (f"Matched common-span block medians differ by at most {dmax:.1f} dB; "
+                f"the largest is {drow['name']} over "
+                f"{fmt_span(*drow['common_span'])} MHz. No correction is applied."
+                if drow else
+                "No matched block pair is available, so no block-level Δ is claimed.")
 
     text = f"""# Cellular downlink: LTE and GSM bands
 
@@ -853,11 +1378,15 @@ The input was an antenna on RX2; ON and OFF are sequential 300 s windows, not
 simultaneous measurements. All levels are relative. No dBm, noise figure,
 absolute floor or traceability is claimed.
 
-Band and channel names are **nominal allocations** (LTE B20/B8/B3/B1/B7,
-GSM 900/1800 downlink). No decoding, cell identity, ARFCN or operator
-attribution is attempted.
+Band and channel names are **nominal allocations** (LTE B20/B8/B3/B1/B7/B28/B5/
+B32/B21/B2/B40/B42, GSM 850/900/1800/1900 downlink). No decoding, cell identity,
+ARFCN or operator attribution is attempted.
 
 ![Cellular LTE/GSM dashboard](cellular_lte_gsm.png)
+
+![Cellular survey of additional nominal bands](cellular_survey.png)
+
+![Cellular detail: narrow features and pass variability](cellular_detail.png)
 
 ## Scope and method
 
@@ -865,7 +1394,8 @@ attribution is attempted.
 |---|---|
 | Session | `{meta.get('session', 'fullrange-20261118-111658')}` |
 | Device | B200mini `{meta.get('device', '30B2A32')}`, antenna `{meta.get('antenna', 'RX2')}`, {meta.get('gain', '20')} dB |
-| Bands | LTE 800 (B20), 900 MHz (GSM 900 / LTE B8), 1800 MHz (GSM 1800 / LTE B3), LTE 2100 (B1), LTE 2600 (B7) — nominal downlink ranges |
+| Deep dive | LTE 800 (B20), 900 MHz (GSM 900 / LTE B8), 1800 MHz (GSM 1800 / LTE B3), LTE 2100 (B1), LTE 2600 (B7) — nominal downlink ranges |
+| Survey | 700 MHz (B28 lower, 758–791), 850 MHz (GSM 850 / B5, 869–894), 1500 MHz (B32/B21, 1452–1518), 1900 MHz (GSM 1900 / B2, 1930–1990), 2300 MHz (B40, 2300–2400), 3500 MHz (B42/n78, 3400–3600) — nominal |
 | Grid | 0.05 MHz LTE; 0.02 MHz GSM |
 | ON | {meta.get('on_records', 0):,} records, {meta.get('on_passes', 0)} pass groups (last incomplete) |
 | OFF | {meta.get('off_records', 0):,} records, {meta.get('off_passes', 0)} pass groups (last incomplete) |
@@ -890,6 +1420,16 @@ most 0.5 MHz and both 0.2–0.5 MHz side windows at least 9 dB below the peak.
 Plateau ripple is not counted. Floors are the 10th percentile of the
 pass-median spectrum over covered cells.
 
+Where ON and OFF detected extents differ, the **matched common span** is their
+intersection. The reported Δ is ON−OFF over that intersection, so a weak-edge
+extent difference does not masquerade as a level difference. The own-span
+medians are listed separately for reference.
+
+**Pass-to-pass σ** is the temporal standard deviation of each cell across pass
+groups, summarised over covered cells. It measures how much the band changed
+between passes, not measurement noise, and it is not an uncertainty on the
+median.
+
 ## Coverage and floors
 
 {md_table(['Band', 'Range (MHz)', 'Grid', 'ON cover', 'OFF cover', 'ON floor', 'OFF floor', 'Δ floor'],
@@ -912,15 +1452,16 @@ Peak is the maximum pass-median cell, not a calibrated level.
 
 ## Wideband blocks
 
-{md_table(['Band', 'ON span (MHz)', 'OFF span (MHz)', 'ON med', 'OFF med', 'Δ', 'ON pk', 'OFF pk', 'Note'],
+{md_table(['Band', 'ON span (MHz)', 'OFF span (MHz)', 'ON med', 'OFF med', 'Δ common', 'ON pk', 'OFF pk', 'Note'],
           wb_rows, ['---', '---:', '---:', '---:', '---:', '---:', '---:', '---:', '---'])}
 
 Extents are threshold crossings on the median spectrum, not channel bandwidths.
-ON/OFF medians use each variant's own detected sub-blocks; the spans show their
-unions. A masked interval inside a span (for example 935.9–938.9 MHz in the
-900 MHz block) is a measurement gap, not an emission gap. The 900 MHz
-945.2–949.9 MHz span is a cluster of isolated narrow components, not a wideband
-block.
+Δ is the ON−OFF difference over the matched common span (the intersection of
+the two extents), so unequal extents do not bias it. The ON and OFF medians are
+each variant's own sub-block values and are shown for reference. A masked
+interval inside a span (for example 935.9–938.9 MHz in the 900 MHz block) is a
+measurement gap, not an emission gap. The 900 MHz 945.2–949.9 MHz span is a
+cluster of isolated narrow components, not a wideband block.
 
 ## Narrow components
 
@@ -991,6 +1532,55 @@ ripple is excluded and is not counted as distinct carriers.
   No wideband or narrow block is claimed. Absence of a threshold crossing is
   not proof that no signal exists below the threshold.
 
+## Survey: additional nominal bands
+
+![Cellular survey](cellular_survey.png)
+
+The survey applies the same cells, masks, floor, block and narrow rules to six
+further nominal downlink windows. The same 11-band metrics are tabulated below.
+
+{md_table(['Band', 'Nominal allocation', 'MHz', 'Cover ON/OFF', 'Floor ON', 'Floor OFF',
+           'Peak + ON', 'Peak + OFF', 'Detected spans (MHz)'],
+          all_rows, ['---', '---', '---:', '---:', '---:', '---:', '---:', '---:', '---'])}
+
+"Detected spans" lists threshold crossings only. "none above +6 dB" means no
+cell reached the seed threshold; it is not proof that no signal exists below
+that threshold.
+
+{survey_notes}
+
+## Narrow-feature detail
+
+![Cellular detail](cellular_detail.png)
+
+The detail figure zooms the 900 MHz narrow cluster, the 926.91 MHz ON-only
+component, the 1840.89 MHz component, the 1859–1862 MHz ON DC-mask break, the
+700 MHz block with its ON DC mask, and the LTE 2100 lower edge. It also plots
+pass-to-pass σ for the five deep-dive bands.
+
+- The 900 MHz cluster components are stable in ON: 947.81 MHz is present in
+  100 % of ON passes and 926.91 MHz is absent from OFF. The cluster is not a
+  wideband block.
+- The 1840.89 MHz component sits inside the 1800 MHz plateau and is present on
+  both sides within about 1 dB; it is not evidence of a separate carrier.
+- The 1859–1862 MHz break and the LTE 2100 lower edge coincide with ON DC masks.
+  OFF shows a shallow dip at 1859–1862 MHz and a clear lower edge at 2110.95 MHz.
+  Neither is treated as an emission difference.
+- The 700 MHz ON gap 768.02–770.92 MHz is the DC mask around the 769.47 MHz hop.
+  The matched common-span Δ over 770.95–777.80 MHz is
+  {fmt_delta(r7['d_common'])} dB; the own-span medians are not a like-for-like
+  difference because the ON extent excludes the masked lower edge.
+
+## Pass variability
+
+{md_table(['Band', 'σ ON med', 'σ ON p95', 'σ OFF med', 'σ OFF p95', 'ON/OFF', 'Class'],
+          sigma_rows, ['---', '---:', '---:', '---:', '---:', '---:', '---'])}
+
+σ is temporal variability across passes, not measurement noise or an uncertainty
+on the median. Bands with detected structure are much less stable than windows
+without a threshold crossing. Because ON and OFF are sequential, σ also includes
+RF-environment change and is not attributed to the feature bundle.
+
 ## ON/OFF comparison
 
 - ON and OFF are sequential 300 s windows, not simultaneous. Differences
@@ -1001,14 +1591,16 @@ ripple is excluded and is not counted as distinct carriers.
   LTE 2100 {summ['lte2100']['on']['floor']-summ['lte2100']['off']['floor']:+.2f} dB,
   LTE 2600 {summ['lte2600']['on']['floor']-summ['lte2600']['off']['floor']:+.2f} dB.
   The LTE 800 value comes from the elevated lower edge described above.
-- Wideband block medians differ by at most 1.9 dB (the 1840.7–1859.0 MHz block);
-  the LTE 2100 block differs by 1.7 dB. No correction is applied.
+- {dmax_txt}
 - Narrow components are present in both variants within 1.7 dB except 926.91 MHz,
   which is ON-only. The 1840.89 MHz component is 1.1 dB lower in ON.
 - The 900 MHz 954 MHz block and the 1800 MHz 1862 MHz block have different
-  ON/OFF extents. The 900 MHz difference is at a near-threshold edge; the
-  1800 MHz upper edge is weak and method-sensitive, and its 1859–1862 MHz
-  break coincides with the ON DC mask. These are not a uniform level shift.
+  ON/OFF extents. The 900 MHz own-span medians differ by {fmt_delta(own954)} dB,
+  but over the matched common span the difference is {fmt_delta(b954['d_common'])} dB;
+  the own-span value is an extent effect at a near-threshold edge. The 1800 MHz
+  upper edge is weak and method-sensitive: {fmt_delta(own1862)} dB own-span,
+  {fmt_delta(b1862['d_common'])} dB common-span, and its 1859–1862 MHz break
+  coincides with the ON DC mask. These are not a uniform level shift.
 
 ## 150–160 MHz
 
@@ -1025,8 +1617,8 @@ requires a controlled 50 Ω input and/or an alternating ON/OFF source.
   soak test.
 - Nominal band labels; no decoding, cell identity, ARFCN or operator attribution.
 - No per-feature ablation; the ON/OFF hop plans differ.
-- LTE 2600 has no threshold crossing; that is not proof of absence below the
-  threshold.
+- LTE 2600 and five of the six survey windows have no threshold crossing; that is
+  not proof of absence below the threshold.
 - The 8 MHz capture-edge, ±1.5 MHz DC and <50 % coverage masks are
   measurement-quality masks, not signal notches. No level correction is applied.
 - 150–160 MHz remains unresolved.
@@ -1037,6 +1629,8 @@ requires a controlled 50 Ω input and/or an alternating ON/OFF source.
 env -u PYTHONPATH sessions/.venv/bin/python tools/report_cellular.py \\
     sessions/fullrange-20261118-111658 \\
     --out docs/results/fullrange-20261118-111658/cellular_lte_gsm.png \\
+    --survey-out docs/results/fullrange-20261118-111658/cellular_survey.png \\
+    --detail-out docs/results/fullrange-20261118-111658/cellular_detail.png \\
     --md docs/results/fullrange-20261118-111658/CELLULAR.md
 ```
 
@@ -1080,19 +1674,19 @@ def load_data(sess, args):
         z = np.load(cache)
         meta = json.loads(z['meta'].item()) if 'meta' in z.files else {}
         if (meta.get('edge_hz') == EDGE_HZ and meta.get('dc_hz') == DC_HZ
-                and meta.get('bands') == [b['key'] for b in BANDS]):
+                and meta.get('bands') == [b['key'] for b in ALL_BANDS]):
             data = {k: z[k] for k in z.files if k != 'meta'}
             print(f'loaded cache {cache}')
             return data, meta
         print(f'cache {cache} does not match this analysis; re-extracting')
-    on, on_records, on_passes = extract(sess / 'features-on.jsonl')
-    off, off_records, off_passes = extract(sess / 'features-off.jsonl')
+    on, on_records, on_passes = extract(sess / 'features-on.jsonl', bands=ALL_BANDS)
+    off, off_records, off_passes = extract(sess / 'features-off.jsonl', bands=ALL_BANDS)
     data = {}
     for k, v in on.items():
         data[f'on_{k}'] = v
     for k, v in off.items():
         data[f'off_{k}'] = v
-    meta = dict(edge_hz=EDGE_HZ, dc_hz=DC_HZ, bands=[b['key'] for b in BANDS],
+    meta = dict(edge_hz=EDGE_HZ, dc_hz=DC_HZ, bands=[b['key'] for b in ALL_BANDS],
                 on_records=on_records, on_passes=on_passes,
                 off_records=off_records, off_passes=off_passes,
                 extracted_at=datetime.now(timezone.utc).isoformat())
@@ -1106,20 +1700,27 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('session')
     ap.add_argument('--out', default=None, help='dashboard PNG path')
+    ap.add_argument('--survey-out', default=None, help='survey PNG path')
+    ap.add_argument('--detail-out', default=None, help='detail PNG path')
     ap.add_argument('--md', default=None, help='markdown report path')
     ap.add_argument('--cache', default=None, help='npz cache path')
     ap.add_argument('--use-cache', action='store_true', help='load the npz cache if valid')
     a = ap.parse_args()
     sess = Path(a.session)
     outpath = Path(a.out) if a.out else sess / 'report' / 'cellular_lte_gsm.png'
+    survey_path = Path(a.survey_out) if a.survey_out else outpath.with_name('cellular_survey.png')
+    detail_path = Path(a.detail_out) if a.detail_out else outpath.with_name('cellular_detail.png')
     mdpath = Path(a.md) if a.md else sess / 'report' / 'CELLULAR.md'
     outpath.parent.mkdir(parents=True, exist_ok=True)
+    survey_path.parent.mkdir(parents=True, exist_ok=True)
+    detail_path.parent.mkdir(parents=True, exist_ok=True)
+    mdpath.parent.mkdir(parents=True, exist_ok=True)
 
     data, cache_meta = load_data(sess, a)
     meta = session_meta(sess, cache_meta)
 
     summ = {}
-    for b in BANDS:
+    for b in ALL_BANDS:
         on = band_metrics(data[f'on_{b["key"]}'], b)
         off = band_metrics(data[f'off_{b["key"]}'], b)
         blocks_on = detect_blocks(on, b)
@@ -1133,19 +1734,22 @@ def main():
         wb_on = [x for x in blocks_on if x['kind'] == 'wideband']
         wb_off = [x for x in blocks_off if x['kind'] == 'wideband']
         rows_b = match_blocks(wb_on, wb_off, b)
+        add_common_stats(rows_b, on, off)
         summ[b['key']] = dict(
             on=on, off=off, blocks_on=blocks_on, blocks_off=blocks_off,
             narrow_on=narrow_on, narrow_off=narrow_off,
             n_wb=len(wb_on), n_narrow=len(narrow_on),
             n_cluster=sum(1 for x in blocks_on if x['kind'] == 'narrow cluster'),
             rows=rows_b,
+            sigma_on=pass_variability(data[f'on_{b["key"]}'], on),
+            sigma_off=pass_variability(data[f'off_{b["key"]}'], off),
         )
 
     rows_all = [r for b in BANDS for r in summ[b['key']]['rows']]
     narrows = {b['key']: summ[b['key']]['narrow_on'] for b in BANDS}
     blocks = {b['key']: summ[b['key']]['rows'] for b in BANDS}
 
-    for b in BANDS:
+    for b in ALL_BANDS:
         s = summ[b['key']]
         on, off = s['on'], s['off']
         print(f"\n{b['name']} {b['b0']:.0f}-{b['b1']:.0f} MHz")
@@ -1157,10 +1761,13 @@ def main():
               f"persist {100*off['persist']:.1f}% peakhold {100*off['peakhold']:.1f}%")
         print(f"  {s['n_wb']} wideband ON, {s['n_narrow']} narrow ON, {s['n_cluster']} cluster ON")
         for r in s['rows']:
+            onmed = f"{r['on_med']:.2f}" if r['on_med'] is not None else '—'
+            offmed = f"{r['off_med']:.2f}" if r['off_med'] is not None else '—'
+            d = (f"{r['d_common']:+.2f}" if r.get('d_common') is not None else '—')
             print(f"    block ON {fmt_span(*r['on_span']) if r['on_span'] else '—'} "
                   f"OFF {fmt_span(*r['off_span']) if r['off_span'] else '—'} "
-                  f"ONmed {r['on_med']:.2f} OFFmed {r['off_med']:.2f} "
-                  f"d {r['on_med']-r['off_med']:+.2f} note {r['note']}")
+                  f"ONmed {onmed} OFFmed {offmed} "
+                  f"d {d} note {r['note']}")
         for c in s['narrow_on']:
             j = int(np.argmin(np.abs(s['off']['f'] - c['f'])))
             print(f"    narrow {c['f']:.2f} level {c['level']:.2f} above {c['above']:.2f} "
@@ -1172,6 +1779,12 @@ def main():
                       wide_rows, narrow_rows, meta)
     fig.savefig(outpath, bbox_inches='tight')
     print('wrote', outpath)
+    fig = survey_figure(summ, meta)
+    fig.savefig(survey_path, bbox_inches='tight')
+    print('wrote', survey_path)
+    fig = detail_figure(summ, meta)
+    fig.savefig(detail_path, bbox_inches='tight')
+    print('wrote', detail_path)
     write_markdown(mdpath, meta, summ, rows_all)
     print('wrote', mdpath)
     return 0
