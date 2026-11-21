@@ -9,6 +9,11 @@ Band and channel names are **nominal allocations** (LTE B20/B8/B3/B1/B7/B28/B5/
 B32/B21/B2/B40/B42, GSM 850/900/1800/1900 downlink). No decoding, cell identity,
 ARFCN or operator attribution is attempted.
 
+A finer-grid (10 kHz) follow-up on the same captures is in
+[MODULATION.md](MODULATION.md): plateau-referenced morphology, the ~45 kHz
+spectral raster against quiet controls, pass-scale level/centroid tracks and
+narrow-component correlations. It is spectral-only and does not demodulate.
+
 ![Cellular LTE/GSM dashboard](cellular_lte_gsm.png)
 
 ![Cellular survey of additional nominal bands](cellular_survey.png)

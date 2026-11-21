@@ -115,6 +115,12 @@ The band remains the clearest unresolved feature:
 - `cellular_detail.png` — narrow-feature zooms (900 MHz cluster, 926.91 MHz,
   1840.89 MHz, 1859–1862 MHz, 700 MHz block and LTE 2100 lower edge) and
   pass-variability bars and table for the five deep-dive bands.
+- `cellular_modulation.png` / `cellular_modulation_raster.png` /
+  `cellular_modulation_dynamics.png` / `MODULATION.md` — fine-grid (10 kHz)
+  low-level spectral morphology: plateau-referenced widths and OBW99, the
+  ~45 kHz spectral raster against quiet controls, per-pass level/centroid
+  tracks, and the 900/1800 MHz narrow components. Spectral-only and relative;
+  no demodulation, EVM, constellation, symbol rate or cell identity.
 - `wf3d_on_fullrange.png` / `wf3d_off_fullrange.png` — true-3D waterfalls over
   70 MHz–6 GHz (linear RF, time, dB; identical axes and colour scale).
 - `wf3d_on_70-300MHz.png` / `wf3d_off_70-300MHz.png` — 70–300 MHz detail around
@@ -136,6 +142,11 @@ nominal allocations, not verified signal identities.
 - `CELLULAR.md` — cellular downlink analysis: masks, matched common-span
   deltas, block and narrow-component rules, survey bands, pass variability,
   per-band notes, ON/OFF caveats and the unresolved 150–160 MHz limit.
+- `MODULATION.md` — fine-grid low-level morphology: method, per-block widths
+  and texture, 45 kHz raster and quiet controls, pass-scale dynamics,
+  narrow-component table and 24-pass correlation matrix, and an explicit
+  “cannot conclude” section. No IQ/phase is retained, so no demodulation is
+  claimed.
 - `report.pdf`, `hero_fullrange.png`, `versus_fullrange.png`,
   `cellular_lte_gsm.png`, `cellular_survey.png`, `cellular_detail.png`,
   waterfall PNGs, `intermittent.png`.
@@ -159,10 +170,20 @@ env -u PYTHONPATH sessions/.venv/bin/python tools/report_cellular.py \
     --survey-out docs/results/fullrange-<stamp>/cellular_survey.png \
     --detail-out docs/results/fullrange-<stamp>/cellular_detail.png \
     --md docs/results/fullrange-<stamp>/CELLULAR.md
+
+# fine-grid low-level morphology (reuses the 10 kHz cache):
+env -u PYTHONPATH sessions/.venv/bin/python tools/report_modulation.py \
+    sessions/fullrange-<stamp> --use-cache \
+    --out docs/results/fullrange-<stamp>/cellular_modulation.png \
+    --raster-out docs/results/fullrange-<stamp>/cellular_modulation_raster.png \
+    --dyn-out docs/results/fullrange-<stamp>/cellular_modulation_dynamics.png \
+    --md docs/results/fullrange-<stamp>/MODULATION.md
 ```
 
 Add `--use-cache` to the cellular command to reuse
-`sessions/fullrange-<stamp>/report/cellular_cache.npz`. The runner generates
+`sessions/fullrange-<stamp>/report/cellular_cache.npz`. The modulation command
+reuses `sessions/fullrange-<stamp>/report/modulation_cache.npz`; the cache is
+derived from the same raw JSONL. The runner generates
 `compare.json`, `waterfall.json`, the 3D waterfalls, `intermittent.png` and
 `report.pdf` automatically. Raw JSONL stays in `sessions/` and is not committed.
 
@@ -172,6 +193,10 @@ Add `--use-cache` to the cellular command to reuse
 - Two 300 s variants only; not a soak test. 600 s per-trial behaviour remains
   unverified.
 - Single device, single gain, RX2, one antenna.
+- The modulation morphology is spectral-only: raw records hold 8192-bin FFT
+  power, not IQ, so there is no demodulation, EVM, constellation, symbol rate,
+  modulation order, cell identity or ARFCN. The ~45 kHz raster is “consistent
+  with” a 3 × 15 kHz comb, not an identification.
 - The RFIC temperature sensor is coarsely quantised; no thermal coefficient is
   claimed.
 - 150–160 MHz cause unresolved; controlled 50 Ω / alternating ON/OFF work is
