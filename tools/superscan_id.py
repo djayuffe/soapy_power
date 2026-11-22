@@ -255,6 +255,10 @@ def identify(A, satdb_dir=None, qth_path=None):
                                    observed_format=tr['format']['cls'], observed_bw_hz=tr['format']['bw_hz'], **tr['id']))
         for e in Bd['events']:
             tm = t_ref + (e['t_start_s'] + e['t_end_s']) / 2; hits = []
+            if any(w['f_lo_mhz'] <= e['f_mhz'] <= w['f_hi_mhz'] and e['t_start_s'] - period <= w['t_s'] <= e['t_end_s'] + period
+                   for w in Bd.get('wideband', []) if np.isfinite(w['t_s'])):
+                e['during_wideband'] = True          # part of a broadband transient: no frequency coincidence is meaningful
+                continue
             for p in preds:
                 if np.interp(tm, p['t'], p['el']) < -2 or str(p['sat_status']).lower() in ('dead', 're-entered', 'decayed'):
                     continue
@@ -262,6 +266,7 @@ def identify(A, satdb_dir=None, qth_path=None):
                     d = e['f_mhz'] * 1e6 - float(sd.doppler(p, tx['f_hz'], tm))
                     if tx['alive'] and abs(d) < 6e3:
                         hits.append((abs(d), p, tx, d))
+            hits = [h for h in hits if not sd.format_consistency(h[2], e['format']['bw_hz'], step).startswith('inconsistent')]   # cannot produce this bandwidth
             if hits:
                 hits.sort(key=lambda h: h[0]); _, p, tx, d = hits[0]
                 e['id'] = dict(norad=p['norad'], name=p['name'], transmitter=tx['description'], mode=tx['mode'], baud=tx['baud'], f_tx_hz=tx['f_hz'], offset_hz=d,

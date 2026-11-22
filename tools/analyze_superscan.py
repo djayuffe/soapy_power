@@ -15,7 +15,7 @@ falls with time, the shift and rate are inside LEO bounds for its carrier, and t
 a constant. That is a signature, not an identification: no orbit data is used.
 Outputs (prefix <tag>_): analysis.pdf, summary.json, tracks.csv, lines.csv, events.csv, waterfall_<band>.png,
 doppler.png, waterfall_<band>.html (interactive, full resolution, tracks overlaid)."""
-import csv, datetime, json, math, sys, textwrap, warnings
+import collections, csv, datetime, json, math, sys, textwrap, warnings
 from pathlib import Path
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -569,15 +569,17 @@ def summary_page(A, pdf, out, tag):
         conf = [x for x in ids if x['confidence'] != 'frequency-only']; cand = [x for x in ids if x['confidence'] == 'frequency-only']
         head = (f"Identification: {len(conf)} confirmed by Doppler · {len(cand)} frequency-only candidate(s) · {len(I['passes'])} satellites in band above the horizon"
                 f" · {len(nh)} ≥10° not heard")
-        ids = conf + cand
-        body = [f"{x['name']} ({x['norad']}) {x['mode']} {int(x['baud'] or 0)} Bd at {x['f_mhz']:.4f} MHz: {x['confidence']}, offset {x['offset_hz'] / 1e3:+.1f} kHz"
-                + (f", rms {x['rms_hz']:.0f} Hz" if x.get('rms_hz') is not None else '') + f", format {x['format_check']}" for x in ids[:4]]
-        body += [f"not heard: " + ', '.join(f"{p['name']} (max {p['max_el']:.0f}°)" for p in nh[:8])] if nh else []
-        body += [f"false-alarm controls: off-curve {ct.get('false_detections', 0)}/{ct.get('searches', 0)} on noise"
-                 + (f" ({ct['on_detected_signal']} crossed a detected signal)" if ct.get('on_detected_signal') else '')
-                 + f", stack {I.get('stack_control', {}).get('false_detections', 0)}/{I.get('stack_control', {}).get('searches', 0)}"]
+        body = [f"false-alarm controls: off-curve {ct.get('false_detections', 0)}/{ct.get('searches', 0)} on noise"
+                + (f" ({ct['on_detected_signal']} crossed a detected signal)" if ct.get('on_detected_signal') else '')
+                + f", stack {I.get('stack_control', {}).get('false_detections', 0)}/{I.get('stack_control', {}).get('searches', 0)}"]
+        body += [f"{x['name']} ({x['norad']}) {x['mode']} {int(x['baud'] or 0)} Bd at {x['f_mhz']:.4f} MHz: {x['confidence']}, offset {x['offset_hz'] / 1e3:+.1f} kHz"
+                 + (f", rms {x['rms_hz']:.0f} Hz" if x.get('rms_hz') is not None else '') + f", format {x['format_check']}" for x in conf[:3]]
+        if cand:
+            cn = collections.Counter(f"{x['name']} {x['f_tx_hz'] / 1e6:.3f}" for x in cand)
+            body += ['frequency-only: ' + ', '.join(f"{k}{f' ×{n}' if n > 1 else ''}" for k, n in cn.most_common(4))]
+        body += [f"not heard: " + ', '.join(f"{p['name']} (max {p['max_el']:.0f}°)" for p in nh[:6])] if nh else []
         fig.text(0.04, y, head, fontsize=12.5, fontweight='bold', va='top', color=C_PRED)
-        fig.text(0.04, y - 0.028, '\n'.join(textwrap.wrap(' · '.join(body) or 'no observed signal matched a predicted downlink', wrapw)[:4]), fontsize=9.5, va='top', color='#c9d4e6')
+        fig.text(0.04, y - 0.028, '\n'.join(textwrap.wrap(' · '.join(body) or 'no observed signal matched a predicted downlink', wrapw)[:5]), fontsize=9.5, va='top', color='#c9d4e6')
         y -= dy + 0.03
         nd = ('Absolute levels (uncalibrated). ' + origin_note(A) + ' Identification uses the SatNOGS transmitter list and TLEs dated '
               + str((I.get('db_meta') or {}).get('fetched_utc', '?'))[:16] + f" and the observer position ({I.get('qth_source', 'unknown source')}); "
