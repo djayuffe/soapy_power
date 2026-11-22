@@ -4,7 +4,7 @@
 #       [--antenna RX2|TX/RX] [--input antenna|terminated] [--procedure suite|baseline|fullrange]
 #       [--device b200|bladerf] [--bladerf-job dense-dc|survey|survey-anchor|dense-dc+survey]
 #       [--plan-args "--no-telemetry"] [--overflow-probe 1] [--hopscan 1] [--superscan 1] [--superscan-plan sat|sat-full|sat-s]
-#       [--superscan-gain auto|DB] [--satdb-refresh 1]
+#       [--superscan-gain auto|DB] [--superscan-rate 8|4|2] [--satdb-refresh 1]
 #       [--reanalyze hopscan-YYYYMMDD-HHMMSS|superscan-YYYYMMDD-HHMMSS] [--wait SECONDS]
 # Prints the request id. With --wait: prints the status JSON and the run log tail;
 # exit 0 = finished OK, 1 = finished with an error or rejected, 3 = still running.
@@ -15,12 +15,12 @@ SESSIONS="${SPR_SESSIONS:-$REPO/sessions}"
 usage() { sed -n '2,10p' "$0" >&2; exit 2; }
 MODE="${1:-}"; [ $# -gt 0 ] && shift
 case "$MODE" in probe|setup|scan) ;; *) usage;; esac
-SECS=30; GAIN=20; ANT=RX2; IN=antenna; PROC=suite; DEV=b200; JOB=dense-dc+survey; WAIT=0; PLANARGS=; OVP=; HOP=; SUP=; REAN=; SPLAN=; SATDB=; SGAIN=
+SECS=30; GAIN=20; ANT=RX2; IN=antenna; PROC=suite; DEV=b200; JOB=dense-dc+survey; WAIT=0; PLANARGS=; OVP=; HOP=; SUP=; REAN=; SPLAN=; SATDB=; SGAIN=; SRATE=
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || usage
   case "$1" in
     --seconds) SECS="$2";; --gain) GAIN="$2";; --antenna) ANT="$2";; --input) IN="$2";; --procedure) PROC="$2";;
-    --device) DEV="$2";; --bladerf-job) JOB="$2";; --plan-args) PLANARGS="$2";; --overflow-probe) OVP="$2";; --hopscan) HOP="$2";; --superscan) SUP="$2";; --superscan-plan) SPLAN="$2";; --superscan-gain) SGAIN="$2";; --satdb-refresh) SATDB="$2";; --reanalyze) REAN="$2";; --wait) WAIT="$2";;
+    --device) DEV="$2";; --bladerf-job) JOB="$2";; --plan-args) PLANARGS="$2";; --overflow-probe) OVP="$2";; --hopscan) HOP="$2";; --superscan) SUP="$2";; --superscan-plan) SPLAN="$2";; --superscan-gain) SGAIN="$2";; --superscan-rate) SRATE="$2";; --satdb-refresh) SATDB="$2";; --reanalyze) REAN="$2";; --wait) WAIT="$2";;
     *) usage;;
   esac
   shift 2
@@ -34,6 +34,7 @@ case "$DEV" in b200|bladerf) ;; *) echo "--device: b200 or bladerf" >&2; exit 2;
 case "$JOB" in dense-dc|survey|survey-anchor|dense-dc+survey) ;; *) echo "--bladerf-job: dense-dc, survey, survey-anchor or dense-dc+survey" >&2; exit 2;; esac
 [[ "$WAIT" =~ ^[0-9]+$ ]] || { echo "--wait: seconds" >&2; exit 2; }
 [ -z "$SGAIN" ] || [[ "$SGAIN" =~ ^(auto|[0-9]{1,2}(\.[0-9])?)$ ]] || { echo "--superscan-gain: auto or 0-76 dB" >&2; exit 2; }
+[ -z "$SRATE" ] || [[ "$SRATE" =~ ^(2|4|8)$ ]] || { echo "--superscan-rate: 2 | 4 | 8" >&2; exit 2; }
 [ -z "$SPLAN" ] || [[ "$SPLAN" =~ ^(sat|sat-full|sat-s)$ ]] || { echo "--superscan-plan: sat | sat-full | sat-s" >&2; exit 2; }
 [ -z "$REAN" ] || [[ "$REAN" =~ ^(hopscan|superscan)-[0-9]{8}-[0-9]{6}$ ]] || { echo "--reanalyze: hopscan-YYYYMMDD-HHMMSS or superscan-YYYYMMDD-HHMMSS" >&2; exit 2; }
 mkdir -p "$SESSIONS/queue" "$SESSIONS/status"
@@ -51,6 +52,7 @@ TYPE=integer; case "$GAIN" in *.*) TYPE=real;; esac
   [ "$SUP" != 1 ] || printf '<key>superscan</key><integer>1</integer>\n'
   [ -z "$SPLAN" ] || printf '<key>superscan_plan</key><string>%s</string>\n' "$SPLAN"
   [ -z "$SGAIN" ] || printf '<key>superscan_gain</key><string>%s</string>\n' "$SGAIN"
+  [ -z "$SRATE" ] || printf '<key>superscan_rate</key><string>%s</string>\n' "$SRATE"
   [ "$SATDB" != 1 ] || printf '<key>satdb_refresh</key><integer>1</integer>\n'
   [ -z "$REAN" ] || printf '<key>reanalyze</key><string>%s</string>\n' "$REAN"
   [ -z "$PLANARGS" ] || printf '<key>plan_args</key><string>%s</string>\n' "$PLANARGS"

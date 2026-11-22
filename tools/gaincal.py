@@ -32,13 +32,13 @@ def measure(path, dc=100e3, usable=850e3):
     return hops
 
 
-def choose(cal_dir, bands=None, fallback=None):
+def choose(cal_dir, bands=None, fallback=None, usable=850e3):
     cal = Path(cal_dir); rows = []
     expected = None
     for f in sorted(cal.glob('gain_*.jsonl'), key=lambda p: float(p.stem.split('_')[1])):
         g = float(f.stem.split('_')[1]); rcf = cal / f'gain_{f.stem.split("_")[1]}.rc'
         rc = int(rcf.read_text().strip()) if rcf.exists() and rcf.read_text().strip().lstrip('-').isdigit() else None
-        hops = measure(f) if f.stat().st_size else []
+        hops = measure(f, usable=usable) if f.stat().st_size else []
         expected = max(expected or 0, len(hops))
         hr_ok = bool(hops) and all(h['max_component'] is not None and h['max_component'] < MAX_COMPONENT and h['p999_component'] < P999_COMPONENT and h['t095'] == 0 for h in hops)
         rows.append(dict(gain_db=g, rc=rc, hops=hops, n_hops=len(hops),
@@ -64,7 +64,7 @@ def choose(cal_dir, bands=None, fallback=None):
         per = []
         for b in bands:
             ins = [r for r in rows if r['hops']]
-            curve = [(r['gain_db'], float(np.median([h['floor_db'] - r['gain_db'] for h in r['hops'] if b['lo_hz'] - 850e3 <= h['center_hz'] <= b['hi_hz'] + 850e3] or [np.nan])))
+            curve = [(r['gain_db'], float(np.median([h['floor_db'] - r['gain_db'] for h in r['hops'] if b['lo_hz'] - usable <= h['center_hz'] <= b['hi_hz'] + usable] or [np.nan])))
                      for r in ins]
             per.append(dict(name=b['name'], input_noise_db=curve))
         out['bands'] = per
@@ -103,9 +103,9 @@ def main():
     a = sys.argv[1:]
     if len(a) < 2:
         print(__doc__); return 2
-    bands = json.loads(Path(a[a.index('--bands') + 1]).read_text())['bands'] if '--bands' in a else None
+    bj = json.loads(Path(a[a.index('--bands') + 1]).read_text()) if '--bands' in a else {}
     fb = float(a[a.index('--fallback') + 1]) if '--fallback' in a else None
-    res = choose(a[1], bands, fb)
+    res = choose(a[1], bj.get('bands'), fb, usable=float(bj.get('usable_halfwidth_hz', 850e3)))
     Path(a[0]).write_text(json.dumps(res, indent=1, default=float))
     png = a[a.index('--png') + 1] if '--png' in a else str(Path(a[0]).with_suffix('.png'))
     try:

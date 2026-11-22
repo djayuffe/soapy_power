@@ -475,7 +475,7 @@ def summary_page(A, pdf, out, tag):
         ids = I['ids']; nh = I['not_heard']; ct = I.get('control', {})
         conf = [x for x in ids if x['confidence'] != 'frequency-only']; cand = [x for x in ids if x['confidence'] == 'frequency-only']
         head = (f"Identification: {len(conf)} confirmed by Doppler · {len(cand)} frequency-only candidate(s) · {len(I['passes'])} satellites in band above the horizon"
-                f" · {len(nh)} ≥10° not heard · control {ct.get('false_detections', 0)}/{ct.get('searches', 0)} false")
+                f" · {len(nh)} ≥10° not heard · controls {ct.get('false_detections', 0)}/{ct.get('searches', 0)}, stack {I.get('stack_control', {}).get('false_detections', 0)}/{I.get('stack_control', {}).get('searches', 0)} false")
         ids = conf + cand
         body = [f"{x['name']} ({x['norad']}) {x['mode']} {int(x['baud'] or 0)} Bd at {x['f_mhz']:.4f} MHz: {x['confidence']}, offset {x['offset_hz'] / 1e3:+.1f} kHz"
                 + (f", rms {x['rms_hz']:.0f} Hz" if x.get('rms_hz') is not None else '') + f", format {x['format_check']}" for x in ids[:4]]

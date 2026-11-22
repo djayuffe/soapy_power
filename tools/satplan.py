@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """DC-free hop plans for satellite bands (2 MS/s B200, 8192 bins).
 
-  satplan.py PRESET|BANDS.json OUT_bands.json   -> writes bands.json (bands + centres), prints the centres for --centers
+  satplan.py PRESET|BANDS.json OUT_bands.json [--rate MSPS]   -> writes bands.json (bands + centres), prints the centres
+  --rate: sample rate in MS/s (default 2). The trusted half-width scales with it (0.425 x rate: 0.85 MHz at 2 MS/s,
+  measured flat to -1 dB at 0.91 MHz); the DC exclusion stays 100 kHz. Bins for 244 Hz resolution: 4096 x rate.
 
 A hop at centre c is trusted on [c-usable, c-dc] and [c+dc, c+usable] (DC skirt excluded, passband flat).
 A band of width <= usable-dc gets one hop with the band in its upper window. Wider bands get N >= 2 hops
@@ -57,11 +59,19 @@ def plan(bands, usable=USABLE, dc=DC):
 
 
 def main():
-    if len(sys.argv) < 3:
-        print(__doc__); print('presets:', ', '.join(f'{k} ({len(plan(v)["centers_hz"])} hops)' for k, v in PRESETS.items())); return 2
+    a = sys.argv[1:]
+    rate = float(a[a.index('--rate') + 1]) if '--rate' in a else 2.0
+    a = [x for i, x in enumerate(a) if x != '--rate' and (i == 0 or a[i - 1] != '--rate')]
+    if len(a) < 2:
+        print(__doc__)
+        for r in (2, 4, 8):
+            print(f'{r} MS/s:', ', '.join(f'{k} ({len(plan(v, usable=0.425 * r * 1e6)["centers_hz"])} hops)' for k, v in PRESETS.items()))
+        return 2
+    sys.argv = [sys.argv[0]] + a
     src = sys.argv[1]
     bands = PRESETS[src] if src in PRESETS else [(b['name'], b['lo_hz'], b['hi_hz']) for b in json.loads(Path(src).read_text())['bands']]
-    p = plan(bands); p['preset'] = src if src in PRESETS else 'custom'
+    p = plan(bands, usable=0.425 * rate * 1e6); p['preset'] = src if src in PRESETS else 'custom'
+    p['sample_rate_hz'] = rate * 1e6; p['bins'] = int(round(4096 * rate))
     Path(sys.argv[2]).write_text(json.dumps(p, indent=1))
     print(','.join(f'{c / 1e6:.6g}M' for c in p['centers_hz']))
     return 0

@@ -70,8 +70,43 @@ def _band_cache(Bd):
         for x in steady:
             j = int(np.searchsorted(f, x)); D[:, max(0, j - 3):j + 4] = np.nan
         m0 = np.nanmedian(D); s0 = 1.4826 * np.nanmedian(np.abs(D - m0))
-        c = Bd['_gcache'] = dict(thr_base=(m0, s0), t_row=np.nanmedian(S['T'], 1), f=f, fsrc=S['fsrc'], D=D)
+        c = Bd['_gcache'] = dict(thr_base=(m0, s0), t_row=np.nanmedian(S['T'], 1), f=f, fsrc=S['fsrc'], D=D, step=float(np.median(np.diff(f))))
     return c
+
+
+STACK_Z = 7.0         # detection threshold of the Doppler-corrected stack (look-elsewhere over ~49 offsets included)
+
+
+def stacked(A, p, tx, shift=0.0, min_el=5.0):
+    """Doppler-corrected stack: average the residual along the predicted curve over every sweep with the satellite
+    above min_el, for each trial transmitter offset within +-GUIDE_HZ. The top 10 % of rows per offset are dropped
+    (a terrestrial burst crossing the window cannot fake a continuous carrier). z = peak over the spread of the
+    other offsets. Detects steady carriers ~sqrt(N) weaker than the per-sweep search."""
+    f_tx = tx['f_hz'] + shift
+    for Bd in A['bands']:
+        b = Bd['band']
+        if not (b['lo_hz'] <= f_tx <= b['hi_hz']):
+            continue
+        c = _band_cache(Bd); D = c['D']; t = c['t_row']; ok = np.isfinite(t)
+        el = np.full(len(t), -90.0); el[ok] = np.interp(t[ok], p['t'], p['el'])
+        rows = np.flatnonzero(ok & (el > min_el))
+        if len(rows) < 6:
+            return None
+        fp = f_tx * (1 - np.interp(t[rows], p['t'], p['rr']) / sd.C)
+        offs = np.arange(-GUIDE_HZ, GUIDE_HZ + c['step'] / 2, c['step'])
+        idx = np.clip(np.searchsorted(c['f'], fp[:, None] + offs[None, :]), 0, len(c['f']) - 1)
+        lin = 10 ** (D[rows[:, None], idx] / 10)
+        lin = np.sort(np.where(np.isfinite(lin), lin, np.nan), 0)
+        n = np.sum(np.isfinite(lin), 0); keep = np.maximum(1, (n * 0.9).astype(int))
+        prof = np.array([np.nanmean(lin[:k, j]) if n[j] >= 6 else np.nan for j, k in enumerate(keep)])
+        if np.isfinite(prof).sum() < 20:
+            return None
+        k = int(np.nanargmax(prof)); far = np.abs(np.arange(len(offs)) - k) > 4
+        base, spread = np.nanmedian(prof[far]), np.nanstd(prof[far])
+        z = float((prof[k] - base) / spread) if spread > 0 else 0.0
+        return dict(z=z, offset_hz=float(offs[k]), excess_db=float(10 * np.log10(prof[k] / base)), rows=int(len(rows)), n=int(n[k]),
+                    t_first_s=float(t[rows[0]] - A['t_ref']), t_last_s=float(t[rows[-1]] - A['t_ref']))
+    return None
 
 
 def guided(A, p, tx, shift=0.0, k_sigma=5.0):
@@ -215,6 +250,31 @@ def identify(A, satdb_dir=None, qth_path=None):
                 res['guided'].append(dict(norad=p['norad'], name=p['name'], f_mhz=tx['f_hz'] / 1e6, sweeps=len(g), offset_hz=off, peak_db=lv))
                 break
     res['control'] = dict(searches=ctrl_n, false_detections=ctrl_hits, shift_hz=CONTROL_HZ)
+    # Doppler-corrected stacking for every pass still unheard, with the same off-curve control
+    st_n = st_false = 0; res['stacked'] = []
+    for p in preds:
+        if p['norad'] in used:
+            continue
+        for tx in p['transmitters']:
+            if not tx['alive']:
+                continue
+            r = stacked(A, p, tx)
+            if r is None:
+                continue
+            for sh in (CONTROL_HZ, -CONTROL_HZ):
+                cr = stacked(A, p, tx, shift=sh); st_n += 1; st_false += bool(cr and cr['z'] >= STACK_Z)
+            res['stacked'].append(dict(norad=p['norad'], name=p['name'], f_mhz=tx['f_hz'] / 1e6, **r))
+            if r['z'] >= STACK_Z:
+                used.add(p['norad'])
+                Bd = next(B for B in A['bands'] if B['band']['lo_hz'] <= tx['f_hz'] <= B['band']['hi_hz'])
+                same = [q['name'] for q in preds if q['norad'] != p['norad'] and any(abs(x['f_hz'] - tx['f_hz']) < 2 * GUIDE_HZ for x in q['transmitters'])]
+                res['ids'].append(dict(kind='stacked', band=Bd['band']['name'], f_mhz=(tx['f_hz'] + r['offset_hz']) / 1e6, t_start_s=r['t_first_s'], t_end_s=r['t_last_s'],
+                                       observed_format=f"steady carrier in the Doppler-corrected stack (+{r['excess_db']:.2f} dB over {r['rows']} sweeps)", observed_bw_hz=None,
+                                       norad=p['norad'], name=p['name'], transmitter=tx['description'], mode=tx['mode'], baud=tx['baud'], f_tx_hz=tx['f_hz'],
+                                       offset_hz=r['offset_hz'], rms_hz=None, confidence=f"stacked z={r['z']:.1f}" + (' ambiguous: ' + ', '.join(same[:3]) if same else ''),
+                                       alternatives=len(same), format_check='n/a (stack)', peak_db=r['excess_db']))
+                break
+    res['stack_control'] = dict(searches=st_n, false_detections=st_false, threshold_z=STACK_Z)
     for p in preds:
         alive = [x for x in p['transmitters'] if x['alive'] and x['status'] in ('active', '')]
         row = dict(norad=p['norad'], name=p['name'], sat_status=p['sat_status'], max_el=p['max_el'], t_max_el_s=p['t_max_el'] - t_ref,

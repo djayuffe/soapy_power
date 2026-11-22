@@ -137,6 +137,29 @@ class IdentificationTests(unittest.TestCase):
         for name in ('t_passes.csv', 't_p7_identification.png', 't_p8_passes.png'):
             self.assertTrue((out / name).exists(), name)
 
+    def test_weak_steady_carrier_is_found_by_the_doppler_corrected_stack_only(self):
+        import satdb as sd
+        epoch = datetime.datetime(2026, 11, 22, 0, 0, tzinfo=datetime.timezone.utc).timestamp()
+        l1, l2 = _tle(99011, epoch, 97.5, 40.0, 15.2)
+        t = np.arange(epoch, epoch + 86400, 10.0); el = sd.topo(l1, l2, t, self.QTH)[0]
+        tmax = float(t[int(np.nanargmax(np.where(el < 75, el, -90)))]); t_start = tmax - 240
+        tt = np.arange(t_start - 120, t_start + 600, 2.0); rr = sd.topo(l1, l2, tt, self.QTH)[3]
+        f_rx = lambda x: 435.6e6 * (1 - np.interp(x + t_start, tt, rr) / sd.C) - 2200.0
+        d = tempfile.mkdtemp(); self.addCleanup(lambda: __import__('shutil').rmtree(d))
+        db = Path(d) / 'satdb'; db.mkdir()
+        (db / 'tle.json').write_text(json.dumps([dict(name='FAINTSAT', norad=99011, l1=l1, l2=l2)]))
+        (db / 'transmitters.json').write_text(json.dumps([dict(norad_cat_id=99011, downlink_low=435.6e6, mode='CW', alive=True, status='active', description='beacon')]))
+        (db / 'satellites.json').write_text(json.dumps([dict(norad_cat_id=99011, name='FAINTSAT', status='alive')]))
+        (db / 'meta.json').write_text(json.dumps(dict(fetched_utc='2026-11-22T00:00:00+00:00', tle_count=1)))
+        (Path(d) / 'qth.json').write_text(json.dumps(self.QTH))
+        out, s = self.run_tool([(f_rx, -9.5, lambda x: True)], sweeps=120, t_start=t_start, extra=['--qth', str(Path(d) / 'qth.json'), '--satdb', str(db)])
+        I = s['identification']
+        self.assertEqual(s['doppler_tracks'], 0)
+        hit = [i for i in I['ids'] if i['norad'] == 99011]
+        self.assertTrue(hit and hit[0]['kind'] == 'stacked', I['ids'])
+        self.assertAlmostEqual(hit[0]['offset_hz'], -2200, delta=400)
+        self.assertEqual(I['stack_control']['false_detections'], 0)
+
     def test_without_database_report_says_why(self):
         out, s = self.run_tool([(lambda t: 436.2e6, 6, lambda t: True)], sweeps=30)
         self.assertFalse(s['identification']['available'])
