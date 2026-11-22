@@ -363,7 +363,7 @@ RESULT=superscan_plan_failed"; exit 2; }
     GAIN_DB="$SGAIN"; echo "superscan gain fixed $GAIN_DB dB" | tee -a "$LOG" "$SESSION/result.txt"
   fi
   T0=$(date +%s); : > "$OUT"; SEG=0; RC=1
-  while [ "$SEG" -lt 5 ]; do
+  while [ "$SEG" -lt 20 ]; do                    # resumes only after an SDR overflow (8 MS/s: ~1 per 10 min)
     LEFT=$(( SCAN_SECONDS - ( $(date +%s) - T0 ) )); [ "$LEFT" -ge 20 ] || break
     SEG=$(( SEG + 1 ))
     ss_run "$GAIN_DB" "$SESSION/segment-$SEG.jsonl" -e "$LEFT" --deadline-policy finish-hop > "$SESSION/segment-$SEG.err" 2>&1; RC=$?

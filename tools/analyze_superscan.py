@@ -330,6 +330,16 @@ def refine_wide(raw_tracks, S, sig, step, t_ref, wide_hz=2e3):
     return keep
 
 
+def origin_note(A):
+    L = [x for b in A['bands'] for x in b.get('lines', [])]
+    n2 = [x for x in L if len(x.get('views', [])) >= 2]
+    if not n2:
+        return 'Stable lines real vs receiver spur: not decided (each line seen from one LO; use satplan.py --dither).'
+    k = lambda p: sum(x.get('origin', '').startswith(p) for x in L)
+    return (f"Line origin from two LOs per frequency: {k('RF')} RF, {k('LO spur')} LO-related spur, {k('single')} seen from one LO only, "
+            f"{sum('reference harmonic' in x.get('origin', '') for x in L)} at a 10 MHz multiple (B200 reference?) — lines CSV.")
+
+
 def line_origin(lines, Rr, centers, step, dc, usable):
     """RF signal or LO-related spur: look at each persistent line from every hop whose trusted window covers it.
     Present from every covering LO -> RF; from only some -> LO-related spur; a single covering LO -> unverified."""
@@ -452,11 +462,21 @@ def band_figure(A, Bd, out, tag):
             ax.plot(fx / 1e6, t, '-', color=col, lw=1.0, alpha=.6)
         ax.annotate(f"{tr['f_median_hz'] / 1e6:.4f} {tr['kind']} {tr['shift_hz'] / 1e3:+.2f} kHz", (fx[0] / 1e6, t[0]), xytext=(6, -10), textcoords='offset points',
                     fontsize=10.5, color=col, bbox=dict(fc='#070b14cc', ec='none', pad=1.5))
+    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim(); pos = ax.get_position(); W, H = fig.get_size_inches() * 72
+    mhz_pt, s_pt = (x1 - x0) / (pos.width * W), abs(y1 - y0) / (pos.height * H); placed = []
     for q, (lab, tt, ff, heard) in enumerate(sid.predicted_curves(A, Bd['band'])):
         ax.plot(ff / 1e6, tt, ls='-' if heard else ':', color=C_PRED, lw=1.0 if heard else 1.3, alpha=.9)
         if q >= 12 and not heard:                   # label the highest passes only (list on the passes page)
             continue
-        ax.annotate(lab[:26], (ff[-1] / 1e6, tt[-1]), xytext=(3, -2), textcoords='offset points', fontsize=9.5, color=C_PRED, va='top',
+        lab = lab[:26]; lx = ff[-1] / 1e6 + 3 * mhz_pt; w = (len(lab) * 5.6 + 4) * mhz_pt
+        for row in range(5):                        # next free row below the curve's end, else no label
+            ly = tt[-1] - row * 13 * s_pt
+            if not any(abs(ly - py) < 12 * s_pt and lx < px1 and px0 < lx + w for px0, px1, py in placed):
+                break
+        else:
+            continue
+        placed.append((lx, lx + w, ly))
+        ax.annotate(lab, (ff[-1] / 1e6, ly), xytext=(3, -2), textcoords='offset points', fontsize=9.5, color=C_PRED, va='top',
                     bbox=dict(fc='#070b14cc', ec='none', pad=1))
     for w in Bd['wideband']:
         ax.plot([w['f_lo_mhz'], w['f_hi_mhz']], [w['t_s'] + 3.5] * 2, color=C_EVENT, lw=1.6, alpha=.9)
@@ -548,19 +568,20 @@ def summary_page(A, pdf, out, tag):
         ids = I['ids']; nh = I['not_heard']; ct = I.get('control', {})
         conf = [x for x in ids if x['confidence'] != 'frequency-only']; cand = [x for x in ids if x['confidence'] == 'frequency-only']
         head = (f"Identification: {len(conf)} confirmed by Doppler · {len(cand)} frequency-only candidate(s) · {len(I['passes'])} satellites in band above the horizon"
-                f" · {len(nh)} ≥10° not heard · controls {ct.get('false_detections', 0)}/{ct.get('searches', 0)}, stack {I.get('stack_control', {}).get('false_detections', 0)}/{I.get('stack_control', {}).get('searches', 0)} false")
+                f" · {len(nh)} ≥10° not heard")
         ids = conf + cand
         body = [f"{x['name']} ({x['norad']}) {x['mode']} {int(x['baud'] or 0)} Bd at {x['f_mhz']:.4f} MHz: {x['confidence']}, offset {x['offset_hz'] / 1e3:+.1f} kHz"
                 + (f", rms {x['rms_hz']:.0f} Hz" if x.get('rms_hz') is not None else '') + f", format {x['format_check']}" for x in ids[:4]]
         body += [f"not heard: " + ', '.join(f"{p['name']} (max {p['max_el']:.0f}°)" for p in nh[:8])] if nh else []
+        body += [f"false-alarm controls: off-curve {ct.get('false_detections', 0)}/{ct.get('searches', 0)}, stack {I.get('stack_control', {}).get('false_detections', 0)}/{I.get('stack_control', {}).get('searches', 0)}"]
         fig.text(0.04, y, head, fontsize=12.5, fontweight='bold', va='top', color=C_PRED)
         fig.text(0.04, y - 0.028, '\n'.join(textwrap.wrap(' · '.join(body) or 'no observed signal matched a predicted downlink', wrapw)[:4]), fontsize=9.5, va='top', color='#c9d4e6')
         y -= dy + 0.03
-        nd = ('Absolute levels (uncalibrated) and stable lines real vs receiver spur (retune check). Identification uses the SatNOGS transmitter list and TLEs dated '
+        nd = ('Absolute levels (uncalibrated). ' + origin_note(A) + ' Identification uses the SatNOGS transmitter list and TLEs dated '
               + str((I.get('db_meta') or {}).get('fetched_utc', '?'))[:16] + f" and the observer position ({I.get('qth_source', 'unknown source')}); "
               'a confirmed match is a Doppler-curve fit, a frequency-only candidate is a coincidence in frequency; nothing is decoded.')
     else:
-        nd = f"Which satellite a track belongs to: identification not available ({I.get('reason', 'not run')}). Absolute levels (uncalibrated) and stable lines real vs receiver spur (retune check)."
+        nd = f"Which satellite a track belongs to: identification not available ({I.get('reason', 'not run')}). Absolute levels (uncalibrated). " + origin_note(A)
     if A['cfg'].get('dc_exclude_hz', 1e5) < 5e4:
         nd = f"WARNING: DC exclusion {A['cfg'].get('dc_exclude_hz', 0) / 1e3:.0f} kHz < 50 kHz: the receiver DC skirt produces false tracks; use a satplan.py plan. " + nd
     fig.text(0.04, max(y, 0.12), 'Not decided by this data', fontsize=12.5, fontweight='bold', color=ah.C2, va='top')

@@ -78,6 +78,12 @@ def _band_cache(Bd):
 STACK_Z = 7.0         # detection threshold of the Doppler-corrected stack (look-elsewhere over ~49 offsets included)
 
 
+def stack_hit(r, step):
+    """A stack detection: z over threshold, a Doppler excursion of >= 6 bins over the stacked sweeps, and sharper along
+    the curve than any fixed frequency it crosses (otherwise a terrestrial line under a slowly moving curve)."""
+    return bool(r and r['z'] >= STACK_Z and r['doppler_span_hz'] >= 6 * step and r['doppler_gain_db'] > 0.1)
+
+
 def stacked(A, p, tx, shift=0.0, min_el=5.0):
     """Doppler-corrected stack: average the residual along the predicted curve over every sweep with the satellite
     above min_el, for each trial transmitter offset within +-GUIDE_HZ. The top 10 % of rows per offset are dropped
@@ -105,7 +111,14 @@ def stacked(A, p, tx, shift=0.0, min_el=5.0):
         k = int(np.nanargmax(prof)); far = np.abs(np.arange(len(offs)) - k) > 4
         base, spread = np.nanmedian(prof[far]), np.nanstd(prof[far])
         z = float((prof[k] - base) / spread) if spread > 0 else 0.0
+        # a terrestrial line is the same stack WITHOUT the Doppler correction: stack every fixed frequency the curve
+        # passes over (same rows, same trimming); a real carrier is sharper along its curve than at any fixed frequency
+        exc = float(fp.max() - fp.min()); fx = np.arange(fp.min() + offs[k] - 2 * c['step'], fp.max() + offs[k] + 2.5 * c['step'], c['step'])
+        jx = np.clip(np.searchsorted(c['f'], fx), 0, len(c['f']) - 1); lx = np.sort(10 ** (D[rows[:, None], jx[None, :]] / 10), 0)
+        nx = np.sum(np.isfinite(lx), 0); fixed = np.array([np.nanmean(lx[:max(1, int(m * 0.9)), j]) if m >= 6 else np.nan for j, m in enumerate(nx)])
+        fixed_db = float(10 * np.log10(np.nanmax(fixed) / base)) if np.isfinite(fixed).any() else float('-inf')
         return dict(z=z, offset_hz=float(offs[k]), excess_db=float(10 * np.log10(prof[k] / base)), rows=int(len(rows)), n=int(n[k]),
+                    doppler_span_hz=exc, fixed_excess_db=fixed_db, doppler_gain_db=float(10 * np.log10(prof[k] / base)) - fixed_db,
                     t_first_s=float(t[rows[0]] - A['t_ref']), t_last_s=float(t[rows[-1]] - A['t_ref']))
     return None
 
@@ -278,17 +291,18 @@ def identify(A, satdb_dir=None, qth_path=None):
             r = stacked(A, p, tx)
             if r is None:
                 continue
+            stp = next(float(np.median(np.diff(B['S']['f']))) for B in A['bands'] if B['band']['lo_hz'] <= tx['f_hz'] <= B['band']['hi_hz'])
             for sh in (CONTROL_HZ, -CONTROL_HZ):
-                cr = stacked(A, p, tx, shift=sh); st_n += 1; st_false += bool(cr and cr['z'] >= STACK_Z)
-            res['stacked'].append(dict(norad=p['norad'], name=p['name'], f_mhz=tx['f_hz'] / 1e6, **r))
-            if r['z'] >= STACK_Z:
+                cr = stacked(A, p, tx, shift=sh); st_n += 1; st_false += stack_hit(cr, stp)
+            res['stacked'].append(dict(norad=p['norad'], name=p['name'], f_mhz=tx['f_hz'] / 1e6, hit=stack_hit(r, stp), **r))
+            if stack_hit(r, stp):
                 used.add(p['norad'])
                 Bd = next(B for B in A['bands'] if B['band']['lo_hz'] <= tx['f_hz'] <= B['band']['hi_hz'])
                 same = [q['name'] for q in preds if q['norad'] != p['norad'] and any(abs(x['f_hz'] - tx['f_hz']) < 2 * GUIDE_HZ for x in q['transmitters'])]
                 res['ids'].append(dict(kind='stacked', band=Bd['band']['name'], f_mhz=(tx['f_hz'] + r['offset_hz']) / 1e6, t_start_s=r['t_first_s'], t_end_s=r['t_last_s'],
                                        observed_format=f"steady carrier in the Doppler-corrected stack (+{r['excess_db']:.2f} dB over {r['rows']} sweeps)", observed_bw_hz=None,
                                        norad=p['norad'], name=p['name'], transmitter=tx['description'], mode=tx['mode'], baud=tx['baud'], f_tx_hz=tx['f_hz'],
-                                       offset_hz=r['offset_hz'], rms_hz=None, confidence=f"stacked z={r['z']:.1f}" + (' ambiguous: ' + ', '.join(same[:3]) if same else ''),
+                                       offset_hz=r['offset_hz'], rms_hz=None, confidence=f"stacked z={r['z']:.1f}, +{r['doppler_gain_db']:.2f} dB over fixed" + (' ambiguous: ' + ', '.join(same[:3]) if same else ''),
                                        alternatives=len(same), format_check='n/a (stack)', peak_db=r['excess_db']))
                 break
     res['stack_control'] = dict(searches=st_n, false_detections=st_false, threshold_z=STACK_Z)
