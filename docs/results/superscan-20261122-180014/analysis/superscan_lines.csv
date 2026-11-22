@@ -1,0 +1,72 @@
+band,f_mhz,excess_db,width_khz,sweeps_pct
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.40024,2.64,0.49,100
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.38340,2.46,0.49,100
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.57090,2.32,0.49,100
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.35361,2.13,0.49,100
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.47373,1.81,0.49,100
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.34971,1.71,0.24,99
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.32700,1.65,0.49,99
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.27622,1.58,0.49,97
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.54111,1.48,0.49,92
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.58091,1.43,0.49,91
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.53721,1.31,0.24,84
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.53135,1.30,0.49,87
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.14927,1.16,0.24,73
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.64829,1.12,0.24,64
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.09873,1.03,0.24,58
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.29307,0.96,0.49,47
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.57383,0.90,0.24,42
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.15635,0.78,0.24,27
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.82256,5.64,0.73,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.91851,5.22,0.73,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.38262,4.95,0.73,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.25737,4.94,1.22,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.70781,4.76,1.22,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.72651,4.21,0.73,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.80693,3.94,1.22,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.31841,3.75,1.22,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.37944,3.38,1.22,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.19634,2.74,1.22,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.86797,2.59,1.22,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.99004,2.55,1.22,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.58574,2.37,1.22,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.68477,1.99,1.22,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.15825,1.93,1.22,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.92900,1.85,0.98,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.97930,1.74,0.49,97
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.63057,1.73,0.73,100
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.89092,1.59,0.98,99
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.01323,1.43,0.98,97
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.94438,1.39,0.73,92
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.24663,1.38,0.49,95
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.09722,1.37,0.98,95
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.76885,1.37,0.98,95
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.46343,1.37,0.98,97
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.28667,1.22,0.49,89
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.95195,1.10,0.98,79
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.90947,0.92,0.49,52
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.34258,0.91,0.24,53
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.52471,0.90,0.98,53
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.92607,0.90,0.49,54
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.47856,0.87,0.24,47
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.62373,0.84,0.73,42
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.56279,0.84,0.98,43
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.21904,0.82,0.49,44
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.50151,0.80,0.98,40
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.95854,0.78,0.24,37
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.87480,0.73,0.24,28
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.53105,0.71,0.49,31
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.44048,0.71,0.98,28
+"UHF 399.9-403 MHz (space operation / research, commercial CubeSats)",399.99990,21.05,0.98,100
+"UHF 399.9-403 MHz (space operation / research, commercial CubeSats)",401.59990,10.19,0.98,100
+"UHF 399.9-403 MHz (space operation / research, commercial CubeSats)",400.18740,2.83,0.73,100
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),440.00005,20.51,0.73,100
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),430.01641,5.23,0.98,100
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),430.73418,1.21,0.49,77
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),432.46318,0.94,0.24,56
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.19990,0.81,0.24,43
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.33408,0.79,0.49,38
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),430.09746,0.77,0.49,40
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),430.33428,0.69,0.24,31
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),437.49941,0.67,0.49,27
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),438.77236,0.66,0.49,28
