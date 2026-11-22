@@ -22,7 +22,7 @@
 
 ## Across the four runs tonight
 Only one Doppler-confirmed satellite: **KINEIS-2E, 400.6422 MHz** (19:17 run, 3 sweeps, predicted curve moved 0.9 kHz, observed followed by 0.7 kHz, offsets −0.3…−0.1 kHz).
-At 76 dB the receiver is at its noise limit (−186 dB input-referred), and dozens of high passes stay silent — the limit is now the
-antenna/feed line and the satellites' short duty cycles, not the scan.
+At 76 dB the receiver is at its noise limit (−186 dB input-referred), and dozens of high passes stay silent — the limit is most likely the
+antenna/feed line and the satellites' short duty cycles rather than the scan.
 
 Raw JSONL (1.9 GB) is not committed.
