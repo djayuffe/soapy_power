@@ -1,0 +1,118 @@
+{
+ "tag": "superscan",
+ "file": "/mnt/user-data/uploads/soapy_power/sessions/superscan-20261122-131207/superscan.jsonl",
+ "start": "2026-11-22 12:12:11 UTC",
+ "step_hz": 244.140625,
+ "bins": 8192,
+ "hops": 6,
+ "sweeps": 236,
+ "records": 1413,
+ "centers_hz": [
+  136799999.9970198,
+  138200000.0029802,
+  145499999.99999994,
+  435850000.0014903,
+  436600000.00149035,
+  437350000.0014904
+ ],
+ "sample_rate_hz": 2000000.0,
+ "window": "blackman",
+ "segments": 245,
+ "unit": "dB(input power/Hz)",
+ "statuses": [
+  "complete"
+ ],
+ "continuity": [
+  "verified"
+ ],
+ "gain": {
+  "PGA": 20.0
+ },
+ "timing": {
+  "sweep_period_s": 3.8229620456695557,
+  "dwell_s": 0.5043399333953857,
+  "retune_gap_s": {
+   "136.80->138.20": 0.09951460361480713,
+   "138.20->145.50": 0.09948384761810303,
+   "145.50->435.85": 0.1994631290435791,
+   "435.85->436.60": 0.09955310821533203,
+   "436.60->437.35": 0.09942889213562012,
+   "437.35->136.80": 0.19946599006652832
+  },
+  "span_s": 900.3065309524536,
+  "wrap_gap_s": 0.19946599006652832,
+  "max_read_latency_ms": 92.00941608287394
+ },
+ "doppler_tracks": 0,
+ "drift_tracks": 0,
+ "stable_tracks": 0,
+ "persistent_lines": 0,
+ "events": 0,
+ "wideband": 2,
+ "bands": [
+  {
+   "name": "VHF 137-138 MHz (weather sats, CubeSat)",
+   "lo_hz": 137000000,
+   "hi_hz": 138000000,
+   "sigma_db": 0.28067959899902345,
+   "detect_threshold_db": 1.0963381920227004,
+   "hops": [
+    136799999.9970198,
+    138200000.0029802
+   ],
+   "lines": [],
+   "events": [],
+   "wideband": [
+    {
+     "t_s": 30.835654973983765,
+     "sweep": 8,
+     "f_lo_mhz": 137.0,
+     "f_hi_mhz": 137.5,
+     "bins_over_3sigma_pct": 9.321620302586627,
+     "mean_excess_db": 0.10566321927444479,
+     "hop_mhz": null
+    },
+    {
+     "t_s": 195.22322750091553,
+     "sweep": 51,
+     "f_lo_mhz": 137.0,
+     "f_hi_mhz": 137.5,
+     "bins_over_3sigma_pct": 10.297706198145438,
+     "mean_excess_db": 0.08727228980464236,
+     "hop_mhz": null
+    }
+   ],
+   "tracks": []
+  },
+  {
+   "name": "VHF 145.8-146.0 MHz (amateur satellite)",
+   "lo_hz": 145800000,
+   "hi_hz": 146000000,
+   "sigma_db": 0.2808436134338379,
+   "detect_threshold_db": 1.1016337224142023,
+   "hops": [
+    145499999.99999994
+   ],
+   "lines": [],
+   "events": [],
+   "wideband": [],
+   "tracks": []
+  },
+  {
+   "name": "UHF 435-438 MHz (amateur satellite)",
+   "lo_hz": 435000000,
+   "hi_hz": 438000000,
+   "sigma_db": 0.2796842010498047,
+   "detect_threshold_db": 1.095665844463725,
+   "hops": [
+    435850000.0014903,
+    436600000.00149035,
+    437350000.0014904
+   ],
+   "lines": [],
+   "events": [],
+   "wideband": [],
+   "tracks": []
+  }
+ ]
+}

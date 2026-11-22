@@ -351,9 +351,10 @@ def band_figure(A, Bd, out, tag):
     fig = plt.figure(figsize=(24, 13.5), dpi=150)
     nd = sum(t['kind'] == 'doppler' for t in Bd['tracks'])
     fig.text(0.035, 0.965, name, fontsize=28, fontweight='bold', va='top')
-    fig.text(0.035, 0.92, f"{A['info']['sweeps']} sweeps · revisit {A['timing']['sweep_period_s']:.2f} s · start {A['start']} · native {A['info']['step_hz']:.0f} Hz bins · "
-             f"residual (3-bin power average, no time smoothing so Doppler is not smeared), max per pixel · {len(Bd['lines'])} persistent lines · "
-             f"{nd} LEO-Doppler-like tracks · {len(Bd['events'])} intermittent emissions · {len(Bd['wideband'])} wideband transients", fontsize=12.5, color='#8fa0bd', va='top')
+    fig.text(0.035, 0.925, f"{A['info']['sweeps']} sweeps · revisit {A['timing']['sweep_period_s']:.2f} s · start {A['start']} · native {A['info']['step_hz']:.0f} Hz bins · "
+             f"residual (3-bin power average, no time smoothing so Doppler is not smeared), max per pixel\n"
+             f"{len(Bd['lines'])} persistent lines · {nd} LEO-Doppler-like tracks · {len(Bd['events'])} intermittent emissions · {len(Bd['wideband'])} wideband transients · "
+             "hops " + ', '.join(f"{A['centers'][h] / 1e6:.2f}" for h in S['hops']) + " MHz", fontsize=12.5, color='#8fa0bd', va='top', linespacing=1.5)
     ax0 = fig.add_axes([0.05, 0.745, 0.895, 0.13])
     ax0.plot(f, Bd['mres'], color=ah.C4, lw=.6); ax0.axhline(0, color='#8fa0bd', lw=.5)
     ax0.set_xlim(f[0], f[-1]); ax0.set_xticklabels([]); ax0.set_ylabel('dB, run\nmean', fontsize=12)

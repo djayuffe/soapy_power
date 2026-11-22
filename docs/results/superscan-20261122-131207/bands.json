@@ -1,0 +1,4 @@
+{"dc_exclude_hz": 100000, "usable_halfwidth_hz": 850000,
+ "bands": [{"name": "VHF 137-138 MHz (weather sats, CubeSat)", "lo_hz": 137000000, "hi_hz": 138000000},
+           {"name": "VHF 145.8-146.0 MHz (amateur satellite)", "lo_hz": 145800000, "hi_hz": 146000000},
+           {"name": "UHF 435-438 MHz (amateur satellite)", "lo_hz": 435000000, "hi_hz": 438000000}]}
