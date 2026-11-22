@@ -328,6 +328,14 @@ class JsonWriter(BaseWriter):
         details = metadata() if callable(metadata) else metadata
         if isinstance(details, dict) and 'bin_width_hz' in details:
             step = details['bin_width_hz']
+        # Convert the whole vector in one C call, then patch only the few
+        # non-finite bins. Per-element numpy.isfinite() held the GIL long
+        # enough to starve the RX thread on large FFT sizes.
+        power_values = numpy.asarray(power, dtype=numpy.float64).tolist()
+        finite = numpy.isfinite(power)
+        if not bool(finite.all()):
+            for index in numpy.flatnonzero(~finite):
+                power_values[int(index)] = None
         record = {
             'version': 2, 'time_start': time_start.isoformat(), 'time_stop': time_stop.isoformat(),
             'start_hz': float(freqs[0]), 'stop_hz': float(freqs[-1] + step), 'step_hz': float(step),
@@ -336,7 +344,7 @@ class JsonWriter(BaseWriter):
             'coverage_stop_hz': float(freqs[0] + (len(freqs) - 0.5) * step),
             'estimated_bins': details.get('estimated_bins', []) if isinstance(details, dict) else [],
             'samples': int(samples), 'unit': self.unit,
-            'power': [float(value) if numpy.isfinite(value) else None for value in power],
+            'power': power_values,
             'masked_bins': numpy.flatnonzero(numpy.isnan(power)).tolist(),
             'zero_power_bins': (numpy.flatnonzero(numpy.isneginf(power)).tolist() if self._log_scale
                                 else numpy.flatnonzero(power == 0).tolist()),

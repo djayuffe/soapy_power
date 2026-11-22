@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, time, datetime, math, logging, signal
+import sys, time, datetime, math, logging, signal, gc, collections
 
 import numpy
 import simplesoapy
@@ -38,6 +38,7 @@ def install_signal_handlers():
 
 class SoapyPower:
     """SoapySDR spectrum analyzer"""
+    _acquisition_stage = 'idle'  # class default: _read_chunk reads it before any acquisition has started
     def __init__(self, soapy_args='', sample_rate=2.00e6, bandwidth=0, corr=0, gain=20.7,
                  auto_gain=False, channel=0, antenna='', settings=None,
                  force_sample_rate=False, force_bandwidth=False,
@@ -61,6 +62,12 @@ class SoapyPower:
             gain=None, auto_gain=False, channel=channel, antenna=antenna, settings=settings,
             force_sample_rate=force_sample_rate, force_bandwidth=force_bandwidth
         )
+        compact = ''.join(str(soapy_args or '').split()).lower()
+        if 'driver=uhd' in compact and 'num_recv_frames' not in compact:
+            # UHD sizes its host receive ring when the device is opened (device string, NOT --stream-args).
+            # The default (~16 frames, ~31 ms) overflows on any host stall longer than that.
+            logger.info('UHD device string has no num_recv_frames: the default host ring (~31 ms) can overflow on '
+                        'host stalls; consider -d "%s,num_recv_frames=512" (device-open argument)', soapy_args)
         if self._stream_args:
             # Use the binding's native map. Some SWIG/Python combinations lose
             # values when a Python dict is passed directly to setupStream().
@@ -352,6 +359,7 @@ class SoapyPower:
             settling_model=validate_settling(settling_model)
         self._settling_model = settling_model
         self._read_latencies = []
+        self._init_rx_diagnostics()
         self._read_errors = {}
         self._host_reads = 0
         self._gain_cache = {}
@@ -409,12 +417,21 @@ class SoapyPower:
             self._writer.nonblocking = True
             logger.info('FFT bin spacing: %.8g Hz; window ENBW: %.8g Hz (%.6g bins)',
                         self._psd.bin_width, self._psd.enbw, self._psd.enbw / self._psd.bin_width)
+            if not self._gc_observing:
+                gc.callbacks.append(self._gc_observe)
+                self._gc_observing = True
         except BaseException:
             self.stop()
             raise
 
     def stop(self, cancel=False):
         """Stop streaming samples from device and delete samples buffer"""
+        if getattr(self, '_gc_observing', False):
+            try:
+                gc.callbacks.remove(self._gc_observe)
+            except ValueError:
+                pass
+            self._gc_observing = False
         psd_worker, output_writer = self._psd, self._writer
         self._bins = None
         self._repeats = None
@@ -441,6 +458,48 @@ class SoapyPower:
                         if not cancel:
                             raise
 
+    def _init_rx_diagnostics(self):
+        """(Re)create RX gap / GC / settle-overflow counters; also called lazily so _read_chunk works on bare objects."""
+        self._read_latency_max_ms = 0.0
+        self._diagnostic_started = time.monotonic()
+        self._previous_read_end = None
+        self._rx_gap_warn_ms = 10.0
+        self._rx_gaps = collections.deque(maxlen=4096)
+        self._rx_gap_max_ms = 0.0
+        self._rx_gap_last_ms = None
+        self._rx_gap_count = 0
+        self._measurement_rx_gaps = collections.deque(maxlen=4096)
+        self._measurement_rx_gap_max_ms = 0.0
+        self._measurement_read_latency_max_ms = 0.0
+        self._gc_pause_max_ms = 0.0
+        self._gc_pause_last_ms = None
+        self._gc_pause_count = 0
+        self._gc_pause_started = None
+        self._gc_observing = False
+        self._settle_overflow_count = 0
+        self._settle_burst_end_count = 0
+        self._settle_finished = time.monotonic()
+        self._measurement_start_gap_ms = 0.0
+
+    def _gc_observe(self, phase, info):
+        """Record stop-the-world GC pauses that can starve the RX loop."""
+        if phase == 'start':
+            self._gc_pause_started = time.monotonic()
+            return
+        started = getattr(self, '_gc_pause_started', None)
+        if started is None:
+            return
+        self._gc_pause_started = None
+        elapsed_ms = max(0.0, (time.monotonic() - started) * 1000.0)
+        self._gc_pause_last_ms = elapsed_ms
+        if elapsed_ms >= self._rx_gap_warn_ms:
+            self._gc_pause_count += 1
+            self._gc_pause_max_ms = max(self._gc_pause_max_ms, elapsed_ms)
+            if self._gc_pause_count <= 20:
+                logger.warning('Python GC pause: %.3f ms at +%.3f s (generation %s, collected %s)',
+                               elapsed_ms, time.monotonic() - self._diagnostic_started,
+                               info.get('generation'), info.get('collected'))
+
     def _cancelled(self):
         if self._writer is not None:
             self._writer.check_error()
@@ -453,6 +512,8 @@ class SoapyPower:
         directly, preserving unused samples when a short packet ends a chunk.
         """
         constants = simplesoapy.SoapySDR
+        if not hasattr(self, '_rx_gaps'):
+            self._init_rx_diagnostics()
         if not hasattr(self, '_tracker'):
             self._reset_packet_state()
         position = 0
@@ -466,21 +527,64 @@ class SoapyPower:
             self._read_tail = self._read_tail[count:]
             position = count
         while position < len(output) and not self._cancelled() and not self._burst_ended:
-            read_started=time.monotonic()
+            now = time.monotonic()
+            previous = self._previous_read_end
+            if previous is not None:
+                gap_ms = max(0.0, (now - previous) * 1000.0)
+                self._rx_gaps.append(gap_ms)
+                self._rx_gap_last_ms = gap_ms
+                self._rx_gap_max_ms = max(self._rx_gap_max_ms, gap_ms)
+                if self._acquisition_stage == 'measurement':
+                    self._measurement_rx_gaps.append(gap_ms)
+                    self._measurement_rx_gap_max_ms = max(self._measurement_rx_gap_max_ms, gap_ms)
+                if gap_ms >= self._rx_gap_warn_ms:
+                    self._rx_gap_count += 1
+                    if self._rx_gap_count <= 20:
+                        logger.warning('RX scheduling gap: %.3f ms at +%.3f s during %s',
+                                       gap_ms, now - self._diagnostic_started,
+                                       getattr(self, '_acquisition_stage', 'unknown'))
+                    elif self._rx_gap_count == 21:
+                        logger.warning('RX scheduling gaps >= %.1f ms: further messages suppressed',
+                                       self._rx_gap_warn_ms)
+            read_started = now
             try:
                 result = self.device.read_stream()
             except BaseException:
                 self._read_errors['exception']=self._read_errors.get('exception',0)+1
                 raise
             finally:
-                self._read_latencies.append(max(0,time.monotonic()-read_started)*1000)
+                read_finished = time.monotonic()
+                self._previous_read_end = read_finished
+                read_ms = max(0, read_finished - read_started) * 1000
+                self._read_latency_max_ms = max(self._read_latency_max_ms, read_ms)
+                if self._acquisition_stage == 'measurement':
+                    self._measurement_read_latency_max_ms = max(
+                        self._measurement_read_latency_max_ms, read_ms)
+                self._read_latencies.append(read_ms)
                 if len(self._read_latencies)>256:del self._read_latencies[0]
             self._host_reads+=1
             if result.ret<=0:self._read_errors[str(result.ret)]=self._read_errors.get(str(result.ret),0)+1
             count = result.ret
             if count == constants.SOAPY_SDR_OVERFLOW:
                 self.device.buffer_overflow_count += 1
-                raise RuntimeError('SDR overflow: samples were dropped; refusing discontinuous IQ')
+                stage = getattr(self, '_acquisition_stage', 'unknown')
+                if stage == 'measurement' and self._measurement_rx_gaps:
+                    gaps = self._measurement_rx_gaps
+                    gap_max = self._measurement_rx_gap_max_ms
+                    read_max = self._measurement_read_latency_max_ms
+                else:
+                    gaps = self._rx_gaps
+                    gap_max = self._rx_gap_max_ms
+                    read_max = self._read_latency_max_ms
+                detail = ''
+                if gaps:
+                    previous_read = (self._read_latencies[-2] if len(self._read_latencies) > 1
+                                     else self._read_latencies[-1])
+                    detail = (' (stage {}, last gap {:.3f} ms, p99 gap {:.3f} ms, max gap {:.3f} ms, '
+                              'last read {:.3f} ms, previous read {:.3f} ms, max read {:.3f} ms)').format(
+                        stage, self._rx_gap_last_ms, float(numpy.percentile(gaps, 99)),
+                        gap_max, self._read_latencies[-1], previous_read, read_max)
+                raise RuntimeError('SDR overflow: samples were dropped; refusing discontinuous IQ' + detail)
             if count <= 0:
                 raise RuntimeError('SDR read failed or timed out: {}'.format(count))
             if count > len(self.device.buffer):
@@ -516,7 +620,16 @@ class SoapyPower:
         self._time_last = shifted(first, count - 1)
 
     def _settle(self, tuned_at):
+        """Discard samples until the receiver has settled.
+
+        Settling IQ never enters a PSD. A transport overflow here therefore
+        cannot corrupt the measurement; it only proves that the host ring
+        filled while the receiver was being tuned. Restart the settle window
+        so measurement begins with a complete run of continuous samples.
+        """
         discarded = 0
+        window_samples = 0
+        window_started = tuned_at
         while True:
             locked = True
             if self._lock_sensor:
@@ -531,20 +644,44 @@ class SoapyPower:
                     raise ValueError('requested motherboard reference-lock sensor is unavailable')
                 locked = locked and str(value).strip().lower() in ('true', '1', 'yes', 'locked')
             now = time.monotonic()
-            if discarded >= self._settle_samples and now >= tuned_at + self._active_tune_delay and locked:
+            if (window_samples >= self._settle_samples
+                    and now >= window_started + self._active_tune_delay and locked):
                 break
             if self._cancelled():
+                self._settle_finished = time.monotonic()
                 return discarded
             if now - tuned_at >= max(self._active_tune_delay, self._lock_timeout):
                 raise RuntimeError('tuning settle timeout')
-            count = self._read_chunk(self._buffer)
+            try:
+                count = self._read_chunk(self._buffer)
+            except RuntimeError as error:
+                if 'SDR overflow' not in str(error):
+                    raise
+                self._settle_overflow_count += 1
+                if self._settle_overflow_count <= 20:
+                    logger.warning('SDR overflow during settling; restarting settle window')
+                count = 0
+                self._burst_ended = False
+                self._read_tail = numpy.empty(0, dtype=numpy.complex64)
+                self._reset_packet_state()
+                window_samples = 0
+                window_started = time.monotonic()
             discarded += count
+            window_samples += count
             if self._burst_ended:
-                raise RuntimeError('burst ended during settling')
+                self._settle_burst_end_count += 1
+                if self._settle_burst_end_count <= 20:
+                    logger.warning('Burst boundary during settling; restarting settle window')
+                self._burst_ended = False
+                self._read_tail = numpy.empty(0, dtype=numpy.complex64)
+                self._reset_packet_state()
+                window_samples = 0
+                window_started = time.monotonic()
         discarded += int(self._read_tail.size)
         # Settle samples and their clock anchors never form part of a PSD.
         self._read_tail = numpy.empty(0, dtype=numpy.complex64)
         self._reset_packet_state()
+        self._settle_finished = time.monotonic()
         return discarded
 
     def psd(self, freq):
@@ -672,10 +809,11 @@ class SoapyPower:
             self.device.start_stream(buffer_size=self._base_buffer_size)
         if self._receiver_profile is not None:
             self._frontend.apply_corrections()
-        # Settling starts after all synchronous tuning/correction operations,
-        # including stream reactivation; their latency is not settling time.
-        self._acquisition_stage = 'settling'
-        settled_samples = self._settle(time.monotonic())
+        # Read back the tuned state and apply profile corrections BEFORE the
+        # final settle. Driver readbacks can take tens of milliseconds while
+        # the RX stream is not being drained; doing them between the settle and
+        # measurement lets the device ring overflow, and the first measurement
+        # read then reports dropped IQ.
         if not math.isclose(finite(self.device.sample_rate, 'actual sample rate', positive=True),
                             self._psd._sample_rate, rel_tol=1e-12, abs_tol=1e-9):
             raise RuntimeError('SDR sample rate changed after DSP setup')
@@ -693,7 +831,6 @@ class SoapyPower:
                 if correction != self._frontend.manual_dc:
                     self._frontend.manual_dc = correction
                     self._frontend.apply_corrections()
-                    settled_samples += self._settle(time.monotonic())
         context = self.measurement_context() if self._need_context else None
         if self._calibration is not None:
             self._calibration.validate_context(context)
@@ -712,7 +849,17 @@ class SoapyPower:
             self._coverage_request = (lo, hi, max(previous or actual_hi, actual_hi))
         before_rf = rf_state.observe(self._frontend,self._telemetry) if self._observe_rf_state else None
         if self._telemetry is not None:self._telemetry.require_valid(before_rf)
+        # Settling is the last operation before measurement: it drains the
+        # device ring after all tuning, correction and readback work.
+        self._acquisition_stage = 'settling'
+        self._previous_read_end = None
+        settled_samples = self._settle(time.monotonic())
         self._acquisition_stage = 'measurement'
+        self._previous_read_end = None
+        self._measurement_start_gap_ms = max(0.0, (time.monotonic() - self._settle_finished) * 1000.0)
+        self._measurement_rx_gaps.clear()
+        self._measurement_rx_gap_max_ms = 0.0
+        self._measurement_read_latency_max_ms = 0.0
         start = stop = None
         self._acquired_samples = 0
         while (self._acquired_samples < self._target_samples and not self._cancelled() and
@@ -785,6 +932,22 @@ class SoapyPower:
         self._last_integrity['host_io']=dict(read_calls=self._host_reads,error_counts=dict(self._read_errors),
             read_latency_median_ms=float(numpy.median(self._read_latencies)) if self._read_latencies else None,
             read_latency_p95_ms=float(numpy.percentile(self._read_latencies,95)) if self._read_latencies else None,
+            read_latency_max_ms=float(self._read_latency_max_ms),
+            measurement_read_latency_max_ms=float(self._measurement_read_latency_max_ms),
+            measurement_start_gap_ms=float(getattr(self, '_measurement_start_gap_ms', 0.0)),
+            rx_scheduling_gap_max_ms=float(self._rx_gap_max_ms),
+            rx_scheduling_gap_p95_ms=float(numpy.percentile(self._rx_gaps,95)) if self._rx_gaps else None,
+            rx_scheduling_gap_p99_ms=float(numpy.percentile(self._rx_gaps,99)) if self._rx_gaps else None,
+            measurement_rx_scheduling_gap_max_ms=float(self._measurement_rx_gap_max_ms),
+            measurement_rx_scheduling_gap_p99_ms=(float(numpy.percentile(self._measurement_rx_gaps,99))
+                                                  if self._measurement_rx_gaps else None),
+            rx_scheduling_gap_last_ms=(None if self._rx_gap_last_ms is None else float(self._rx_gap_last_ms)),
+            rx_scheduling_gap_count=int(self._rx_gap_count),
+            gc_pause_max_ms=float(self._gc_pause_max_ms),
+            gc_pause_last_ms=(None if self._gc_pause_last_ms is None else float(self._gc_pause_last_ms)),
+            gc_pause_count=int(self._gc_pause_count),
+            settle_overflow_count=int(self._settle_overflow_count),
+            settle_burst_end_count=int(self._settle_burst_end_count),
             usb_packet_count_observed=False)
         if self._require_timestamps and clock['continuity'] != 'verified':
             raise RuntimeError('hardware timestamp continuity is not verified')

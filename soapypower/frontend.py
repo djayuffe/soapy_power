@@ -179,12 +179,23 @@ class Frontend:
             info['soapypower_native_stream'] = {'status': 'unavailable_python_binding',
                                                'requested_format': 'CF32'}
         if native is not None:
-            if (not isinstance(native, (tuple, list)) or len(native) != 2
-                    or not isinstance(native[0], str) or not native[0].strip()):
+            if hasattr(native, 'format') and hasattr(native, 'fullScale'):
+                native_format = native.format
+                native_scale = native.fullScale
+            elif isinstance(native, (tuple, list)) and len(native) == 2:
+                native_format, native_scale = native
+            else:
                 raise ValueError('invalid native stream format/full-scale readback')
-            full_scale = finite(native[1], 'native full-scale', positive=True)
-            info['soapypower_native_stream'] = {'format': native[0], 'full_scale': full_scale,
-                                               'requested_format': 'CF32'}
+
+            if not isinstance(native_format, str) or not native_format.strip():
+                raise ValueError('invalid native stream format/full-scale readback')
+
+            full_scale = finite(native_scale, 'native full-scale', positive=True)
+            info['soapypower_native_stream'] = {
+                'format': native_format,
+                'full_scale': full_scale,
+                'requested_format': 'CF32'
+            }
         chain=self.native_chain()
         if chain['status']=='ok':
             from soapypower.filter_model import validate_chain
