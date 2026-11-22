@@ -188,6 +188,14 @@ def on_signal(A, hits, period, tol=6e3):
     return False
 
 
+def doppler_discriminates(g, step):
+    """Do guided hits test the Doppler curve? The prediction must move >= 2 bins across the hits and the offsets
+    (observed - predicted) must scatter clearly less than the observed frequencies themselves; otherwise a fixed
+    transmitter (e.g. a ground station on the satellite's simplex frequency) fits just as well."""
+    off = np.array([h[3] for h in g]); fo = np.array([h[2] for h in g])
+    return bool(np.ptp(fo - off) >= 2 * step and np.std(off) <= 0.6 * np.std(fo))
+
+
 def identify(A, satdb_dir=None, qth_path=None):
     step = A['info']['step_hz']; period = A['timing']['sweep_period_s']; t_ref = A['t_ref']
     # observed format for every non-trivial track and event (works without a database)
@@ -292,7 +300,10 @@ def identify(A, satdb_dir=None, qth_path=None):
                 else:
                     ctrl_hits += bool(c)
             if g:
-                used.add(p['norad']); off = float(np.median([h[3] for h in g])); lv = float(max(h[4] for h in g))
+                disc = doppler_discriminates(g, step)
+                if disc:
+                    used.add(p['norad'])
+                off = float(np.median([h[3] for h in g])); lv = float(max(h[4] for h in g))
                 rows = [h[0] for h in g]; Bd = next(B for B in A['bands'] if B['band']['lo_hz'] <= tx['f_hz'] <= B['band']['hi_hz'])
                 cols = [int(np.argmin(np.abs(Bd['S']['fsrc'] - h[2]))) for h in g]
                 fmt = {k: v for k, v in measure_format(Bd['S'], rows, cols, Bd['sig'], step, len(g) / max(1, len(hits) + 1)).items() if k != 'profile'}
@@ -300,13 +311,34 @@ def identify(A, satdb_dir=None, qth_path=None):
                 res['ids'].append(dict(kind='guided', band=Bd['band']['name'], f_mhz=g[0][2] / 1e6, t_start_s=min(h[1] for h in g), t_end_s=max(h[1] for h in g),
                                        observed_format=fmt['cls'], observed_bw_hz=fmt['bw_hz'], norad=p['norad'], name=p['name'], transmitter=tx['description'],
                                        mode=tx['mode'], baud=tx['baud'], f_tx_hz=tx['f_hz'], offset_hz=off, rms_hz=float(np.std([h[3] for h in g])),
-                                       confidence=f"guided ({len(g)} sweeps)" + (' ambiguous: ' + ', '.join(same[:3]) if same else ''), alternatives=len(same),
+                                       confidence=(f"guided ({len(g)} sweeps)" + (' ambiguous: ' + ', '.join(same[:3]) if same else '')) if disc else 'frequency-only',
+                                       note='' if disc else f'{len(g)} guided hits, but the predicted Doppler is too flat across them to exclude a fixed transmitter',
+                                       hits=[(round(h[1], 1), round(h[2]), round(h[3])) for h in g], alternatives=len(same),
                                        format_check=sd.format_consistency(tx, fmt['bw_hz'], step), peak_db=lv))
-                res['guided'].append(dict(norad=p['norad'], name=p['name'], f_mhz=tx['f_hz'] / 1e6, sweeps=len(g), offset_hz=off, peak_db=lv))
+                res['guided'].append(dict(norad=p['norad'], name=p['name'], f_mhz=tx['f_hz'] / 1e6, sweeps=len(g), offset_hz=off, peak_db=lv, discriminating=disc))
                 break
     res['control'] = dict(searches=ctrl_n, false_detections=ctrl_hits, on_detected_signal=ctrl_sig, shift_hz=CONTROL_HZ)
+    # one signal, one satellite: guided results sharing hits keep the best (Doppler-tested, most sweeps, smallest offset)
+    G = [i for i in res['ids'] if i['kind'] == 'guided']
+    rank = lambda i: (i['confidence'] != 'frequency-only', len(i['hits']), -abs(i['offset_hz']))
+    drop = set()
+    for i in sorted(G, key=rank, reverse=True):
+        if id(i) in drop:
+            continue
+        cells = {(t, round(f / (2 * step))) for t, f, _ in i['hits']}
+        for j in G:
+            if j is not i and id(j) not in drop and cells & {(t, round(f / (2 * step))) for t, f, _ in j['hits']}:
+                drop.add(id(j)); i.setdefault('same_signal', []).append(j['name'])
+    res['ids'] = [i for i in res['ids'] if id(i) not in drop]
+    for i in G:
+        if i.get('same_signal'):
+            alt = 'same hits also fit: ' + ', '.join(i['same_signal'][:3])
+            if i['confidence'] == 'frequency-only':
+                i['note'] = (i['note'] + '; ' + alt).strip('; ')
+            else:
+                i['confidence'] += ' · ' + alt
     # a Doppler-confirmed (guided) identification explains the frequency-only candidates it overlaps
-    gids = [i for i in res['ids'] if i['kind'] == 'guided']
+    gids = [i for i in res['ids'] if i['kind'] == 'guided' and i['confidence'] != 'frequency-only']
     res['ids'] = [i for i in res['ids'] if not (i['kind'] == 'event' and any(
         g['norad'] == i['norad'] or (abs(g['f_mhz'] - i['f_mhz']) < 6e-3 and g['t_start_s'] - period <= i['t_end_s'] and i['t_start_s'] <= g['t_end_s'] + period) for g in gids))]
     for Bd in A['bands']:
@@ -341,7 +373,7 @@ def identify(A, satdb_dir=None, qth_path=None):
                                        alternatives=len(same), format_check='n/a (stack)', peak_db=r['excess_db']))
                 break
     res['stack_control'] = dict(searches=st_n, false_detections=st_false, threshold_z=STACK_Z)
-    cand = {i['norad'] for i in res['ids'] if i['kind'] == 'event'}
+    cand = {i['norad'] for i in res['ids'] if i['confidence'] == 'frequency-only'}
     for p in preds:
         alive = [x for x in p['transmitters'] if x['alive'] and x['status'] in ('active', '')]
         row = dict(norad=p['norad'], name=p['name'], sat_status=p['sat_status'], max_el=p['max_el'], t_max_el_s=p['t_max_el'] - t_ref,

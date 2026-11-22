@@ -101,6 +101,17 @@ except Exception:
 
 @unittest.skipUnless(HAVE and HAVE_SGP4, 'needs matplotlib, scipy and sgp4')
 class ControlTests(unittest.TestCase):
+    def test_guided_hits_must_follow_a_moving_curve(self):
+        import superscan_id as sid
+        step = 244.140625
+        kineis = [(76, 478.0, 400642236.0, -3751.0, 1.5), (77, 484.0, 400641992.0, -3750.0, 1.6), (78, 491.0, 400641504.0, -3975.0, 1.5)]
+        flat = [(278, 1736.0, 145827197.0, -837.0, 1.2), (279, 1742.0, 145828418.0, 400.0, 1.3), (282, 1761.0, 145826953.0, -1007.0, 1.7),
+                (288, 1798.0, 145829395.0, 1586.0, 1.3)]                         # curve moves 230 Hz: a fixed uplink fits as well
+        self.assertTrue(sid.doppler_discriminates(kineis, step))
+        self.assertFalse(sid.doppler_discriminates(flat, step))
+        fixed = [(k, 10.0 * k, 145.828e6, 145.828e6 - (145.828e6 - 3e3 + 300.0 * k), 2.0) for k in range(5)]   # curve moves 1.2 kHz, source does not
+        self.assertFalse(sid.doppler_discriminates(fixed, step))
+
     def test_control_curve_crossing_a_detected_signal_is_not_a_noise_false_alarm(self):
         import superscan_id as sid
         A = dict(bands=[dict(band=dict(lo_hz=399.9e6, hi_hz=403e6), events=[dict(f_mhz=400.642, t_start_s=478.0, t_end_s=484.0)],
