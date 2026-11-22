@@ -8,3 +8,9 @@ Device string: driver=uhd,type=b200,serial=30B2A32,num_recv_frames=512. -r 2M -b
 - host I/O: max read 75 ms, max RX scheduling gap 31 ms, GC pause max 0 ms, no read errors
 - last sweep: strongest bin 148.247 MHz at -125.3 dB (relative), median -134.7 dB
 Raw jsonl stays in sessions/ (gitignored).
+
+## Analysis
+
+`analysis/hopscan_analysis.pdf` (10 pages), `hopscan_summary.json`, `hopscan_candidates.csv`.
+Regenerate: `python3 tools/analyze_hopscan.py scan_140_150.jsonl OUTDIR --tag hopscan`.
+Note: the 148.247 MHz peak seen earlier is the receiver DC-artifact skirt at the 148.25 MHz hop centre, not a signal.
