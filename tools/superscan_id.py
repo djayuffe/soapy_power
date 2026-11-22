@@ -7,6 +7,7 @@ identify(A, satdb_dir, qth) adds to A:
 Matching: observed f(t) vs predicted f_tx*(1 - range_rate/c) of every in-band transmitter of every
 satellite above the horizon, allowing a constant transmitter offset (see satdb.match_track)."""
 import json, math
+import warnings
 from pathlib import Path
 import numpy as np
 import satdb as sd
@@ -162,13 +163,15 @@ def identify(A, satdb_dir=None, qth_path=None):
     # observed format for every non-trivial track and event (works without a database)
     for Bd in A['bands']:
         S = Bd['S']
+        with warnings.catch_warnings():              # an incomplete sweep's row has no time stamp at all
+            warnings.simplefilter('ignore', RuntimeWarning); Trow = np.nanmedian(S['T'], 1)
         for tr in Bd['tracks']:
-            t, fx = tr['points']; rows = [int(np.argmin(np.abs(S['T'][:, 0] - t_ref - x))) for x in t]
+            t, fx = tr['points']; rows = [int(np.nanargmin(np.abs(Trow - t_ref - x))) for x in t]
             cols = [int(np.argmin(np.abs(S['fsrc'] - f))) for f in fx]
             span = max(t.max() - t.min(), period); duty = min(1.0, len(t) / (span / period + 1))
             tr['format'] = {k: v for k, v in measure_format(S, rows, cols, Bd['sig'], step, duty).items() if k != 'profile'}
         for e in Bd['events']:
-            r0 = int(np.argmin(np.abs(S['T'][:, 0] - t_ref - e['t_start_s']))); r1 = int(np.argmin(np.abs(S['T'][:, 0] - t_ref - e['t_end_s'])))
+            r0 = int(np.nanargmin(np.abs(Trow - t_ref - e['t_start_s']))); r1 = int(np.nanargmin(np.abs(Trow - t_ref - e['t_end_s'])))
             rows = list(range(r0, r1 + 1)); c = int(np.argmin(np.abs(S['fsrc'] - e['f_mhz'] * 1e6)))
             e['format'] = {k: v for k, v in measure_format(S, rows, [c] * len(rows), Bd['sig'], step, 1.0).items() if k != 'profile'}
     res = dict(available=False, reason='', passes=[], ids=[], not_heard=[], db_meta=None)

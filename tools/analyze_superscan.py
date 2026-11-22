@@ -271,7 +271,10 @@ def events(S, sig, lines, tracks, t_ref):
         rr, cc = np.unravel_index(np.nanargmax(sub), sub.shape); j = sl[1].start + cc; fj = S['fsrc'][j]
         if len(lf) and np.min(abs(lf - fj)) < 1500:
             continue
-        t0 = float(np.nanmin(S['T'][sl[0].start, sl[1]]) - t_ref); t1 = float(np.nanmax(S['T'][sl[0].stop - 1, sl[1]]) - t_ref)
+        Ts = S['T'][sl]                              # rows of an incomplete sweep have no time stamp
+        if not np.isfinite(Ts).any():
+            continue
+        t0 = float(np.nanmin(Ts) - t_ref); t1 = float(np.nanmax(Ts) - t_ref)
         in_track = any(tr['t_start_s'] - 5 <= t0 <= tr['t_end_s'] + 5 and abs(np.interp(t0, [tr['t_start_s'], tr['t_end_s']], [tr['f_first_hz'], tr['f_last_hz']]) - fj) < 5e3 for tr in tracks)
         out.append(dict(f_mhz=float(fj / 1e6), t_start_s=t0, t_end_s=t1, peak_db=float(np.nanmax(sub)), sweeps=int(sl[0].stop - sl[0].start),
                         width_khz=float((sl[1].stop - sl[1].start) * np.median(np.diff(S['f'])) / 1e3), on_track=bool(in_track)))
@@ -287,7 +290,7 @@ def wideband(S, sig, t_ref, frac_min=0.02):
         frac = np.nanmean(X > 3 * sig, 1)
         for s_ in np.flatnonzero(frac > frac_min):
             lin = 10 * np.log10(np.nanmean(10 ** (X[s_] / 10)))
-            out.append(dict(t_s=float(S['T'][s_, cols[0]] - t_ref), sweep=int(s_), f_lo_mhz=float(S['f'][cols[0]] / 1e6), f_hi_mhz=float(S['f'][cols[-1]] / 1e6),
+            out.append(dict(t_s=float(np.nanmean(S['T'][s_, cols]) - t_ref) if np.isfinite(S['T'][s_, cols]).any() else float('nan'), sweep=int(s_), f_lo_mhz=float(S['f'][cols[0]] / 1e6), f_hi_mhz=float(S['f'][cols[-1]] / 1e6),
                             bins_over_3sigma_pct=float(100 * frac[s_]), mean_excess_db=float(lin), hop_mhz=None))
     return sorted(out, key=lambda e: e['t_s'])
 
@@ -297,7 +300,7 @@ def refine_wide(raw_tracks, S, sig, step, t_ref, wide_hz=2e3):
     signal (Doppler-aligned -10 dB width), then merge tracks of the same signal (time overlap, same centroid)."""
     out = []
     for tr in raw_tracks:
-        rows = [int(np.argmin(np.abs(S['T'][:, i] - t))) for t, i in zip(tr['t'], tr['i'])]
+        rows = [int(np.nanargmin(np.abs(S['T'][:, i] - t))) for t, i in zip(tr['t'], tr['i'])]
         fm = sid.measure_format(S, rows, list(tr['i']), sig, step, 1.0)
         tr['bw_hz'] = fm['bw_hz']
         if fm['bw_hz'] > wide_hz:
