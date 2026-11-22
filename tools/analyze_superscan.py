@@ -443,7 +443,8 @@ def doppler_figure(A, out, tag):
 
 def summary_page(A, pdf, out, tag):
     s = A['summary']
-    fig = ah.page(pdf, 'Superscan with Doppler tracking', f"{A['info']['sweeps']} sweeps × {A['info']['hops']} hops ({', '.join(f'{c / 1e6:.2f}' for c in A['centers'])} MHz) · "
+    hops_txt = ', '.join(f'{c / 1e6:.2f}' for c in A['centers']) if len(A['centers']) <= 8 else f"{A['centers'][0] / 1e6:.2f}–{A['centers'][-1] / 1e6:.2f}"
+    fig = ah.page(pdf, 'Superscan with Doppler tracking', f"{A['info']['sweeps']} sweeps × {A['info']['hops']} hops ({hops_txt} MHz) · gain {(A['info'].get('gain') or {}).get('PGA', '?')} dB · "
                   f"{A['timing']['span_s']:.0f} s from {A['start']} · {A['info']['step_hz']:.0f} Hz bins · unit {A['info']['unit']} (uncalibrated)")
     tiles = [(f"{A['timing']['sweep_period_s']:.2f} s", 'revisit per band'), (f"{s['records']}", f"records · {','.join(s['statuses'])}"),
              (str(s['doppler_tracks']), 'LEO-Doppler-like tracks'), (str(s['drift_tracks']), 'other drifting tracks'),
@@ -452,7 +453,7 @@ def summary_page(A, pdf, out, tag):
         x = 0.04 + i * 0.158
         fig.patches.append(plt.Rectangle((x, 0.74), 0.148, 0.12, transform=fig.transFigure, fc=PANEL, ec='#2b3a55'))
         fig.text(x + 0.074, 0.815, v, ha='center', fontsize=20, fontweight='bold', color=ah.C1); fig.text(x + 0.074, 0.765, l, ha='center', fontsize=9.5, color='#8fa0bd')
-    y = 0.69
+    y = 0.69; dy = min(0.13, 0.52 / (len(A['bands']) + 1)); wrapw = 190 if len(A['bands']) > 3 else 175
     for Bd in A['bands']:
         dop = [t for t in Bd['tracks'] if t['kind'] == 'doppler']; dr = [t for t in Bd['tracks'] if t['kind'] in ('drift', 'common-mode drift')]
         head = f"{Bd['band']['name']}: σ {Bd['sig']:.3f} dB · {len(Bd['lines'])} lines · {len(dop)} Doppler-like · {len(dr)} drifting · {len(Bd['events'])} intermittent · {len(Bd['wideband'])} wideband"
@@ -467,23 +468,24 @@ def summary_page(A, pdf, out, tag):
         if Bd['lines']:
             body.append('strongest lines: ' + ', '.join(f"{c['f_mhz']:.4f} (+{c['excess_db']:.2f})" for c in Bd['lines'][:4]))
         fig.text(0.04, y, head, fontsize=12.5, fontweight='bold', va='top')
-        fig.text(0.04, y - 0.03, '\n'.join(textwrap.wrap(' · '.join(body) or 'no content above the detection thresholds', 175)), fontsize=10.5, va='top', color='#c9d4e6')
-        y -= 0.13
+        fig.text(0.04, y - 0.028, '\n'.join(textwrap.wrap(' · '.join(body) or 'no content above the detection thresholds', wrapw)[:3]), fontsize=9.5 if len(A['bands']) > 3 else 10.5, va='top', color='#c9d4e6')
+        y -= dy
     I = A.get('id', {})
     if I.get('available'):
         ids = I['ids']; nh = I['not_heard']; ct = I.get('control', {})
         conf = [x for x in ids if x['confidence'] != 'frequency-only']; cand = [x for x in ids if x['confidence'] == 'frequency-only']
-        head = (f"Identification: {len(conf)} confirmed by Doppler · {len(cand)} frequency-only candidate(s) · {len(I['passes'])} satellites with in-band downlinks above the horizon"
-                f" · {len(nh)} ≥10° not heard · guided-search control {ct.get('false_detections', 0)}/{ct.get('searches', 0)} false")
+        head = (f"Identification: {len(conf)} confirmed by Doppler · {len(cand)} frequency-only candidate(s) · {len(I['passes'])} satellites in band above the horizon"
+                f" · {len(nh)} ≥10° not heard · control {ct.get('false_detections', 0)}/{ct.get('searches', 0)} false")
         ids = conf + cand
         body = [f"{x['name']} ({x['norad']}) {x['mode']} {int(x['baud'] or 0)} Bd at {x['f_mhz']:.4f} MHz: {x['confidence']}, offset {x['offset_hz'] / 1e3:+.1f} kHz"
                 + (f", rms {x['rms_hz']:.0f} Hz" if x.get('rms_hz') is not None else '') + f", format {x['format_check']}" for x in ids[:4]]
         body += [f"not heard: " + ', '.join(f"{p['name']} (max {p['max_el']:.0f}°)" for p in nh[:8])] if nh else []
         fig.text(0.04, y, head, fontsize=12.5, fontweight='bold', va='top', color=C_PRED)
-        fig.text(0.04, y - 0.03, '\n'.join(textwrap.wrap(' · '.join(body) or 'no observed signal matched a predicted downlink', 175)), fontsize=10.5, va='top', color='#c9d4e6')
-        y -= 0.13
-        nd = 'Absolute levels (uncalibrated) and stable lines real vs receiver spur (retune check). Identification uses the SatNOGS transmitter list and TLEs dated ' + str((I.get('db_meta') or {}).get('fetched_utc', '?'))[:16] + \
-             ' and an approximate observer position; a match is a Doppler-curve fit, not a decoded frame.'
+        fig.text(0.04, y - 0.028, '\n'.join(textwrap.wrap(' · '.join(body) or 'no observed signal matched a predicted downlink', wrapw)[:4]), fontsize=9.5, va='top', color='#c9d4e6')
+        y -= dy + 0.03
+        nd = ('Absolute levels (uncalibrated) and stable lines real vs receiver spur (retune check). Identification uses the SatNOGS transmitter list and TLEs dated '
+              + str((I.get('db_meta') or {}).get('fetched_utc', '?'))[:16] + f" and the observer position ({I.get('qth_source', 'unknown source')}); "
+              'a confirmed match is a Doppler-curve fit, a frequency-only candidate is a coincidence in frequency; nothing is decoded.')
     else:
         nd = f"Which satellite a track belongs to: identification not available ({I.get('reason', 'not run')}). Absolute levels (uncalibrated) and stable lines real vs receiver spur (retune check)."
     if A['cfg'].get('dc_exclude_hz', 1e5) < 5e4:
