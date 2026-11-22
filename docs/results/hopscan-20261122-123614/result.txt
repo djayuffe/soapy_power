@@ -1,0 +1,2 @@
+hopscan exit=0 records=993 settle_overflow_warnings=0 measurement_overflow=0 seconds=603 of=600
+hopscan_report exit=0 via=/Users/ulfbertilsson/src/soapy_power/sessions/.venv/bin/python files=18 seconds=11

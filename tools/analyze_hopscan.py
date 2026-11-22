@@ -183,9 +183,11 @@ def make_pdf(A, out, tag):
         x = 0.04 + i * 0.158
         fig.patches.append(plt.Rectangle((x, 0.74), 0.148, 0.12, transform=fig.transFigure, fc=PANEL, ec='#2b3a55'))
         fig.text(x + 0.074, 0.815, v, ha='center', fontsize=20, fontweight='bold', color=C1); fig.text(x + 0.074, 0.765, l, ha='center', fontsize=9.5, color='#8fa0bd')
-    top = s['candidates'][:3]
+    top = s['candidates'][:3]; ev = (A.get('W') or {}).get('events', [])
     lines = [
-        ('1. The broadband floor is receiver-noise limited; the content is weak narrowband lines only.', f"After removing the receiver artifact the largest single-bin residual is {s['max_residual_bin_db']:+.1f} dB; no 12.5 kHz channel exceeds {s['max_channel_excess_db']:+.2f} dB ({s['channels_with_occupancy']} of {s['channels']} channels ever above 5σ). {len(s['candidates'])} lines are ≥ 0.5 dB above floor in the 10-min mean ({s['faint_lines_ge_0p25db']} at ≥ 0.25 dB), densest at 146.5–148.2 MHz."),
+        (('1. Receiver-noise-limited floor; ' + (f"{len(ev)} intermittent emission(s) and weak persistent lines." if ev else 'the content is weak narrowband lines only.')),
+         (f"Intermittent: " + '; '.join(f"{e['f_mhz']:.4f} MHz {e['peak_db']:+.1f} dB at {e['t_start_s']:.0f}–{e['t_end_s']:.0f} s ({e['width_khz']:.1f} kHz)" for e in ev[:3]) + '. ' if ev else '') +
+         f"Largest single-bin residual {s['max_residual_bin_db']:+.1f} dB; {s['channels_with_occupancy']} of {s['channels']} 12.5 kHz channels ever above 5σ (max {s['max_channel_excess_db']:+.2f} dB). {len(s['candidates'])} persistent lines ≥ 0.5 dB above floor in the 10-min mean ({s['faint_lines_ge_0p25db']} at ≥ 0.25 dB)."),
         ('2. The raw maxima are an artifact, not signals.', f"The strongest raw bin ({s['max_raw_peak_mhz']:.4f} MHz, {s['max_raw_peak_db']:.1f} dB) lies next to a hop centre. Every hop shows the same skirt ({s['dc_artifact_db']['12']:+.1f} dB at 12 kHz, {s['dc_artifact_db']['49']:+.1f} dB at 49 kHz, {s['dc_artifact_db']['200']:+.1f} dB at 200 kHz; hop-to-hop spread {s['dc_artifact_hop_spread_db']:.2f} dB)."),
         ('3. Weak persistent lines remain.', ('; '.join(f"{c['f_mhz']:.4f} MHz (+{c['peak_excess_db']:.2f} dB, {c['sweeps_detected_pct']:.0f}% of sweeps)" for c in top) or 'none') + '. Unverified: could be real carriers or receiver spurs.'),
         ('4. Measurement is statistically sound.', f"Sweep-to-sweep bin sd {s['sweep_to_sweep_sd_db']:.3f} dB vs {s['theory_sd_db']:.3f} dB expected for a {s['segments']}-segment Welch estimate; floor drift {s['sweep_median_sd_db']*1000:.0f} mdB sd over {s['span_s']:.0f} s."),
@@ -341,6 +343,7 @@ def main():
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import hopscan_waterfall as hw
     A['W'] = hw.prepare(A)
+    A['summary']['events'] = [{k: v for k, v in e.items() if k not in ('r0', 'r1', 'c0', 'c1')} for e in A['W']['events']]
     make_pdf(A, out, tag)
     (out / f'{tag}_summary.json').write_text(json.dumps(A['summary'], indent=1))
     with open(out / f'{tag}_candidates.csv', 'w', newline='') as fh:

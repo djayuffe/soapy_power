@@ -23,7 +23,7 @@ import analyze_hopscan as ah                      # noqa: E402  (sets the Agg ba
 import matplotlib.pyplot as plt                   # noqa: E402
 from matplotlib import colormaps                  # noqa: E402
 from matplotlib.ticker import MultipleLocator     # noqa: E402
-from scipy.ndimage import uniform_filter          # noqa: E402
+from scipy.ndimage import find_objects, label, uniform_filter   # noqa: E402
 
 CENTRE_KHZ = 12.0          # blank +-12 kHz around each hop centre
 SMOOTH_BINS, SMOOTH_SWEEPS = 3, 5
@@ -49,9 +49,54 @@ def prepare(A):
     E = np.where(den > 0.5, 10 * np.log10(np.maximum(num, 1e-30) / np.maximum(den, 1e-30)), np.nan)
     sig_e = 1.4826 * np.nanmedian(abs(E[np.isfinite(E)] - np.nanmedian(E)))
     t0 = A['T0'][0, 0]
-    return dict(R=R, E=E, blk=blk, off_khz=off_khz, sig=float(sig), sig_e=float(sig_e), keep=keep,
-                ts=A['T0'] - t0, te=A['T1'] - t0, t0=t0,
-                start=datetime.datetime.fromtimestamp(t0, datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'))
+    W = dict(R=R, E=E, blk=blk, off_khz=off_khz, sig=float(sig), sig_e=float(sig_e), keep=keep,
+             ts=A['T0'] - t0, te=A['T1'] - t0, t0=t0,
+             start=datetime.datetime.fromtimestamp(t0, datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'))
+    W['events'] = find_events(A, W)
+    return W
+
+
+def find_events(A, W, k_sigma=8.0, line_khz=1.5, group_khz=15.0):
+    """Intermittent emissions: connected regions of the enhanced residual above k_sigma*sigma_e that are
+    neither a persistent line candidate (+-line_khz) nor present in half the sweeps. Regions that overlap in
+    time and lie within group_khz are one event. Times come from the hop's own record timestamps."""
+    R, E, f, keep, nsw = W['R'], W['E'], A['f'], W['keep'], A['nsw']
+    thr = max(k_sigma * W['sig_e'], 0.6)
+    lab, _ = label(np.nan_to_num(E, nan=-99.0) > thr, structure=np.ones((3, 3)))
+    lines = np.array([c['f_mhz'] for c in A['cand']]); comps = []
+    for i, sl in enumerate(find_objects(lab), 1):
+        if sl is None:
+            continue
+        sub = np.where(lab[sl] == i, R[sl], np.nan)
+        if not np.isfinite(sub).any():
+            continue
+        rr, cc = np.unravel_index(np.nanargmax(sub), sub.shape); j = sl[1].start + cc
+        if (len(lines) and np.min(abs(lines - f[j])) * 1e3 < line_khz) or sl[0].stop - sl[0].start >= nsw / 2:
+            continue
+        comps.append(dict(r0=sl[0].start, r1=sl[0].stop, c0=sl[1].start, c1=sl[1].stop, j=int(j), peak=float(np.nanmax(sub))))
+    comps.sort(key=lambda c: c['c0']); groups = []
+    for c in comps:
+        for g in groups:
+            if any(c['r0'] < o['r1'] and o['r0'] < c['r1'] and abs(f[c['j']] - f[o['j']]) * 1e3 < group_khz for o in g):
+                g.append(c); break
+        else:
+            groups.append([c])
+    ev = []
+    for g in groups:
+        r0, r1 = min(c['r0'] for c in g), max(c['r1'] for c in g); c0, c1 = min(c['c0'] for c in g), max(c['c1'] for c in g)
+        top = max(g, key=lambda c: c['peak']); j = top['j']; h = min(j // keep, A['nh'] - 1)
+        ncol = max(1, c1 - c0); seg = R[r0:r1, c0:c1]
+        rowlev = 10 * np.log10(np.nanmean(10 ** (seg / 10), 1))
+        act = np.flatnonzero(rowlev > 3 * W['sig'] / np.sqrt(max(1.0, ncol / 1.73)))
+        a, b = (r0 + act[0], r0 + act[-1] + 1) if len(act) else (min(r0 + 2, r1 - 1), max(r1 - 2, r0 + 1))
+        peaks = sorted({round(float(f[c['j']]), 4) for c in g})
+        ev.append(dict(f_mhz=float(f[j]), f_lo_mhz=float(f[c0]), f_hi_mhz=float(f[c1 - 1]), width_khz=float(max(1, ncol - (SMOOTH_BINS - 1)) * A['step'] / 1e3),
+                       peaks_mhz=peaks, t_start_s=float(W['ts'][a, h]), t_end_s=float(W['te'][b - 1, h]), sweeps=int(b - a),
+                       active_sweeps=int(len(act)), peak_db=float(top['peak']),
+                       mean_db=float(10 * np.log10(np.nanmean(10 ** (R[a:b, max(0, j - 1):j + 2] / 10)))),
+                       hop=int(h), offset_khz=float(W['off_khz'][j]), r0=int(a), r1=int(b), c0=int(c0), c1=int(c1)))
+    ev.sort(key=lambda e: -e['peak_db'])
+    return ev
 
 
 def _pfactor(keep, nh, target_px):
@@ -94,12 +139,15 @@ def noise_stats(blocks):
     med = float(np.median(v)); return med, float(1.4826 * np.median(abs(v - med)))
 
 
-def _labels(ax, cands, ymax, n=10):
-    top = sorted(cands[:n], key=lambda c: c['f_mhz'])
-    for q, c in enumerate(top):
-        ax.plot([c['f_mhz']], [c['peak_excess_db']], marker='v', ms=7, color=ah.C2, mec='none', zorder=5)
-        ax.annotate(f"{c['f_mhz']:.4f}", (c['f_mhz'], c['peak_excess_db']), xytext=(0, 10 + 16 * (q % 2)),
-                    textcoords='offset points', ha='center', fontsize=11, color=ah.C2)
+def _labels(ax, cands, span_mhz, n=10, rows=(0.62, 0.80, 0.98)):
+    """Label the strongest lines in rows at fixed heights so no two labels collide (leader line to the peak)."""
+    top = sorted(cands[:n], key=lambda c: c['f_mhz']); need = 0.034 * span_mhz; last = [-1e9] * len(rows)
+    for c in top:
+        x = c['f_mhz']; k = next((i for i in range(len(rows)) if x - last[i] > need), int(np.argmin(last)))
+        last[k] = x
+        ax.plot([x], [c['peak_excess_db']], marker='v', ms=7, color=ah.C2, mec='none', zorder=5)
+        ax.annotate(f"{x:.4f}", (x, c['peak_excess_db']), xytext=(x, rows[k]), textcoords=ax.get_xaxis_transform(), ha='center', va='bottom',
+                    fontsize=11, color=ah.C2, arrowprops=dict(arrowstyle='-', color=ah.C2, lw=.5, alpha=.6, shrinkA=1, shrinkB=4))
 
 
 def hero(A, W, out, tag):
@@ -118,9 +166,11 @@ def hero(A, W, out, tag):
     ax0.fill_between(f, -band, band, color='#8fa0bd', alpha=.3, lw=0)
     for c in A['centers'] / 1e6:
         ax0.axvline(c, color=ah.C2, lw=.8, ls=':', alpha=.7)
-    _labels(ax0, A['cand'], None)
     top = max([c['peak_excess_db'] for c in A['cand']] + [1.0])
-    ax0.set_xlim(f[0], f[-1]); ax0.set_ylim(-0.35, top + 1.0); ax0.set_xticklabels([])
+    ax0.set_xlim(f[0], f[-1]); ax0.set_ylim(-0.35, top / 0.58)
+    _labels(ax0, A['cand'], f[-1] - f[0])
+    for e in W['events']:
+        ax0.plot([e['f_mhz']], [0.04], marker='^', ms=8, color=ah.C1, mec='none', transform=ax0.get_xaxis_transform(), zorder=6); ax0.set_xticklabels([])
     ax0.set_ylabel('dB, 10-min\nmean', fontsize=12); ax0.tick_params(labelsize=11)
     ax0.xaxis.set_major_locator(MultipleLocator(0.5)); ax0.xaxis.set_minor_locator(MultipleLocator(0.1))
     ax = fig.add_axes([0.05, 0.075, 0.895, 0.645])
@@ -130,12 +180,21 @@ def hero(A, W, out, tag):
     m, p = draw(ax, A, W, W['E'], 'max', lo_, hi_, target_px=px)
     ax.set_xlabel('MHz', fontsize=14); ax.set_ylabel('seconds since start', fontsize=14); ax.tick_params(labelsize=12)
     ax.xaxis.set_major_locator(MultipleLocator(0.5)); ax.xaxis.set_minor_locator(MultipleLocator(0.1))
+    tmax = W['te'][-1].max(); pad = 0.012 * (f[-1] - f[0])
+    for q, e in enumerate(sorted(W['events'], key=lambda e: e['f_mhz'])):
+        ax.add_patch(plt.Rectangle((e['f_lo_mhz'] - pad, e['t_start_s'] - 2), e['f_hi_mhz'] - e['f_lo_mhz'] + 2 * pad, e['t_end_s'] - e['t_start_s'] + 4,
+                                   fill=False, ec=ah.C1, lw=1.3, zorder=6))
+        right = e['f_hi_mhz'] + pad < f[-1] - 0.12 * (f[-1] - f[0])
+        ax.annotate(f"{e['f_mhz']:.4f} MHz  {e['peak_db']:+.1f} dB  {e['t_end_s'] - e['t_start_s']:.0f} s",
+                    ((e['f_hi_mhz'] + pad) if right else (e['f_lo_mhz'] - pad), (e['t_start_s'] + e['t_end_s']) / 2), xytext=(6 if right else -6, 0),
+                    textcoords='offset points', ha='left' if right else 'right', va='center', fontsize=11.5, color=ah.C1, zorder=7,
+                    bbox=dict(fc='#070b14cc', ec='none', pad=1.5))
     for c in A['centers'] / 1e6:
         ax.annotate('', (c, W['te'][-1].max()), xytext=(c, W['te'][-1].max() * 1.025), arrowprops=dict(arrowstyle='-|>', color=ah.C2, lw=1), annotation_clip=False)
     cax = fig.add_axes([0.952, 0.075, 0.01, 0.645]); cb = fig.colorbar(m, cax=cax)
     cb.set_label(f'dB above median floor · pixel noise {st["m"]:+.2f} ± {st["s"]:.3f} dB', fontsize=12); cb.ax.tick_params(labelsize=11)
     fig.text(0.05, 0.008, f"pixel = {p} bins ({p * s['step_hz'] / 1e3:.2f} kHz) max-pooled · hop centres ▼ · levels: {s['unit']}, uncalibrated, relative · "
-             f"lines are candidates (real carrier or receiver spur not yet decided) · {s['records']} records, statuses {s['statuses']}", fontsize=11, color='#8fa0bd')
+             f"lines are candidates (real carrier or receiver spur not yet decided) · cyan boxes: intermittent emissions ({len(W['events'])}) · {s['records']} records, statuses {s['statuses']}", fontsize=11, color='#8fa0bd')
     fig.savefig(out / f'{tag}_waterfall.png', dpi=160); plt.close(fig)
 
 
@@ -158,32 +217,49 @@ def raw(A, W, out, tag):
     fig.savefig(out / f'{tag}_waterfall_raw.png', dpi=160); plt.close(fig)
 
 
-def zoom(A, W, out, tag, n=8, half_khz=15.0):
+def zoom(A, W, out, tag, n=8, n_ev=4, half_khz=15.0):
     f, R, s = A['f'], W['R'], A['summary']
-    cands = A['cand'][:n]
+    evs = []                                          # one panel per emitter frequency, every burst of it marked
+    for e in W['events']:
+        same = next((v for v in evs if abs(v['f_mhz'] - e['f_mhz']) * 1e3 < 1.5), None)
+        if same:
+            same['spans'].append((e['t_start_s'], e['t_end_s'])); same['event']['peak_db'] = max(same['event']['peak_db'], e['peak_db'])
+        elif len(evs) < n_ev:
+            evs.append(dict(f_mhz=e['f_mhz'], hop=e['hop'], offset_khz=e['offset_khz'], event=dict(e), spans=[(e['t_start_s'], e['t_end_s'])]))
+    cands = evs + [dict(c, event=None) for c in A['cand'][:n]]
     if not cands:
         return
     step_khz = A['step'] / 1e3; hb = int(round(half_khz / step_khz))
     cols = 4; rows = (len(cands) + cols - 1) // cols
     fig = plt.figure(figsize=(24, 6.2 * rows + 1.6), dpi=130)
-    fig.text(0.03, 1 - 0.35 / (6.2 * rows + 1.6), f'Strongest {len(cands)} line candidates at native resolution ({s["step_hz"]:.0f} Hz × one sweep)',
+    fig.text(0.03, 1 - 0.35 / (6.2 * rows + 1.6), f'{len(evs)} intermittent emitters (cyan) and the {len(cands) - len(evs)} strongest persistent lines at native resolution ({s["step_hz"]:.0f} Hz × one sweep)',
              fontsize=24, fontweight='bold', va='top')
-    fig.text(0.03, 1 - 0.85 / (6.2 * rows + 1.6), f"residual, no smoothing, colour −2σ…+6σ (σ = {W['sig']:.3f} dB) · right: level of the ±2 bins around the line per sweep "
+    fig.text(0.03, 1 - 0.85 / (6.2 * rows + 1.6), f"residual, no smoothing, colour −2σ…+6σ (emissions: −2σ…+20σ) (σ = {W['sig']:.3f} dB) · right: level of the ±2 bins around the line per sweep "
              f"(thin) and its 5-sweep mean (thick); dashed = +3σ of a 5-bin average", fontsize=12, color='#8fa0bd', va='top')
     cm = colormaps[CMAP].copy(); cm.set_bad(MASKED)
     H = 6.2 * rows + 1.6; top = 1 - 1.5 / H; cellh = (top - 0.05) / rows
+    if evs and len(evs) % cols:                       # persistent lines start on a fresh row
+        cands = evs + [None] * (cols - len(evs) % cols) + cands[len(evs):]
     for q, c in enumerate(cands):
+        if c is None:
+            continue
         r_, k_ = divmod(q, cols)
         x0 = 0.035 + k_ * 0.243; y0 = top - (r_ + 1) * cellh + 0.06 / rows
         j = int(np.argmin(abs(f - c['f_mhz']))); a, b = max(0, j - hb), min(len(f), j + hb + 1)
         h = c['hop']; ts = W['ts'][:, h]; tmax = W['te'][-1, h]
         ax = fig.add_axes([x0, y0, 0.15, cellh - 0.11 / rows])
         ax.imshow(np.ma.masked_invalid(R[:, a:b]), aspect='auto', origin='lower', interpolation='nearest', cmap=cm,
-                  vmin=-2 * W['sig'], vmax=6 * W['sig'], extent=[(f[a] - c['f_mhz']) * 1e3 - step_khz / 2, (f[b - 1] - c['f_mhz']) * 1e3 + step_khz / 2, 0, tmax])
+                  vmin=-2 * W['sig'], vmax=(20 if c['event'] else 6) * W['sig'], extent=[(f[a] - c['f_mhz']) * 1e3 - step_khz / 2, (f[b - 1] - c['f_mhz']) * 1e3 + step_khz / 2, 0, tmax])
         ax.grid(False); ax.set_xlabel('kHz from line', fontsize=10); ax.tick_params(labelsize=9)
         if k_ == 0: ax.set_ylabel('seconds', fontsize=10)
-        ax.set_title(f"{c['f_mhz']:.4f} MHz  +{c['peak_excess_db']:.2f} dB", fontsize=13, color=ah.C2)
-        ax.text(0.02, 0.985, f"{c['sweeps_detected_pct']:.0f}% of sweeps >3σ · hop {A['centers'][h]/1e6:.2f} {c['offset_khz']:+.0f} kHz",
+        e = c['event']
+        if e:
+            ax.set_title(f"{c['f_mhz']:.4f} MHz  peak {e['peak_db']:+.1f} dB", fontsize=13, color=ah.C1)
+            for t_a, t_b in c['spans']:
+                ax.axhspan(t_a, t_b, xmin=0, xmax=0.02, color=ah.C1)
+        else:
+            ax.set_title(f"{c['f_mhz']:.4f} MHz  +{c['peak_excess_db']:.2f} dB", fontsize=13, color=ah.C2)
+        ax.text(0.02, 0.985, (', '.join(f"{t_a:.0f}–{t_b:.0f} s" for t_a, t_b in sorted(c['spans'])) + f" · ≥{e['width_khz']:.1f} kHz" if e else f"{c['sweeps_detected_pct']:.0f}% of sweeps >3σ") + f" · hop {A['centers'][h]/1e6:.2f} {c['offset_khz']:+.0f} kHz",
                 transform=ax.transAxes, fontsize=9, va='top', color='w', bbox=dict(fc='#000000aa', ec='none', pad=2))
         lin = 10 ** (R[:, max(0, j - 2):j + 3] / 10)
         lev = 10 * np.log10(np.nanmean(lin, 1)); run = np.convolve(np.nan_to_num(lev), np.ones(5) / 5, 'same')
@@ -231,14 +307,25 @@ def viewer(A, W, out, tag):
                 sigma=round(W['sig'], 4), unit=s['unit'], span=round(s['span_s'], 1), records=s['records'],
                 cands=[dict(f=round(c['f_mhz'], 5), db=round(c['peak_excess_db'], 2), pct=round(c['sweeps_detected_pct']), off=round(c['offset_khz']))
                        for c in A['cand']],
+                events=[dict(f=round(e['f_mhz'], 5), db=round(e['peak_db'], 1), t0=round(e['t_start_s']), t1=round(e['t_end_s'])) for e in W['events']],
                 luts={k: _lut(k) for k in ('inferno', 'viridis', 'magma', 'gray')}, centre_khz=CENTRE_KHZ)
     html = VIEWER.replace('__META__', json.dumps(meta, separators=(',', ':'))).replace('__DATA__', blob).replace('__TITLE__', meta['title'])
     (out / f'{tag}_waterfall.html').write_text(html, encoding='utf-8')
     return q, top_step
 
 
+def write_events(W, out, tag):
+    import csv
+    with open(out / f'{tag}_events.csv', 'w', newline='') as fh:
+        w = csv.writer(fh); w.writerow(['f_mhz', 'f_lo_mhz', 'f_hi_mhz', 'width_khz', 'peaks_mhz', 't_start_s', 't_end_s', 'sweeps', 'active_sweeps', 'peak_db', 'mean_db', 'hop', 'offset_khz'])
+        for e in W['events']:
+            w.writerow([f"{e['f_mhz']:.4f}", f"{e['f_lo_mhz']:.4f}", f"{e['f_hi_mhz']:.4f}", f"{e['width_khz']:.2f}", ' '.join(f'{x:.4f}' for x in e['peaks_mhz']),
+                        f"{e['t_start_s']:.1f}", f"{e['t_end_s']:.1f}", e['sweeps'], e['active_sweeps'], f"{e['peak_db']:.2f}", f"{e['mean_db']:.2f}", e['hop'], f"{e['offset_khz']:+.1f}"])
+
+
 def render(A, out, tag):
     W = A.get('W') or prepare(A)
+    write_events(W, out, tag)
     hero(A, W, out, tag); raw(A, W, out, tag); zoom(A, W, out, tag); viewer(A, W, out, tag)
     return W
 
@@ -356,6 +443,7 @@ function drawSpec(colv,pw,how){
   g.fillStyle='#ffb000';g.textAlign='center';
   for(const k of M.cands){const c=(k.f-M.f0)/M.step;if(c<x0||c>x1)continue;const x=G+(c-x0)/(x1-x0)*(w-G);g.beginPath();g.moveTo(x-4,4);g.lineTo(x+4,4);g.lineTo(x,11);g.fill();
     if((x1-x0)<C/3)g.fillText(k.f.toFixed(4),x,24)}
+  g.fillStyle='#00d1ff';for(const k of M.events){const c=(k.f-M.f0)/M.step;if(c<x0||c>x1)continue;const x=G+(c-x0)/(x1-x0)*(w-G);g.beginPath();g.moveTo(x-4,h-14);g.lineTo(x+4,h-14);g.lineTo(x,h-21);g.fill()}
   g.textAlign='left';g.fillStyle='#8fa0bd';g.fillText('mean over the run, dB above floor ('+$('fb').value+'×'+$('tsw').value+', '+how+' per pixel)',G+6,h-3);
 }
 function drawAx(){
@@ -389,9 +477,11 @@ function zoomAt(c,fac){const span=Math.max(40,Math.min(C,(x1-x0)*fac));x0=Math.m
 function setup(){
   $('h1').textContent=M.title+' · interactive waterfall';
   $('sub').textContent=`${R} sweeps × ${M.nh} hops · start ${M.start} · ${M.span} s · native ${(M.step*1e6).toFixed(0)} Hz bins · residual after receiver-artifact and floor removal, each record levelled · native σ ${M.sigma.toFixed(3)} dB`;
-  $('foot').textContent=`Levels ${M.unit}, uncalibrated and relative to the median floor. Grey = blank: ±${M.centre_khz} kHz around each hop centre (▼). Rows are sweeps; the hover time is the measured start of that hop. Lines are candidates: whether a line is a real carrier or a receiver spur is not decided by this data. Data quantised to 0.025 dB.`;
-  for(const k of M.cands){const o=document.createElement('option');o.value=k.f;o.textContent=`${k.f.toFixed(4)} MHz +${k.db.toFixed(2)} dB (${k.pct}%)`;$('cand').appendChild(o)}
-  $('side').innerHTML=`<div>${M.cands.length} candidates ≥ 0.5 dB</div><div style="margin-top:4px">${M.records} records</div><div style="margin-top:4px">colour range = displayed pixels' median + low…high × their spread</div>`;
+  $('foot').textContent=`Levels ${M.unit}, uncalibrated and relative to the median floor. Grey = blank: ±${M.centre_khz} kHz around each hop centre (▼). Rows are sweeps; the hover time is the measured start of that hop. Orange ▼ persistent lines, cyan ▲ intermittent emissions. Whether a line is a real carrier or a receiver spur is not decided by this data. Data quantised to 0.025 dB.`;
+  const grp=(label,items,txt)=>{if(!items.length)return;const g=document.createElement('optgroup');g.label=label;for(const k of items){const o=document.createElement('option');o.value=k.f;o.textContent=txt(k);g.appendChild(o)}$('cand').appendChild(g)};
+  grp('intermittent emissions',M.events,k=>`${k.f.toFixed(4)} MHz ${k.db>=0?'+':''}${k.db.toFixed(1)} dB · ${k.t0}–${k.t1} s`);
+  grp('persistent lines',M.cands,k=>`${k.f.toFixed(4)} MHz +${k.db.toFixed(2)} dB (${k.pct}%)`);
+  $('side').innerHTML=`<div>${M.events.length} intermittent emissions</div><div style="margin-top:4px">${M.cands.length} persistent lines ≥ 0.5 dB</div><div style="margin-top:4px">${M.records} records</div><div style="margin-top:4px">colour range = displayed pixels' median + low…high × their spread</div>`;
   const re=()=>{smooth(+$('fb').value,+$('tsw').value);draw()};
   for(const id of['fb','tsw'])$(id).onchange=re;for(const id of['pool','cm'])$(id).onchange=draw;for(const id of['lo','hi'])$(id).oninput=draw;
   $('cand').onchange=e=>{if(!e.target.value)return;const c=(+e.target.value-M.f0)/M.step,span=Math.round(25/(M.step*1e3))*2;x0=Math.max(0,c-span/2);x1=Math.min(C,x0+span);draw()};
