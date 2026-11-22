@@ -199,7 +199,9 @@ def identify(A, satdb_dir=None, qth_path=None):
                 continue
             best = c[0] if c else None; conf = sd.confidence(best, tr['rms_hz'], tr['shift_hz']) if c else 'frequency-only'
             if conf == 'frequency-only':
-                if tr['kind'] == 'doppler':           # orbit-only: which satellite's pass has this Doppler curve
+                narrow = tr['format']['bw_hz'] <= sd.RES_BINS * step and tr['rms_hz'] < 200.0
+                if tr['kind'] == 'doppler' and narrow:  # orbit-only: which satellite's pass has this carrier's Doppler curve
+                    # (a wide signal's peak wanders inside its band, so its 'curve' cannot tell orbits apart)
                     om = sd.match_orbit(t + t_ref, fx, tles, qth, tr['rms_hz'])
                     res.setdefault('orbit_candidates', []).append(dict(f_mhz=tr['f_median_hz'] / 1e6, t_start_s=tr['t_start_s'], t_end_s=tr['t_end_s'],
                                                                       candidates=[(o['name'], o['norad'], round(o['rms_hz'])) for o in om[:4]]))
