@@ -573,7 +573,9 @@ def summary_page(A, pdf, out, tag):
         body = [f"{x['name']} ({x['norad']}) {x['mode']} {int(x['baud'] or 0)} Bd at {x['f_mhz']:.4f} MHz: {x['confidence']}, offset {x['offset_hz'] / 1e3:+.1f} kHz"
                 + (f", rms {x['rms_hz']:.0f} Hz" if x.get('rms_hz') is not None else '') + f", format {x['format_check']}" for x in ids[:4]]
         body += [f"not heard: " + ', '.join(f"{p['name']} (max {p['max_el']:.0f}°)" for p in nh[:8])] if nh else []
-        body += [f"false-alarm controls: off-curve {ct.get('false_detections', 0)}/{ct.get('searches', 0)}, stack {I.get('stack_control', {}).get('false_detections', 0)}/{I.get('stack_control', {}).get('searches', 0)}"]
+        body += [f"false-alarm controls: off-curve {ct.get('false_detections', 0)}/{ct.get('searches', 0)} on noise"
+                 + (f" ({ct['on_detected_signal']} crossed a detected signal)" if ct.get('on_detected_signal') else '')
+                 + f", stack {I.get('stack_control', {}).get('false_detections', 0)}/{I.get('stack_control', {}).get('searches', 0)}"]
         fig.text(0.04, y, head, fontsize=12.5, fontweight='bold', va='top', color=C_PRED)
         fig.text(0.04, y - 0.028, '\n'.join(textwrap.wrap(' · '.join(body) or 'no observed signal matched a predicted downlink', wrapw)[:4]), fontsize=9.5, va='top', color='#c9d4e6')
         y -= dy + 0.03
@@ -628,7 +630,7 @@ def id_pages(A, pdf, out, tag):
         ax.axvspan(0, A['timing']['span_s'], color='#ffffff08'); ax.set_xlim(-60, A['timing']['span_s'] + 60); ax.set_ylim(0, 90)
         ax.set_xlabel('seconds since scan start'); ax.set_ylabel('elevation (deg)')
         ax2 = fig.add_axes([0.7, 0.1, 0.28, 0.75]); ax2.axis('off')
-        lines = [(f"{'✓' if p['heard'] else '·'} {p['name'][:18]:18s} {p['max_el']:3.0f}° " + ', '.join(f"{x['f_mhz']:.3f} {x['mode'][:10]}" for x in p['transmitters'][:2]))[:62] for p in P[:40]]
+        lines = [(f"{'✓' if p['heard'] else ('?' if p.get('candidate') else '·')} {p['name'][:18]:18s} {p['max_el']:3.0f}° " + ', '.join(f"{x['f_mhz']:.3f} {x['mode'][:10]}" for x in p['transmitters'][:2]))[:62] for p in P[:40]]
         ax2.text(0, 1, '\n'.join(lines), va='top', fontsize=7.8, family='monospace', color='#c9d4e6')
     else:
         fig.text(0.5, 0.5, 'No satellite with an in-band downlink was above the horizon during the scan' if I.get('available') else f"not available: {I.get('reason', '')}",

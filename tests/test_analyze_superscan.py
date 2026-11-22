@@ -100,6 +100,17 @@ except Exception:
 
 
 @unittest.skipUnless(HAVE and HAVE_SGP4, 'needs matplotlib, scipy and sgp4')
+class ControlTests(unittest.TestCase):
+    def test_control_curve_crossing_a_detected_signal_is_not_a_noise_false_alarm(self):
+        import superscan_id as sid
+        A = dict(bands=[dict(band=dict(lo_hz=399.9e6, hi_hz=403e6), events=[dict(f_mhz=400.642, t_start_s=478.0, t_end_s=484.0)],
+                             tracks=[dict(kind='stable', points=(np.array([0.0, 900.0]), np.array([401.6e6, 401.6e6])))])])
+        on = [(76, 478.0, 400642236.0, -3751.0, 1.5), (77, 484.0, 400641992.0, -3750.0, 1.6), (78, 491.0, 400641504.0, -3975.0, 1.5)]
+        self.assertTrue(sid.on_signal(A, on, 6.5))
+        self.assertFalse(sid.on_signal(A, [(h[0], h[1] + 300, h[2], h[3], h[4]) for h in on], 6.5))
+        self.assertFalse(sid.on_signal(A, [(1, 10.0, 401.6e6, 0.0, 1.0)], 6.5))     # stable lines are masked, not signals
+
+
 class LineOriginTests(unittest.TestCase):
     def test_rf_line_seen_from_both_los_and_spur_from_one(self):
         import analyze_superscan as an

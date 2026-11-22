@@ -171,6 +171,23 @@ def consistent_hits(hits, tol=1.5e3, min_hits=3):
     return best
 
 
+def on_signal(A, hits, period, tol=6e3):
+    """True when a hit lies on an already detected signal (event box or non-stable track point): a control curve that
+    crosses another transmitter is not a noise false alarm and is counted separately."""
+    for _, ts, fo, _, _ in hits:
+        for Bd in A['bands']:
+            if not (Bd['band']['lo_hz'] - tol <= fo <= Bd['band']['hi_hz'] + tol):
+                continue
+            if any(abs(fo - e['f_mhz'] * 1e6) < tol and e['t_start_s'] - period <= ts <= e['t_end_s'] + period for e in Bd['events']):
+                return True
+            for tr in Bd['tracks']:
+                if tr['kind'] != 'stable':
+                    t, fx = tr['points']
+                    if np.any((np.abs(np.asarray(t) - ts) <= period) & (np.abs(np.asarray(fx) - fo) < tol)):
+                        return True
+    return False
+
+
 def identify(A, satdb_dir=None, qth_path=None):
     step = A['info']['step_hz']; period = A['timing']['sweep_period_s']; t_ref = A['t_ref']
     # observed format for every non-trivial track and event (works without a database)
@@ -249,11 +266,10 @@ def identify(A, satdb_dir=None, qth_path=None):
                 hits.sort(key=lambda h: h[0]); _, p, tx, d = hits[0]
                 e['id'] = dict(norad=p['norad'], name=p['name'], transmitter=tx['description'], mode=tx['mode'], baud=tx['baud'], f_tx_hz=tx['f_hz'], offset_hz=d,
                                confidence='frequency-only', alternatives=len(hits) - 1, format_check=sd.format_consistency(tx, e['format']['bw_hz'], step))
-                used.add(p['norad'])
                 res['ids'].append(dict(kind='event', band=Bd['band']['name'], f_mhz=e['f_mhz'], t_start_s=e['t_start_s'], t_end_s=e['t_end_s'],
                                        observed_format=e['format']['cls'], observed_bw_hz=e['format']['bw_hz'], rms_hz=None, **e['id']))
     # guided search along every predicted curve not already matched by a track/event, with an off-curve control
-    res['guided'] = []; ctrl_hits = ctrl_n = 0
+    res['guided'] = []; ctrl_hits = ctrl_n = ctrl_sig = 0
     for p in preds:
         if p['norad'] in used:
             continue
@@ -265,7 +281,11 @@ def identify(A, satdb_dir=None, qth_path=None):
                 continue
             g = consistent_hits(hits)
             for sh in (CONTROL_HZ, -CONTROL_HZ):
-                c = consistent_hits(guided(A, p, tx, shift=sh) or []); ctrl_n += 1; ctrl_hits += bool(c)
+                c = consistent_hits(guided(A, p, tx, shift=sh) or []); ctrl_n += 1
+                if c and on_signal(A, c, period):
+                    ctrl_sig += 1
+                else:
+                    ctrl_hits += bool(c)
             if g:
                 used.add(p['norad']); off = float(np.median([h[3] for h in g])); lv = float(max(h[4] for h in g))
                 rows = [h[0] for h in g]; Bd = next(B for B in A['bands'] if B['band']['lo_hz'] <= tx['f_hz'] <= B['band']['hi_hz'])
@@ -279,7 +299,17 @@ def identify(A, satdb_dir=None, qth_path=None):
                                        format_check=sd.format_consistency(tx, fmt['bw_hz'], step), peak_db=lv))
                 res['guided'].append(dict(norad=p['norad'], name=p['name'], f_mhz=tx['f_hz'] / 1e6, sweeps=len(g), offset_hz=off, peak_db=lv))
                 break
-    res['control'] = dict(searches=ctrl_n, false_detections=ctrl_hits, shift_hz=CONTROL_HZ)
+    res['control'] = dict(searches=ctrl_n, false_detections=ctrl_hits, on_detected_signal=ctrl_sig, shift_hz=CONTROL_HZ)
+    # a Doppler-confirmed (guided) identification explains the frequency-only candidates it overlaps
+    gids = [i for i in res['ids'] if i['kind'] == 'guided']
+    res['ids'] = [i for i in res['ids'] if not (i['kind'] == 'event' and any(
+        g['norad'] == i['norad'] or (abs(g['f_mhz'] - i['f_mhz']) < 6e-3 and g['t_start_s'] - period <= i['t_end_s'] and i['t_start_s'] <= g['t_end_s'] + period) for g in gids))]
+    for Bd in A['bands']:
+        for e in Bd['events']:
+            if e.get('id') and e['id']['confidence'] == 'frequency-only':
+                g = next((g for g in gids if abs(g['f_mhz'] - e['f_mhz']) < 6e-3 and g['t_start_s'] - period <= e['t_end_s'] and e['t_start_s'] <= g['t_end_s'] + period), None)
+                if g:
+                    e['id'] = {k: g[k] for k in ('norad', 'name', 'transmitter', 'mode', 'baud', 'f_tx_hz', 'offset_hz', 'confidence', 'alternatives', 'format_check')}
     # Doppler-corrected stacking for every pass still unheard, with the same off-curve control
     st_n = st_false = 0; res['stacked'] = []
     for p in preds:
@@ -306,14 +336,15 @@ def identify(A, satdb_dir=None, qth_path=None):
                                        alternatives=len(same), format_check='n/a (stack)', peak_db=r['excess_db']))
                 break
     res['stack_control'] = dict(searches=st_n, false_detections=st_false, threshold_z=STACK_Z)
+    cand = {i['norad'] for i in res['ids'] if i['kind'] == 'event'}
     for p in preds:
         alive = [x for x in p['transmitters'] if x['alive'] and x['status'] in ('active', '')]
         row = dict(norad=p['norad'], name=p['name'], sat_status=p['sat_status'], max_el=p['max_el'], t_max_el_s=p['t_max_el'] - t_ref,
-                   t_rise_s=p['t_rise'] - t_ref, t_set_s=p['t_set'] - t_ref, heard=p['norad'] in used,
+                   t_rise_s=p['t_rise'] - t_ref, t_set_s=p['t_set'] - t_ref, heard=p['norad'] in used, candidate=p['norad'] in cand,
                    transmitters=[dict(f_mhz=x['f_hz'] / 1e6, mode=x['mode'], baud=x['baud'], alive=x['alive'], status=x['status'], description=x['description']) for x in p['transmitters']],
                    curve_t_s=(p['t'] - t_ref).tolist(), curve_el=np.nan_to_num(p['el'], nan=-90).tolist(), curve_rr=np.nan_to_num(p['rr']).tolist())
         res['passes'].append(row)
-        if not row['heard'] and alive and p['max_el'] >= 10:
+        if not row['heard'] and not row['candidate'] and alive and p['max_el'] >= 10:
             res['not_heard'].append(row)
     return res
 

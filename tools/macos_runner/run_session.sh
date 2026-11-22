@@ -304,7 +304,7 @@ fi
 #   superscan_rate  8 | 4 | 2 MS/s (default 8)                    sat-full: 5 / 11 / 20 hops, bins 4096 x rate (244 Hz)
 #   superscan_gain  auto (default) | dB
 #   superscan_dither kHz (default 0): second hop grid shifted by kHz, every band frequency seen from two LOs
-# Rate pilot: 30 s at the planned rate; any SDR overflow halves the rate (8 -> 4 -> 2) and re-plans. Analog bandwidth
+# Rate pilot: 30 s at the planned rate; a failed measurement or > 3 settle overflows halves the rate (8 -> 4 -> 2) and re-plans. Analog bandwidth
 # -w = 1.25 x rate keeps out-of-band energy off the ADC at high gain; UHD ring num_recv_frames = 256 x rate, capped at
 # 1024 (2048 fails on macOS with "usb rx6 submit failed: LIBUSB_ERROR_OTHER", seen 2026-11-22); at 8 MS/s the frames
 # are enlarged to 16360 B instead so the ring still holds 0.5 s.
@@ -337,9 +337,9 @@ if [ "${SUPERSCAN:-$(req_field superscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; 
 RESULT=superscan_plan_failed"; exit 2; }
   while [ "$RATE" -gt 2 ]; do                       # rate pilot
     ss_run 50 "$SESSION/pilot-${RATE}M.jsonl" -e 30 --deadline-policy finish-hop > "$SESSION/pilot-${RATE}M.log" 2>&1; PRC=$?
-    POV=$(grep -c 'SDR overflow' "$SESSION/pilot-${RATE}M.log")
-    echo "superscan pilot rate=${RATE}M exit=$PRC overflow_lines=$POV records=$(wc -l < "$SESSION/pilot-${RATE}M.jsonl" 2>/dev/null | tr -d ' ')" | tee -a "$LOG" "$SESSION/result.txt"
-    [ "$PRC" = 0 ] && [ "$POV" = 0 ] && break
+    POV=$(grep -c 'Measurement failed' "$SESSION/pilot-${RATE}M.log"); PSET=$(grep -c 'overflow during settling' "$SESSION/pilot-${RATE}M.log")
+    echo "superscan pilot rate=${RATE}M exit=$PRC measurement_failures=$POV settle_overflows=$PSET records=$(wc -l < "$SESSION/pilot-${RATE}M.jsonl" 2>/dev/null | tr -d ' ')" | tee -a "$LOG" "$SESSION/result.txt"
+    [ "$PRC" = 0 ] && [ "$POV" = 0 ] && [ "$PSET" -le 3 ] && break   # a settle overflow is re-settled, not lost data
     RATE=$(( RATE / 2 )); ss_plan || break
   done
   SGAIN="$(req_field superscan_gain)"; [ -n "$SGAIN" ] || SGAIN=auto
