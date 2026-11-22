@@ -346,10 +346,15 @@ RESULT=superscan_plan_failed"; exit 2; }
   if [ "$SGAIN" = auto ]; then
     CAL="$SESSION/gaincal"; mkdir -p "$CAL"; TC=$(date +%s)
     for G in 30 40 50 60 70 76; do
-      ss_run "$G" "$CAL/gain_$G.jsonl" -u 1 --headroom --headroom-max 1.0 --headroom-p999 1.0 --headroom-workspace "$WS" \
-        --rejection-evidence "$CAL/rejected-$G" > "$CAL/gain_$G.log" 2>&1
-      GRC=$?; echo "$GRC" > "$CAL/gain_$G.rc"; echo "gaincal gain=$G exit=$GRC" | tee -a "$LOG"
-      [ "$GRC" = 0 ] || break
+      for TRY in 1 2 3; do                            # a USB overflow says nothing about the gain: measure again
+        rm -rf "$CAL/rejected-$G"
+        ss_run "$G" "$CAL/gain_$G.jsonl" -u 1 --headroom --headroom-max 1.0 --headroom-p999 1.0 --headroom-workspace "$WS" \
+          --rejection-evidence "$CAL/rejected-$G" > "$CAL/gain_$G.log" 2>&1
+        GRC=$?; [ "$GRC" != 0 ] && grep -q 'SDR overflow' "$CAL/gain_$G.log" || break
+        echo "gaincal gain=$G overflow (try $TRY)" | tee -a "$LOG"
+      done
+      echo "$GRC" > "$CAL/gain_$G.rc"; echo "gaincal gain=$G exit=$GRC" | tee -a "$LOG"
+      [ "$GRC" = 0 ] || grep -q 'SDR overflow' "$CAL/gain_$G.log" || break   # stop at the first real (headroom) rejection
     done
     GSEL=$("$PY" "$REPO/tools/gaincal.py" "$SESSION/gaincal.json" "$CAL" --bands "$SESSION/bands.json" --fallback "$GAIN_DB" --png "$SESSION/gaincal.png" 2>>"$ERR")
     [ -n "$GSEL" ] && GAIN_DB="$GSEL"
@@ -361,11 +366,12 @@ RESULT=superscan_plan_failed"; exit 2; }
   while [ "$SEG" -lt 5 ]; do
     LEFT=$(( SCAN_SECONDS - ( $(date +%s) - T0 ) )); [ "$LEFT" -ge 20 ] || break
     SEG=$(( SEG + 1 ))
-    ss_run "$GAIN_DB" "$SESSION/segment-$SEG.jsonl" -e "$LEFT" --deadline-policy finish-hop >> "$ERR" 2>&1; RC=$?
+    ss_run "$GAIN_DB" "$SESSION/segment-$SEG.jsonl" -e "$LEFT" --deadline-policy finish-hop > "$SESSION/segment-$SEG.err" 2>&1; RC=$?
+    cat "$SESSION/segment-$SEG.err" >> "$ERR"
     cat "$SESSION/segment-$SEG.jsonl" >> "$OUT" 2>/dev/null; rm -f "$SESSION/segment-$SEG.jsonl"
     echo "superscan segment=$SEG exit=$RC left_before=${LEFT}s" | tee -a "$LOG" "$SESSION/result.txt"
     [ "$RC" = 0 ] && break
-    grep -q 'SDR overflow' "$ERR" || break           # resume only after an overflow, never after other failures
+    grep -q 'SDR overflow' "$SESSION/segment-$SEG.err" || break   # resume only after this segment overflowed, never after other failures
   done
   REC=$(wc -l < "$OUT" 2>/dev/null | tr -d ' ')
   echo "superscan plan=$PLAN rate=${RATE}M gain=$GAIN_DB exit=$RC segments=$SEG records=${REC:-0} settle_overflow_warnings=$(grep -c 'during settling' "$ERR") measurement_overflow=$(grep -c 'Measurement failed: SDR overflow' "$ERR") seconds=$(( $(date +%s) - T0 )) of=$SCAN_SECONDS" | tee -a "$SESSION/result.txt"
