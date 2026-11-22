@@ -213,16 +213,15 @@ def make_pdf(A, out, tag):
     for c in centers: ax.axvline(c, color=C2, lw=.8, ls=':')
     ax.set_xlim(f[0], f[-1]); ax.set_ylim(-0.4, max(2.4, s['candidates'][0]['peak_excess_db'] + .6 if s['candidates'] else 2.4)); fmt_ax(ax, 'MHz', 'dB above floor'); ax.legend(frameon=False, loc='upper right'); ax.set_title('Residual (artifact template and slow floor removed)')
     done(fig, 'p2_spectrum')
-    # ---- 3 waterfalls
-    fig = page(pdf, 'Waterfalls', f'time × frequency, {nsw} sweeps · power-averaged to ~3.9 kHz')
-    dec = 16; m_ = (S.shape[1] // dec) * dec
-    def down(Z): return 10 * np.log10(np.nanmean((10 ** (Z[:, :m_] / 10)).reshape(Z.shape[0], -1, dec), 2))
-    tt = A['T0'][:, 0] - A['T0'][0, 0]
-    for i, (Z, ttl, vmin, vmax, lab) in enumerate(((S, 'Raw', np.nanpercentile(S, 1), np.nanpercentile(S, 99.9), 'dB'), (A['Res'], 'Residual', -.6, 1.2, 'dB above floor'))):
+    # ---- 3 waterfalls (same preparation as the hero PNG: levelled residual, staircase time axis, blank hop centres)
+    import hopscan_waterfall as hw
+    W = A.get('W') or hw.prepare(A)
+    fig = page(pdf, 'Waterfalls', f"time × frequency, {nsw} sweeps, each hop at its own measured time · top: raw (power average per pixel) · bottom: residual, {hw.SMOOTH_BINS} bins × {hw.SMOOTH_SWEEPS} sweeps power average, max per pixel")
+    for i, (Z, how, ttl, vmin, vmax, cmap, lab) in enumerate(((S, 'mean', 'Raw', np.nanpercentile(S, 0.5), np.nanpercentile(S, 99.95), 'magma', 'dB'),
+                                                             (W['E'], 'max', 'Residual (enhanced)', lambda B: (lambda m, s_: m - 2 * s_)(*hw.noise_stats(B)), lambda B: (lambda m, s_: m + max(12 * s_, .5))(*hw.noise_stats(B)), hw.CMAP, 'dB above floor'))):
         ax = fig.add_axes([0.06, 0.50 - i * 0.42, 0.84, 0.33])
-        im = ax.imshow(down(Z), aspect='auto', origin='lower', extent=[f[0], f[m_ - 1], 0, tt[-1] + A['period'].mean()], cmap='magma' if i == 0 else 'viridis', vmin=vmin, vmax=vmax)
-        for c in centers: ax.axvline(c, color='w', lw=.4, ls=':', alpha=.5)
-        ax.grid(False); fmt_ax(ax, 'MHz' if i else None, 's'); ax.set_title(ttl)
+        im, _ = hw.draw(ax, A, W, Z, how, vmin, vmax, cmap=cmap, target_px=1600)
+        fmt_ax(ax, 'MHz' if i else None, 's'); ax.set_title(ttl)
         cb = fig.colorbar(im, cax=fig.add_axes([0.92, 0.50 - i * 0.42, 0.012, 0.33])); cb.set_label(lab)
     done(fig, 'p3_waterfall')
     # ---- 4 artifact
@@ -338,13 +337,19 @@ def main():
         print(__doc__); return 2
     out = Path(a[1]); out.mkdir(parents=True, exist_ok=True)
     tag = sys.argv[sys.argv.index('--tag') + 1] if '--tag' in sys.argv else 'hopscan'
-    A = analyse(a[0], out, tag); make_pdf(A, out, tag)
+    A = analyse(a[0], out, tag)
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import hopscan_waterfall as hw
+    A['W'] = hw.prepare(A)
+    make_pdf(A, out, tag)
     (out / f'{tag}_summary.json').write_text(json.dumps(A['summary'], indent=1))
     with open(out / f'{tag}_candidates.csv', 'w', newline='') as fh:
         w = csv.writer(fh); w.writerow(['f_mhz', 'width_khz', 'peak_excess_db', 'maxhold_excess_db', 'sweeps_detected_pct', 'level_sd_db', 'z_mean', 'hop_center_mhz', 'offset_khz'])
         for c in A['summary']['candidates']:
             w.writerow([f"{c['f_mhz']:.4f}", f"{c['width_khz']:.2f}", f"{c['peak_excess_db']:.2f}", f"{c['maxhold_excess_db']:.2f}", f"{c['sweeps_detected_pct']:.0f}", f"{c['level_sd_db']:.2f}", f"{c['z_mean']:.0f}", f"{A['centers'][c['hop']]/1e6:.2f}", f"{c['offset_khz']:+.0f}"])
     print(json.dumps({k: A['summary'][k] for k in ('sweeps', 'floor_db', 'sweep_to_sweep_sd_db', 'theory_sd_db', 'max_residual_bin_db', 'channels_with_occupancy')}))
+    hw.render(A, out, tag)                     # hero / raw / zoom waterfalls + interactive viewer
+    print(json.dumps({'waterfalls': sorted(p.name for p in out.glob(f'{tag}_waterfall*'))}))
     return 0
 
 

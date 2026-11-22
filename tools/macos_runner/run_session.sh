@@ -266,8 +266,17 @@ if [ "${HOPSCAN:-$(req_field hopscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; then
     --fft-threads 1 --max-threads 1 --partial-policy reject -F json -O "$OUT" > "$ERR" 2>&1
   RC=$?; REC=$(wc -l < "$OUT" 2>/dev/null | tr -d ' ')
   echo "hopscan exit=$RC records=${REC:-0} settle_overflow_warnings=$(grep -c 'during settling' "$ERR") measurement_overflow=$(grep -c 'Measurement failed: SDR overflow' "$ERR") seconds=$(( $(date +%s) - T0 )) of=$SCAN_SECONDS" | tee "$SESSION/result.txt"
+  # autogenerate analysis PDF, waterfalls/heatmaps and the interactive viewer into $SESSION/analysis
+  # (never changes the scan result; needs numpy+scipy+matplotlib, found in the scan python or a fallback)
+  RPY=""; for cand in "$PY" /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
+    MPLBACKEND=Agg "$cand" -c 'import numpy, scipy.ndimage, matplotlib.pyplot' >/dev/null 2>&1 && { RPY="$cand"; break; }; done
+  ARC=skipped; T1=$(date +%s)
+  if [ -n "$RPY" ] && [ "${REC:-0}" -gt 0 ]; then
+    MPLBACKEND=Agg "$RPY" "$REPO/tools/analyze_hopscan.py" "$OUT" "$SESSION/analysis" --tag hopscan > "$SESSION/analysis.log" 2>&1; ARC=$?
+  fi
+  echo "hopscan_report exit=$ARC via=${RPY:-none} files=$(ls "$SESSION/analysis" 2>/dev/null | wc -l | tr -d ' ') seconds=$(( $(date +%s) - T1 ))" | tee -a "$SESSION/result.txt"
   finish "SESSION=$SESSION
-RESULT=hopscan_exit_$RC"
+RESULT=hopscan_exit_$RC;REPORT=$ARC"
   exit "$RC"
 fi
 
