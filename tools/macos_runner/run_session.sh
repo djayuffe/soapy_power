@@ -304,7 +304,9 @@ fi
 #   superscan_rate  8 | 4 | 2 MS/s (default 8)                    sat-full: 5 / 11 / 20 hops, bins 4096 x rate (244 Hz)
 #   superscan_gain  auto (default) | dB
 # Rate pilot: 30 s at the planned rate; any SDR overflow halves the rate (8 -> 4 -> 2) and re-plans. Analog bandwidth
-# -w = 1.25 x rate keeps out-of-band energy off the ADC at high gain; UHD ring num_recv_frames = 256 x rate.
+# -w = 1.25 x rate keeps out-of-band energy off the ADC at high gain; UHD ring num_recv_frames = 256 x rate, capped at
+# 1024 (2048 fails on macOS with "usb rx6 submit failed: LIBUSB_ERROR_OTHER", seen 2026-11-22); at 8 MS/s the frames
+# are enlarged to 16360 B instead so the ring still holds 0.5 s.
 # Gain auto: one sweep per gain 30..76 dB with the raw-IQ headroom guard (stops at the first overload); gaincal.py picks
 # the smallest gain within 1 dB of the best input-referred noise with max |I|,|Q| < 0.5 and p99.9 < 0.2 of full scale.
 # Main scan resumes after an overflow (up to 5 segments) until SCAN_SECONDS of scanning are done.
@@ -316,8 +318,10 @@ if [ "${SUPERSCAN:-$(req_field superscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; 
   RATE="$(req_field superscan_rate)"; case "$RATE" in 2|4|8) ;; *) RATE=8;; esac
   ss_plan() {
     CENTERS=$("$PY" "$REPO/tools/satplan.py" "$PLAN" "$SESSION/bands.json" --rate "$RATE" 2>>"$ERR") || return 1
-    BINS=$(( 4096 * RATE )); NRF=$(( 256 * RATE )); BWHZ=$(( 1250000 * RATE )); WS=$(( RATE * 40000000 + 33554432 ))
+    BINS=$(( 4096 * RATE )); NRF=$(( 256 * RATE )); [ "$NRF" -le 1024 ] || NRF=1024   # macOS libusb refuses 2048 transfers
+    BWHZ=$(( 1250000 * RATE )); WS=$(( RATE * 40000000 + 33554432 ))
     DEVSTR="driver=uhd,type=b200,serial=$SERIAL,num_recv_frames=$NRF"
+    [ "$RATE" -lt 8 ] || DEVSTR="$DEVSTR,recv_frame_size=16360"   # 1024 x 16360 B = 0.5 s of ring at 8 MS/s (full-range stack setting)
     echo "superscan plan=$PLAN rate=${RATE}M bins=$BINS bw=$BWHZ centers=$CENTERS" | tee -a "$LOG" "$SESSION/result.txt"
   }
   ss_run() {  # ss_run <gain> <outfile> <extra args...>
