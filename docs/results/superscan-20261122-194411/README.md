@@ -7,7 +7,7 @@
   (4 MS/s: 6.8 s with 11 hops but no dither; 2 MS/s: 12.3 s).
 * 2880 records, 289 sweeps, 1808 s; one USB overflow at ~9 min, resumed automatically (2 segments).
 * **Gain only 50 dB:** the gain sweep hit a USB overflow at 60 dB and stopped there, so 70/76 dB were never measured.
-  Input-referred noise at 50 dB is ~12–16 dB worse than at 76 dB → nothing satellite-like reached the detectors.
+  Input-referred noise at 50 dB (−173.9 dB) is ~12 dB worse than at 76 dB (−186.2 dB, next run) → nothing satellite-like reached the detectors.
   Fixed in the runner (an overflow is re-measured, not taken as a headroom rejection) — see the 76 dB runs.
 
 ## Signals

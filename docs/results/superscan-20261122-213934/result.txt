@@ -1,0 +1,10 @@
+superscan plan=sat-full rate=8M dither=300k bins=32768 bw=10000000 centers=136.9M,137.2M,143.9M,144.2M,399.8M,400.1M,433.4M,433.7M,436.7M,437M
+superscan pilot rate=8M exit=0 overflow_lines=1 records=39
+superscan plan=sat-full rate=4M dither=300k bins=16384 bw=5000000 centers=136.9M,137.2M,145.7M,146M,147.3M,147.6M,401.6M,401.9M,403.2M,403.5M,431.7M,432M,433.3M,433.6M,434.9M,435.2M,436.5M,436.8M,438.1M,438.4M,439.7M,440M
+superscan pilot rate=4M exit=0 overflow_lines=0 records=49
+superscan gain auto -> 76 dB (108 s calibration)
+superscan segment=1 exit=2 left_before=1800s
+superscan segment=2 exit=0 left_before=1224s
+superscan plan=sat-full rate=4M gain=76 exit=0 segments=2 records=2918 settle_overflow_warnings=4 measurement_overflow=1 read_timeouts=0 seconds=1805 of=1800
+satdb fresh (< 24 h)
+superscan_report exit=0 via=/Users/ulfbertilsson/src/soapy_power/sessions/.venv/bin/python files=20 seconds=31
