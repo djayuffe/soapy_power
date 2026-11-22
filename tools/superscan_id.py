@@ -181,7 +181,7 @@ def identify(A, satdb_dir=None, qth_path=None):
         res['reason'] = 'no satellite database (queue.sh --satdb-refresh 1)'; return res
     if not qth_path or not Path(qth_path).exists():
         res['reason'] = 'no observer position (sessions/qth.json)'; return res
-    qth = json.loads(Path(qth_path).read_text()); db = sd.load(satdb_dir)
+    qth = json.loads(Path(qth_path).read_text()); db = sd.load(satdb_dir); tles = sd.load_tles(satdb_dir)
     meta = json.loads(Path(satdb_dir, 'meta.json').read_text()) if Path(satdb_dir, 'meta.json').exists() else {}
     res['db_meta'] = dict(fetched_utc=meta.get('fetched_utc'), satellites_with_downlinks=len(db), tle_count=meta.get('tle_count'))
     bands = [Bd['band'] for Bd in A['bands']]
@@ -195,11 +195,23 @@ def identify(A, satdb_dir=None, qth_path=None):
             if len(t) < 6:
                 continue
             c = sd.match_track(t + t_ref, fx, preds)
-            if not c:
+            if not c and tr['kind'] != 'doppler':
                 continue
-            best = c[0]; conf = sd.confidence(best, tr['rms_hz'], tr['shift_hz'])
+            best = c[0] if c else None; conf = sd.confidence(best, tr['rms_hz'], tr['shift_hz']) if c else 'frequency-only'
             if conf == 'frequency-only':
-                continue                            # a track is only attributed when its Doppler shape was tested
+                if tr['kind'] == 'doppler':           # orbit-only: which satellite's pass has this Doppler curve
+                    om = sd.match_orbit(t + t_ref, fx, tles, qth, tr['rms_hz'])
+                    res.setdefault('orbit_candidates', []).append(dict(f_mhz=tr['f_median_hz'] / 1e6, t_start_s=tr['t_start_s'], t_end_s=tr['t_end_s'],
+                                                                      candidates=[(o['name'], o['norad'], round(o['rms_hz'])) for o in om[:4]]))
+                    if om and (len(om) == 1 or om[1]['rms_hz'] >= 1.3 * om[0]['rms_hz']):     # attribute only a unique orbit
+                        o = om[0]; same_plane = [x['name'] for x in om[1:4] if x['rms_hz'] < 1.5 * o['rms_hz']]
+                        tr['id'] = dict(norad=o['norad'], name=o['name'], transmitter='(not in the transmitter list)', mode='', baud=None, f_tx_hz=None,
+                                        offset_hz=o['offset_hz'], rms_hz=o['rms_hz'], confidence='orbit (Doppler shape)' + (' ambiguous: ' + ', '.join(same_plane) if same_plane else ''),
+                                        alternatives=len(om) - 1, format_check='n/a')
+                        used.add(o['norad'])
+                        res['ids'].append(dict(kind='orbit', band=Bd['band']['name'], f_mhz=tr['f_median_hz'] / 1e6, t_start_s=tr['t_start_s'], t_end_s=tr['t_end_s'],
+                                               observed_format=tr['format']['cls'], observed_bw_hz=tr['format']['bw_hz'], **tr['id']))
+                continue                            # a track is only attributed to a transmitter when its Doppler shape was tested
             tr['id'] = dict(norad=best['norad'], name=best['name'], transmitter=best['tx']['description'], mode=best['tx']['mode'], baud=best['tx']['baud'],
                             f_tx_hz=best['tx']['f_hz'], offset_hz=best['offset_hz'], rms_hz=best['rms_hz'], confidence=conf, alternatives=len(c) - 1,
                             format_check=sd.format_consistency(best['tx'], tr['format']['bw_hz'], step))

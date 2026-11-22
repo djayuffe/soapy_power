@@ -101,6 +101,38 @@ def load(cache):
     return db
 
 
+def load_tles(cache):
+    """Every cached TLE (also satellites without a listed transmitter), name from SatNOGS when known."""
+    cache = Path(cache)
+    if not (cache / 'tle.json').exists():
+        return []
+    names = {}
+    if (cache / 'satellites.json').exists():
+        names = {int(s['norad_cat_id']): s.get('name') for s in json.loads((cache / 'satellites.json').read_text()) if s.get('norad_cat_id')}
+    return [dict(t, name=names.get(t['norad']) or t['name']) for t in json.loads((cache / 'tle.json').read_text())]
+
+
+def match_orbit(times, freqs, tles, qth, track_rms, max_rms=350.0):
+    """Which orbit produced an observed Doppler curve, independent of any transmitter list: the curve is compared
+    with f_c * (1 - range_rate/c) of every satellite above the horizon (f_c = observed centre, constant offset free)."""
+    times = np.asarray(times, float); freqs = np.asarray(freqs, float); fc = float(np.median(freqs)); out = []
+    k = np.argsort(times); times, freqs = times[k], freqs[k]
+    for t in tles:
+        try:
+            el, az, rng, rr = topo(t['l1'], t['l2'], times, qth)
+        except Exception:
+            continue
+        if not np.isfinite(el).all() or (el > -2).sum() < 0.8 * len(el):
+            continue
+        fp = fc * (1 - rr / C); d = freqs - fp; off = float(np.median(d)); res = d - off
+        rms = float(np.sqrt(np.mean(res ** 2))); ps = float(fp[-1] - fp[0]); os_ = float(freqs[-1] - freqs[0])
+        if abs(ps) < 1e3 or abs(os_ - ps) > max(500.0, 0.3 * abs(ps)):
+            continue
+        out.append(dict(norad=t['norad'], name=t['name'], rms_hz=rms, offset_hz=off, pred_shift_hz=ps, obs_shift_hz=os_, max_el=float(np.nanmax(el))))
+    out.sort(key=lambda c: c['rms_hz'])
+    return [c for c in out if c['rms_hz'] < max(max_rms, 2.0 * track_rms)]
+
+
 # ------------------------------------------------------------------------------------------- propagation
 def _gmst(jd_ut1):
     T = (jd_ut1 - 2451545.0) / 36525.0
