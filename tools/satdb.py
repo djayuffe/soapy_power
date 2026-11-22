@@ -238,16 +238,22 @@ def match_track(times, freqs, preds, max_offset_hz=8e3, min_overlap_s=20.0):
                 continue
             res = d - off; rms = float(np.sqrt(np.mean(res ** 2)))
             shape = float(np.ptp(fp))                 # how much Doppler the prediction itself has over the overlap
+            tu = times[up]; k = np.argsort(tu)
+            pred_shift = float(fp[k][-1] - fp[k][0]); obs_shift = float(freqs[up][k][-1] - freqs[up][k][0])
             cands.append(dict(norad=p['norad'], name=p['name'], tx=tx, offset_hz=off, rms_hz=rms, predicted_shift_hz=shape,
+                              pred_shift_hz=pred_shift, obs_shift_hz=obs_shift,
                               overlap_s=float(np.ptp(times[up])), max_el=p['max_el'], score=rms + abs(off) / 20.0))
     return sorted(cands, key=lambda c: c['score'])
 
 
 def confidence(c, track_rms, observed_shift_hz):
-    """strong: Doppler shape followed; probable: frequency + rough shape; frequency-only: nothing to test the shape on."""
-    if c['predicted_shift_hz'] > 1.5e3 and abs(observed_shift_hz) > 1.0e3 and c['rms_hz'] < max(350.0, 2.5 * track_rms) and abs(c['offset_hz']) < 4e3:
+    """strong: Doppler shape followed; probable: frequency + rough shape; frequency-only: nothing to test the shape on.
+    The observed track must move with the prediction over the overlap: a steady line next to a moving curve is no match."""
+    ps, os_ = c.get('pred_shift_hz', 0.0), c.get('obs_shift_hz', observed_shift_hz)
+    follows = abs(ps) > 1.0e3 and abs(os_ - ps) < max(500.0, 0.3 * abs(ps))
+    if follows and abs(ps) > 1.5e3 and c['rms_hz'] < max(350.0, 2.5 * track_rms) and abs(c['offset_hz']) < 4e3:
         return 'strong'
-    if c['rms_hz'] < max(800.0, 4 * track_rms) and abs(c['offset_hz']) < 8e3 and c['predicted_shift_hz'] > 500:
+    if follows and c['rms_hz'] < max(800.0, 4 * track_rms) and abs(c['offset_hz']) < 8e3:
         return 'probable'
     return 'frequency-only'
 

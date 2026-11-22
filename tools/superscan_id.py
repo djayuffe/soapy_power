@@ -60,10 +60,17 @@ CONTROL_HZ = 45e3     # same search shifted off every curve: false-alarm control
 
 
 def _band_cache(Bd):
+    """D with persistent lines and run-long stable tracks blanked (+-3 bins): a predicted curve crossing a
+    steady carrier or spur must not count as hearing the satellite."""
     c = Bd.get('_gcache')
     if c is None:
-        S = Bd['S']; D = S['D']; m0 = np.nanmedian(D); s0 = 1.4826 * np.nanmedian(np.abs(D - m0))
-        c = Bd['_gcache'] = dict(thr_base=(m0, s0), t_row=np.nanmedian(S['T'], 1), f=S['f'], fsrc=S['fsrc'])
+        S = Bd['S']; D = S['D'].copy(); f = S['f']; span = float(np.nanmax(S['T']) - np.nanmin(S['T']))
+        steady = [l['f_mhz'] * 1e6 for l in Bd['lines']]
+        steady += [t['f_median_hz'] for t in Bd['tracks'] if t['kind'] == 'stable' and t['t_end_s'] - t['t_start_s'] > 0.5 * span]
+        for x in steady:
+            j = int(np.searchsorted(f, x)); D[:, max(0, j - 3):j + 4] = np.nan
+        m0 = np.nanmedian(D); s0 = 1.4826 * np.nanmedian(np.abs(D - m0))
+        c = Bd['_gcache'] = dict(thr_base=(m0, s0), t_row=np.nanmedian(S['T'], 1), f=f, fsrc=S['fsrc'], D=D)
     return c
 
 
@@ -75,7 +82,7 @@ def guided(A, p, tx, shift=0.0, k_sigma=5.0):
         b = Bd['band']
         if not (b['lo_hz'] <= f_tx <= b['hi_hz']):
             continue
-        S = Bd['S']; D = S['D']; c = _band_cache(Bd); m0, s0 = c['thr_base']; thr = m0 + k_sigma * s0
+        S = Bd['S']; c = _band_cache(Bd); D = c['D']; m0, s0 = c['thr_base']; thr = m0 + k_sigma * s0
         t = c['t_row']; ok = np.isfinite(t)
         el = np.full(len(t), -90.0); el[ok] = np.interp(t[ok], p['t'], p['el'])
         rows = np.flatnonzero(ok & (el > 0))
@@ -96,15 +103,22 @@ def guided(A, p, tx, shift=0.0, k_sigma=5.0):
     return None
 
 
-def consistent_hits(hits, tol=1.5e3):
-    """Largest group of hits whose offsets agree within tol (a real transmitter keeps its offset)."""
-    if not hits:
+def consistent_hits(hits, tol=1.5e3, min_hits=3):
+    """Largest group of >= min_hits hits whose offsets agree within tol (a real transmitter keeps its offset and
+    therefore follows the predicted Doppler). If the prediction moves > 1 kHz across the group, the observed
+    frequencies must move with it (a steady line inside the search window is rejected)."""
+    if len(hits) < min_hits:
         return []
-    offs = np.array([h[3] for h in hits]); best = []
-    for o in offs:
+    best = []
+    for o in [h[3] for h in hits]:
         g = [h for h in hits if abs(h[3] - o) <= tol]
         if len(g) > len(best):
             best = g
+    if len(best) < min_hits:
+        return []
+    fo = np.array([h[2] for h in best]); fp = fo - np.array([h[3] for h in best])
+    if np.ptp(fp) > 1e3 and np.ptp(fo) < 0.3 * np.ptp(fp):
+        return []
     return best
 
 
@@ -186,8 +200,8 @@ def identify(A, satdb_dir=None, qth_path=None):
                 continue
             g = consistent_hits(hits)
             for sh in (CONTROL_HZ, -CONTROL_HZ):
-                c = consistent_hits(guided(A, p, tx, shift=sh) or []); ctrl_n += 1; ctrl_hits += len(c) >= 2
-            if len(g) >= 2:
+                c = consistent_hits(guided(A, p, tx, shift=sh) or []); ctrl_n += 1; ctrl_hits += bool(c)
+            if g:
                 used.add(p['norad']); off = float(np.median([h[3] for h in g])); lv = float(max(h[4] for h in g))
                 rows = [h[0] for h in g]; Bd = next(B for B in A['bands'] if B['band']['lo_hz'] <= tx['f_hz'] <= B['band']['hi_hz'])
                 cols = [int(np.argmin(np.abs(Bd['S']['fsrc'] - h[2]))) for h in g]
