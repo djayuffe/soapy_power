@@ -2773,6 +2773,24 @@
     "offset_hz": -130.20610338449478,
     "rms_hz": 92.3306625878343,
     "confidence": "guided (3 sweeps) ambiguous: KINEIS-2A, KINEIS-5E",
+    "note": "",
+    "hits": [
+     [
+      478.1,
+      400642236,
+      -322
+     ],
+     [
+      484.3,
+      400641992,
+      -122
+     ],
+     [
+      490.6,
+      400641504,
+      -130
+     ]
+    ],
     "alternatives": 2,
     "format_check": "unknown mode",
     "peak_db": 1.5574000048484415
@@ -2791,7 +2809,8 @@
     "f_mhz": 400.638,
     "sweeps": 3,
     "offset_hz": -130.20610338449478,
-    "peak_db": 1.5574000048484415
+    "peak_db": 1.5574000048484415,
+    "discriminating": true
    }
   ],
   "control": {

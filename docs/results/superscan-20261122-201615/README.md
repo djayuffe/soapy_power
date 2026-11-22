@@ -9,7 +9,7 @@ Same request as superscan-20261122-194411, with the fixed gain sweep.
   (up to 20 segments, 2 s pause before reopening).
 
 ## Signals
-* **KINEIS-2E (62931), 400.6422 MHz, Doppler-confirmed (guided search, 3 consecutive sweeps 478–491 s, offset −0.1 kHz, rms 92 Hz).**
+* **KINEIS-2E (62931), 400.6422 MHz, Doppler-confirmed (guided search, 3 consecutive sweeps 478–491 s; the predicted curve moved 0.9 kHz and the observed frequency followed it by 0.7 kHz, offsets −0.3…−0.1 kHz).**
   KINEIS-2A and KINEIS-5E share the downlink and are flagged as alternatives. Before this run's analysis fixes it was only a
   frequency-only event, and the burst also made one off-curve control fire (THEA +45 kHz crossed it) — now counted as
   "crossed a detected signal" (1), noise false alarms 0/426; stack 0/246.

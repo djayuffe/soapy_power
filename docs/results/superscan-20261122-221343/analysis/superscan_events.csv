@@ -1,0 +1,220 @@
+band,f_mhz,t_start_s,t_end_s,sweeps,peak_db,width_khz,on_doppler_track
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.51274,755.4,767.9,3,7.30,2.93,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.58403,618.2,630.7,3,7.23,2.93,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.45806,618.2,630.7,3,7.11,4.88,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.57329,618.2,630.7,3,6.97,2.93,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.42705,618.2,630.7,3,6.86,3.66,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.50908,618.2,630.7,3,6.76,4.15,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.48564,618.2,630.7,3,6.73,2.44,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.48931,618.2,630.7,3,6.71,3.17,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.57817,618.2,630.7,3,6.66,2.44,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.52861,618.2,630.7,3,6.46,2.93,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.58501,755.4,767.9,3,6.39,6.10,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.48101,755.4,767.9,3,6.31,2.69,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.56255,618.2,630.7,3,6.18,1.22,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.47515,618.2,630.7,3,6.14,1.95,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.47930,618.2,630.7,3,6.12,2.20,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.02158,754.8,767.3,3,6.11,1.22,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.46514,618.2,630.7,3,6.02,4.88,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.55278,618.2,630.7,3,6.02,2.44,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.53521,618.2,630.7,3,6.00,4.64,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.49492,755.4,767.9,3,5.92,3.17,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.54985,618.2,630.7,3,5.90,1.71,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.54448,618.2,630.7,3,5.90,1.71,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.50029,618.2,630.7,3,5.79,4.64,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.51274,618.2,630.7,3,5.60,2.20,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.58794,618.2,630.7,3,5.38,1.71,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.24790,754.8,767.3,3,5.34,1.22,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.43438,755.4,767.9,3,5.22,4.88,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.59648,618.2,630.7,3,5.14,1.46,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.44048,618.2,630.7,3,5.08,1.71,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.44805,618.2,630.7,3,4.99,1.71,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.19492,754.8,767.3,3,4.93,0.98,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.43608,618.2,630.7,3,4.90,1.95,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.45000,755.4,767.9,3,4.90,4.88,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.56011,618.2,630.7,3,4.87,2.20,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.25913,754.8,767.3,3,4.77,0.98,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.17490,754.8,767.3,3,4.66,2.20,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.54399,755.4,767.9,3,4.58,2.93,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.19175,754.8,767.3,3,4.54,0.98,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.52520,618.2,630.7,3,4.50,1.22,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.16465,754.8,767.3,3,4.35,1.22,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.12827,754.8,767.3,3,4.35,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.43022,618.2,630.7,3,4.30,1.71,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.15122,754.8,767.3,3,4.27,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.12559,754.8,767.3,3,4.23,0.98,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.18882,754.8,767.3,3,4.19,0.98,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.52959,755.4,767.9,3,4.16,1.95,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.55474,618.2,630.7,3,4.14,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.56523,618.2,630.7,3,4.12,1.46,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.10361,754.8,767.3,3,4.06,0.98,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.02646,754.8,767.3,3,4.02,1.95,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.51836,618.2,630.7,3,3.99,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.44512,618.2,630.7,3,3.94,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.22520,754.8,767.3,3,3.91,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.15439,754.8,767.3,3,3.89,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.43950,755.4,767.9,3,3.79,1.22,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.45293,618.2,630.7,3,3.77,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.49907,755.4,767.9,3,3.75,1.22,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.59624,755.4,767.9,3,3.74,2.20,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.55449,755.4,767.9,3,3.74,3.66,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.16172,754.8,767.3,3,3.74,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.23105,754.8,767.3,3,3.74,0.98,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.59111,618.2,630.7,3,3.73,0.24,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.26084,754.8,767.3,3,3.73,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.53203,618.2,630.7,3,3.71,1.71,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.45195,618.2,630.7,3,3.69,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.51738,618.2,630.7,3,3.62,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.51982,618.2,624.5,2,3.57,0.24,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.52178,618.2,630.7,3,3.57,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.50469,618.2,630.7,3,3.55,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.22007,754.8,767.3,3,3.54,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.50884,755.4,767.9,3,3.51,1.46,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.44927,618.2,630.7,3,3.46,0.24,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.20664,754.8,767.3,3,3.45,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.46001,755.4,767.9,3,3.41,1.71,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.26548,754.8,767.3,3,3.40,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.48296,618.2,630.7,3,3.39,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.27451,754.8,767.3,3,3.38,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.11826,754.8,761.1,2,3.38,0.24,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.56841,618.2,630.7,3,3.34,0.24,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.43438,618.2,630.7,3,3.32,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.20420,754.8,761.1,2,3.26,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.04404,754.8,767.3,3,3.24,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.24595,754.8,767.3,3,3.23,0.24,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.56792,755.4,767.9,3,3.03,0.98,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.56670,761.7,767.9,2,3.01,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.55718,755.4,767.9,3,3.00,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.53960,755.4,767.9,3,2.95,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.52446,761.7,767.9,2,2.93,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.51616,755.4,767.9,3,2.92,0.98,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.52617,755.4,767.9,3,2.91,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.47124,761.7,767.9,2,2.87,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.56572,761.7,767.9,2,2.83,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.43096,761.7,767.9,2,2.76,0.98,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.58135,761.7,767.9,2,2.71,1.22,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.47417,761.7,767.9,2,2.70,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.48833,761.7,767.9,2,2.70,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.45708,761.7,767.9,2,2.69,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.46538,761.7,767.9,2,2.65,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.55083,761.7,767.9,2,2.63,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.50518,761.7,767.9,2,2.59,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.53594,761.7,767.9,2,2.59,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.57695,761.7,767.9,2,2.57,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.47246,761.7,767.9,2,2.55,0.73,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.47808,624.5,630.7,2,2.54,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.54644,761.7,767.9,2,2.42,0.49,False
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.48979,761.7,767.9,2,2.06,0.49,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.70049,1006.2,1043.6,7,21.16,2.93,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,401.2,444.8,8,15.29,10.25,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1517.7,1530.1,3,15.03,9.52,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1698.5,1748.4,9,14.84,9.77,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,488.5,519.7,6,14.55,10.01,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1243.3,1262.0,4,14.45,10.01,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1561.3,1592.5,6,14.14,9.52,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,781.6,825.3,8,13.82,9.77,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,900.2,931.4,6,12.99,5.86,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1636.2,1648.6,3,12.89,3.91,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1162.1,1212.1,9,12.37,10.01,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,288.9,313.9,5,11.95,10.25,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,182.9,195.4,3,11.91,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,64.4,76.9,3,10.97,0.98,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,332.6,363.8,6,10.76,3.66,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,1392.9,1405.4,3,10.53,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1081.0,1099.7,4,10.49,3.91,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,613.2,625.7,3,10.44,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1474.0,1486.5,3,10.11,3.66,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,182.9,226.6,8,9.94,3.91,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,725.5,737.9,3,9.88,3.66,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,900.2,931.4,6,9.85,2.20,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1785.8,1798.3,3,9.82,5.86,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,1636.2,1648.6,3,9.81,1.71,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1343.1,1361.8,4,9.81,3.91,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,981.3,993.7,3,9.27,3.42,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1417.9,1430.4,3,9.17,3.42,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,332.6,363.8,6,8.59,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,1636.2,1648.6,3,8.47,1.95,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,600.7,613.2,3,8.19,3.17,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,650.6,663.1,3,7.82,3.42,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,1081.0,1099.7,4,7.61,3.42,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,332.6,363.8,6,7.55,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,1474.0,1486.5,3,7.55,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,1760.9,1773.4,3,7.49,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80010,1087.3,1099.7,3,7.42,1.46,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,1735.9,1748.4,3,7.25,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,120.6,133.0,3,7.14,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,1785.8,1798.3,3,7.06,3.42,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,182.9,226.6,8,6.94,1.95,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,981.3,993.7,3,6.86,0.98,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,1343.1,1361.8,4,6.74,3.17,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80010,214.1,226.6,3,6.61,1.46,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,725.5,737.9,3,6.57,0.98,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,1417.9,1430.4,3,6.39,0.98,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80010,1343.1,1355.5,3,6.19,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,120.6,133.0,3,5.32,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1605.0,1617.5,3,5.15,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,650.6,663.1,3,5.04,0.98,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,600.7,613.2,3,4.99,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,120.6,133.0,3,4.51,0.49,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79644,1474.0,1486.5,3,3.76,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79644,1735.9,1748.4,3,3.69,0.49,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07158,796.7,809.2,3,15.70,3.91,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07158,1595.0,1607.5,3,15.62,3.91,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),437.27295,355.0,367.5,3,15.54,1.71,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07158,1195.9,1208.4,3,15.53,3.91,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),436.87280,691.8,704.2,3,15.52,1.71,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07158,397.5,409.9,3,14.47,3.66,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),436.72705,355.0,367.5,3,14.22,1.46,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),437.12720,691.8,704.2,3,14.06,1.22,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07158,4.6,10.8,2,13.05,5.62,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),437.32275,355.0,367.5,3,12.70,1.46,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07158,341.3,353.8,3,12.47,3.66,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),436.67725,355.0,367.5,3,11.13,1.46,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,622.0,634.4,3,10.66,2.69,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,877.8,890.2,3,10.16,2.69,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,141.8,154.2,3,10.05,2.69,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,1358.0,1370.5,3,9.41,2.93,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07158,740.5,752.9,3,9.29,3.17,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,509.7,522.2,3,8.69,2.44,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,254.0,266.5,3,8.43,2.44,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,1613.7,1626.2,3,8.34,1.95,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,990.0,1002.5,3,8.03,2.44,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,1245.8,1258.3,3,7.89,2.44,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,1726.0,1738.5,3,7.77,2.44,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.76035,1101.7,1114.1,3,7.50,3.66,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.02544,1757.2,1769.6,3,6.39,2.44,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.02544,503.5,516.0,3,6.36,2.44,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),438.27271,835.3,847.8,3,6.33,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07085,1651.1,1663.6,3,6.02,2.93,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.02544,1358.0,1370.5,3,5.96,2.44,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,1102.3,1114.7,3,5.80,0.98,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.02544,104.4,116.8,3,5.77,2.69,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.02544,902.7,915.2,3,5.53,2.44,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),439.72705,866.5,879.0,3,5.24,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),439.72705,305.1,317.6,3,4.99,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.06816,796.7,809.2,3,4.57,1.22,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.06816,1195.9,1208.4,3,4.38,0.98,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.06816,1595.0,1607.5,3,4.22,0.98,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),438.32275,835.3,847.8,3,4.08,0.49,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07402,796.7,809.2,3,4.04,0.98,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),437.29736,355.0,367.5,3,4.04,2.44,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.02593,1301.9,1314.4,3,4.02,1.71,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07427,1195.9,1208.4,3,3.91,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07402,1595.0,1607.5,3,3.87,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.72275,247.2,253.4,2,3.81,0.24,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,366.3,378.8,3,3.74,0.49,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),436.02715,522.8,535.3,3,3.53,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07427,397.5,409.9,3,3.45,0.49,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),436.70190,355.0,367.5,3,3.16,1.95,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),436.89722,691.8,704.2,3,3.13,1.71,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),436.22710,691.2,703.6,3,3.12,0.49,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),437.29517,355.0,367.5,3,3.12,1.46,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.39189,771.6,784.1,3,3.00,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.02544,958.8,971.3,3,2.94,0.98,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),436.89453,691.8,704.2,3,2.89,1.46,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.75986,952.0,964.5,3,2.89,1.46,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),437.30518,355.0,367.5,3,2.76,0.98,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),436.89062,691.8,704.2,3,2.68,1.22,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),436.88477,691.8,698.0,2,2.56,0.49,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),437.10547,698.0,704.2,2,2.36,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),437.28833,355.0,361.3,2,2.34,0.24,False
