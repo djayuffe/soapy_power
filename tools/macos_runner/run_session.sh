@@ -238,6 +238,24 @@ WRAP="$OUTDIR/.soapy_power-$STAMP"
   printf 'exec %q -m soapypower "$@"\n' "$PY"
 } > "$WRAP"
 chmod +x "$WRAP"
+# ---- 3b. overflow_probe (request key, integer 1): A/B of the 140-150 MHz hop scan that overflowed with the
+# default UHD USB ring (no frame args) against the same scan with num_recv_frames set in the device string.
+if [ "${OVERFLOW_PROBE:-$(req_field overflow_probe)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; then
+  SESSION="$OUTDIR/overflow-$STAMP"; mkdir -p "$SESSION"; : > "$SESSION/result.txt"
+  for FR in default 64 512; do
+    case "$FR" in default) DEVP="driver=uhd,type=b200,serial=$SERIAL";; *) DEVP="driver=uhd,type=b200,serial=$SERIAL,num_recv_frames=$FR";; esac
+    OUT="$SESSION/scan-$FR.jsonl"; ERR="$SESSION/scan-$FR.log"; T0=$(date +%s)
+    "$WRAP" -d "$DEVP" -A "$ANTENNA" -C 0 -f 140M:150M -r 2M -b 8192 -g "$GAIN_DB" -o 25 -t 0.5 -e "$SCAN_SECONDS" \
+      --fft-window blackman --dc-mask-width 5000 --tune-delay 0.05 --partial-policy reject -F json -O "$OUT" > "$ERR" 2>&1
+    RC=$?; REC=$(wc -l < "$OUT" 2>/dev/null | tr -d ' '); OVF=$(grep -c 'SDR overflow' "$ERR")
+    echo "frames=$FR exit=$RC records=${REC:-0} overflow_errors=$OVF seconds=$(( $(date +%s) - T0 )) of=$SCAN_SECONDS" | tee -a "$SESSION/result.txt"
+    sleep 3
+  done
+  finish "SESSION=$SESSION
+RESULT=overflow_probe_done"
+  exit 0
+fi
+
 if [ "$PROCEDURE" = baseline ]; then
   SESSION="$OUTDIR/baseline-$STAMP"; mkdir -p "$SESSION"
   FAILED=""
