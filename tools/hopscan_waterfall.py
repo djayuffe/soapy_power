@@ -88,7 +88,9 @@ def find_events(A, W, k_sigma=8.0, line_khz=1.5, group_khz=15.0):
         ncol = max(1, c1 - c0); seg = R[r0:r1, c0:c1]
         rowlev = 10 * np.log10(np.nanmean(10 ** (seg / 10), 1))
         act = np.flatnonzero(rowlev > 3 * W['sig'] / np.sqrt(max(1.0, ncol / 1.73)))
-        a, b = (r0 + act[0], r0 + act[-1] + 1) if len(act) else (min(r0 + 2, r1 - 1), max(r1 - 2, r0 + 1))
+        if not len(act) or top['peak'] < 3 * W['sig']:
+            continue                                # nothing that stands out in the native data: not an emission
+        a, b = r0 + act[0], r0 + act[-1] + 1
         peaks = sorted({round(float(f[c['j']]), 4) for c in g})
         ev.append(dict(f_mhz=float(f[j]), f_lo_mhz=float(f[c0]), f_hi_mhz=float(f[c1 - 1]), width_khz=float(max(1, ncol - (SMOOTH_BINS - 1)) * A['step'] / 1e3),
                        peaks_mhz=peaks, t_start_s=float(W['ts'][a, h]), t_end_s=float(W['te'][b - 1, h]), sweeps=int(b - a),
@@ -143,9 +145,11 @@ def _labels(ax, cands, span_mhz, n=10, rows=(0.62, 0.80, 0.98)):
     """Label the strongest lines in rows at fixed heights so no two labels collide (leader line to the peak)."""
     top = sorted(cands[:n], key=lambda c: c['f_mhz']); need = 0.034 * span_mhz; last = [-1e9] * len(rows)
     for c in top:
-        x = c['f_mhz']; k = next((i for i in range(len(rows)) if x - last[i] > need), int(np.argmin(last)))
-        last[k] = x
+        x = c['f_mhz']; k = next((i for i in range(len(rows)) if x - last[i] > need), None)
         ax.plot([x], [c['peak_excess_db']], marker='v', ms=7, color=ah.C2, mec='none', zorder=5)
+        if k is None:
+            continue                                # no free row: marker only (the zoom page and CSV list it)
+        last[k] = x
         ax.annotate(f"{x:.4f}", (x, c['peak_excess_db']), xytext=(x, rows[k]), textcoords=ax.get_xaxis_transform(), ha='center', va='bottom',
                     fontsize=11, color=ah.C2, arrowprops=dict(arrowstyle='-', color=ah.C2, lw=.5, alpha=.6, shrinkA=1, shrinkB=4))
 
@@ -170,9 +174,9 @@ def hero(A, W, out, tag):
     ax0.set_xlim(f[0], f[-1]); ax0.set_ylim(-0.35, top / 0.58)
     _labels(ax0, A['cand'], f[-1] - f[0])
     for e in W['events']:
-        ax0.plot([e['f_mhz']], [0.04], marker='^', ms=8, color=ah.C1, mec='none', transform=ax0.get_xaxis_transform(), zorder=6); ax0.set_xticklabels([])
+        ax0.plot([e['f_mhz']], [0.04], marker='^', ms=8, color=ah.C1, mec='none', transform=ax0.get_xaxis_transform(), zorder=6)
     ax0.set_ylabel('dB, 10-min\nmean', fontsize=12); ax0.tick_params(labelsize=11)
-    ax0.xaxis.set_major_locator(MultipleLocator(0.5)); ax0.xaxis.set_minor_locator(MultipleLocator(0.1))
+    ax0.xaxis.set_major_locator(MultipleLocator(0.5)); ax0.xaxis.set_minor_locator(MultipleLocator(0.1)); ax0.tick_params(labelbottom=False)
     ax = fig.add_axes([0.05, 0.075, 0.895, 0.645])
     px = int(0.895 * 24 * 160); st = {}
     def lo_(b): st['m'], st['s'] = noise_stats(b); return st['m'] - 2 * st['s']
@@ -206,8 +210,8 @@ def raw(A, W, out, tag):
              f"(identical in all hops, spread {s['dc_artifact_hop_spread_db']:.2f} dB), removed in the residual views", fontsize=12.5, color='#8fa0bd', va='top')
     ax0 = fig.add_axes([0.05, 0.735, 0.895, 0.13])
     ax0.plot(f, A['Med'], color=ah.C1, lw=.6); ax0.plot(f, A['floor'] + A['tpl_st'], color=ah.C2, lw=.6, alpha=.8)
-    ax0.set_xlim(f[0], f[-1]); ax0.set_xticklabels([]); ax0.set_ylabel('dB, median', fontsize=12); ax0.tick_params(labelsize=11)
-    ax0.xaxis.set_major_locator(MultipleLocator(0.5)); ax0.xaxis.set_minor_locator(MultipleLocator(0.1))
+    ax0.set_xlim(f[0], f[-1]); ax0.tick_params(labelbottom=False); ax0.set_ylabel('dB, median', fontsize=12); ax0.tick_params(labelsize=11)
+    ax0.xaxis.set_major_locator(MultipleLocator(0.5)); ax0.xaxis.set_minor_locator(MultipleLocator(0.1)); ax0.tick_params(labelbottom=False)
     ax0.legend(['median over sweeps', 'floor + artifact model'], frameon=False, fontsize=11, loc='upper left', ncol=2)
     ax = fig.add_axes([0.05, 0.075, 0.895, 0.645])
     m, p = draw(ax, A, W, S, 'mean', np.nanpercentile(S, 0.5), np.nanpercentile(S, 99.95), cmap='magma', target_px=int(0.895 * 24 * 160))
@@ -427,10 +431,10 @@ function draw(){
   g.fillStyle='#8fa0bd';g.font='11px sans-serif';g.textAlign='right';
   const tstep=niceStep(M.tend,h,40);for(let t=0;t<=M.tend;t+=tstep){const y=h-(t/M.tend)*h;g.fillText(t.toFixed(0)+' s',G-4,Math.max(10,y+4));g.fillRect(G-2,y,2,1)}
   for(const cc of M.centers){const c=(cc-M.f0)/M.step;if(c>=x0&&c<=x1){const x=G+(c-x0)/(x1-x0)*(w-G);g.fillStyle='#ffb000';g.beginPath();g.moveTo(x-4,0);g.lineTo(x+4,0);g.lineTo(x,7);g.fill()}}
-  for(const tk of (M.tracks||[])){g.strokeStyle=tk.kind==='doppler'?'#00d1ff':'#ff4d6d';g.lineWidth=1.2;g.beginPath();let pen=false;
+  for(const tk of (M.tracks||[])){g.strokeStyle=tk.kind==='doppler'?'#00d1ff':tk.kind==='predicted'?'#ffd166':'#ff4d6d';g.setLineDash(tk.kind==='predicted'?[4,4]:[]);g.lineWidth=1.2;g.beginPath();let pen=false;
     for(let i=0;i<tk.f.length;i++){const c=(tk.f[i]-M.f0)/M.step;if(c<x0||c>x1){pen=false;continue}const x=G+(c-x0)/(x1-x0)*(w-G),y=h-(tk.r[i]+.5)/R*h;if(pen)g.lineTo(x,y);else g.moveTo(x,y);pen=true}g.stroke();
     const c0=(tk.f[0]-M.f0)/M.step;if(c0>=x0&&c0<=x1){g.fillStyle=g.strokeStyle;g.font='11px sans-serif';g.textAlign='left';g.fillText(tk.label,G+(c0-x0)/(x1-x0)*(w-G)+5,h-(tk.r[0]+.5)/R*h+12)}}
-  g.lineWidth=1;
+  g.lineWidth=1;g.setLineDash([]);
   if(hover){const x=G+(hover.c-x0)/(x1-x0)*(w-G);g.strokeStyle='rgba(255,255,255,.35)';g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}
   drawSpec(colv,pw,how);drawAx();drawTrace(colv,pw);
 }

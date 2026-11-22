@@ -268,12 +268,30 @@ report() {  # report <analyzer.py> <scan.jsonl> <session dir> <tag> [extra args.
   echo "${tag}_report exit=$ARC via=${RPY:-none} files=$(ls "$ses/analysis" 2>/dev/null | wc -l | tr -d ' ') seconds=$(( $(date +%s) - t1 ))" | tee -a "$ses/result.txt"
 }
 
+# ---- satellite database (SatNOGS transmitters + TLEs) for superscan identification; no SDR use.
+satdb_refresh() {  # satdb_refresh [max_age_hours]: refresh $OUTDIR/satdb when missing or older than max_age_hours
+  local age=${1:-0} meta="$OUTDIR/satdb/meta.json"
+  if [ "$age" -gt 0 ] && [ -f "$meta" ] && [ $(( $(date +%s) - $(stat -f %m "$meta" 2>/dev/null || echo 0) )) -lt $(( age * 3600 )) ]; then
+    echo "satdb fresh (< ${age} h)"; return 0; fi
+  "$PY" -c 'import sgp4' >/dev/null 2>&1 || "$PY" -m pip install --quiet sgp4 >/dev/null 2>&1
+  "$PY" "$REPO/tools/satdb.py" refresh "$OUTDIR/satdb" > "$OUTDIR/satdb-refresh.log" 2>&1; local rc=$?
+  echo "satdb refresh exit=$rc sgp4=$("$PY" -c 'import sgp4; print(sgp4.__version__)' 2>/dev/null || echo missing) tle=$(grep -o '"tle_count": [0-9]*' "$OUTDIR/satdb/meta.json" 2>/dev/null | grep -o '[0-9]*$')"
+  return $rc
+}
+if [ "$(req_field satdb_refresh)" = 1 ]; then
+  satdb_refresh 0 | tee -a "$LOG"; SRC=${PIPESTATUS[0]}
+  finish "SESSION=$OUTDIR/satdb
+RESULT=satdb_refresh_$SRC"
+  exit "$SRC"
+fi
+
 # ---- 3a. reanalyze (request key, string session name): rerun the report of an existing session, no SDR use.
 REAN="$(req_field reanalyze)"
 if [ -n "$REAN" ]; then
   case "$REAN" in
     hopscan-*)   SESSION="$OUTDIR/$REAN"; report analyze_hopscan.py "$SESSION/scan_140_150.jsonl" "$SESSION" hopscan;;
-    superscan-*) SESSION="$OUTDIR/$REAN"; report analyze_superscan.py "$SESSION/superscan.jsonl" "$SESSION" superscan --bands "$SESSION/bands.json";;
+    superscan-*) SESSION="$OUTDIR/$REAN"; satdb_refresh 24 >> "$LOG" 2>&1
+                 report analyze_superscan.py "$SESSION/superscan.jsonl" "$SESSION" superscan --bands "$SESSION/bands.json" --qth "$OUTDIR/qth.json" --satdb "$OUTDIR/satdb";;
     *) ARC=bad_name;;
   esac
   finish "SESSION=$OUTDIR/$REAN
@@ -281,27 +299,28 @@ RESULT=reanalyze_$ARC"
   [ "$ARC" = 0 ] && exit 0 || exit 1
 fi
 
-# ---- 3d. superscan (request key, integer 1): interleaved satellite-band scan with explicit hop centres
-# (DC spike kept >= 100 kHz outside every band of interest, all bands revisited every sweep for Doppler tracking):
-#   137.0-138.0 MHz (weather sats / CubeSat VHF)  centres 136.80, 138.20
-#   145.8-146.0 MHz (amateur satellite VHF)       centre  145.50
-#   435.0-438.0 MHz (amateur satellite UHF)       centres 435.85, 436.60, 437.35
+# ---- 3d. superscan (request key, integer 1; superscan_plan string: sat | sat-full | sat-s, default sat):
+# interleaved satellite-band scan; tools/satplan.py places the hop centres so the DC spike stays >= 100 kHz outside
+# every band and every band bin is read within 850 kHz of an LO; all bands are revisited every sweep (Doppler).
+#   sat      137-138, 145.8-146.0, 435-438 MHz                       (6 hops,  ~3.8 s revisit)
+#   sat-full 137-138, 144-146, 399.9-403, 430-440 MHz                (20 hops, ~13 s revisit)
+#   sat-s    2200-2290, 2400-2450 MHz                                (185 hops, survey)
+# After the scan: refresh the satellite database if older than 24 h, then the report identifies tracks.
 if [ "${SUPERSCAN:-$(req_field superscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; then
   SESSION="$OUTDIR/superscan-$STAMP"; mkdir -p "$SESSION"
-  OUT="$SESSION/superscan.jsonl"; ERR="$SESSION/scan.log"; T0=$(date +%s)
-  cat > "$SESSION/bands.json" <<'JSON'
-{"dc_exclude_hz": 100000, "usable_halfwidth_hz": 850000,
- "bands": [{"name": "VHF 137-138 MHz (weather sats, CubeSat)", "lo_hz": 137000000, "hi_hz": 138000000},
-           {"name": "VHF 145.8-146.0 MHz (amateur satellite)", "lo_hz": 145800000, "hi_hz": 146000000},
-           {"name": "UHF 435-438 MHz (amateur satellite)", "lo_hz": 435000000, "hi_hz": 438000000}]}
-JSON
+  OUT="$SESSION/superscan.jsonl"; ERR="$SESSION/scan.log"
+  PLAN="$(req_field superscan_plan)"; [ -n "$PLAN" ] || PLAN=sat
+  CENTERS=$("$PY" "$REPO/tools/satplan.py" "$PLAN" "$SESSION/bands.json" 2>>"$ERR") || { echo "superscan plan '$PLAN' failed" | tee "$SESSION/result.txt"; finish "SESSION=$SESSION
+RESULT=superscan_plan_failed"; exit 2; }
+  echo "superscan plan=$PLAN centers=$CENTERS" | tee -a "$LOG"; T0=$(date +%s)
   "$WRAP" -d "driver=uhd,type=b200,serial=$SERIAL,num_recv_frames=512" -A "$ANTENNA" -C 0 -r 2M -b 8192 -g "$GAIN_DB" -t 0.5 \
-    --centers 136.8M,138.2M,145.5M,435.85M,436.6M,437.35M -e "$SCAN_SECONDS" --deadline-policy finish-hop \
+    --centers "$CENTERS" -e "$SCAN_SECONDS" --deadline-policy finish-hop \
     --fft-window blackman --dc-mask-width 5000 --tune-delay 0.05 --fft-threads 1 --max-threads 1 --partial-policy reject \
-    -F json -O "$OUT" > "$ERR" 2>&1
+    -F json -O "$OUT" >> "$ERR" 2>&1
   RC=$?; REC=$(wc -l < "$OUT" 2>/dev/null | tr -d ' ')
-  echo "superscan exit=$RC records=${REC:-0} settle_overflow_warnings=$(grep -c 'during settling' "$ERR") measurement_overflow=$(grep -c 'Measurement failed: SDR overflow' "$ERR") seconds=$(( $(date +%s) - T0 )) of=$SCAN_SECONDS" | tee "$SESSION/result.txt"
-  report analyze_superscan.py "$OUT" "$SESSION" superscan --bands "$SESSION/bands.json"
+  echo "superscan plan=$PLAN exit=$RC records=${REC:-0} settle_overflow_warnings=$(grep -c 'during settling' "$ERR") measurement_overflow=$(grep -c 'Measurement failed: SDR overflow' "$ERR") seconds=$(( $(date +%s) - T0 )) of=$SCAN_SECONDS" | tee "$SESSION/result.txt"
+  satdb_refresh 24 | tee -a "$SESSION/result.txt"
+  report analyze_superscan.py "$OUT" "$SESSION" superscan --bands "$SESSION/bands.json" --qth "$OUTDIR/qth.json" --satdb "$OUTDIR/satdb"
   finish "SESSION=$SESSION
 RESULT=superscan_exit_$RC;REPORT=$ARC"
   exit "$RC"

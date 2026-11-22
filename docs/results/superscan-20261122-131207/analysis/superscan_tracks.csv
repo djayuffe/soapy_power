@@ -1,1 +1,1 @@
-band,kind,model,f_median_mhz,t_start_s,t_end_s,points,shift_hz,rate_peak_hz_s,rms_hz,tca_s,f0_mhz,mean_level_db
+band,kind,model,f_median_mhz,t_start_s,t_end_s,points,shift_hz,rate_peak_hz_s,rms_hz,tca_s,f0_mhz,mean_level_db,observed_format,observed_bw_hz,id_name,id_norad,id_mode,id_baud,id_offset_hz,id_rms_hz,id_confidence,format_check

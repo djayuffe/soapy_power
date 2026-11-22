@@ -3,7 +3,8 @@
 #   tools/macos_runner/queue.sh probe|setup|scan [--seconds N] [--gain DB]
 #       [--antenna RX2|TX/RX] [--input antenna|terminated] [--procedure suite|baseline|fullrange]
 #       [--device b200|bladerf] [--bladerf-job dense-dc|survey|survey-anchor|dense-dc+survey]
-#       [--plan-args "--no-telemetry"] [--overflow-probe 1] [--hopscan 1] [--superscan 1]
+#       [--plan-args "--no-telemetry"] [--overflow-probe 1] [--hopscan 1] [--superscan 1] [--superscan-plan sat|sat-full|sat-s]
+#       [--satdb-refresh 1]
 #       [--reanalyze hopscan-YYYYMMDD-HHMMSS|superscan-YYYYMMDD-HHMMSS] [--wait SECONDS]
 # Prints the request id. With --wait: prints the status JSON and the run log tail;
 # exit 0 = finished OK, 1 = finished with an error or rejected, 3 = still running.
@@ -11,15 +12,15 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$SRC/../.." && pwd)"
 SESSIONS="${SPR_SESSIONS:-$REPO/sessions}"
-usage() { sed -n '2,9p' "$0" >&2; exit 2; }
+usage() { sed -n '2,10p' "$0" >&2; exit 2; }
 MODE="${1:-}"; [ $# -gt 0 ] && shift
 case "$MODE" in probe|setup|scan) ;; *) usage;; esac
-SECS=30; GAIN=20; ANT=RX2; IN=antenna; PROC=suite; DEV=b200; JOB=dense-dc+survey; WAIT=0; PLANARGS=; OVP=; HOP=; SUP=; REAN=
+SECS=30; GAIN=20; ANT=RX2; IN=antenna; PROC=suite; DEV=b200; JOB=dense-dc+survey; WAIT=0; PLANARGS=; OVP=; HOP=; SUP=; REAN=; SPLAN=; SATDB=
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || usage
   case "$1" in
     --seconds) SECS="$2";; --gain) GAIN="$2";; --antenna) ANT="$2";; --input) IN="$2";; --procedure) PROC="$2";;
-    --device) DEV="$2";; --bladerf-job) JOB="$2";; --plan-args) PLANARGS="$2";; --overflow-probe) OVP="$2";; --hopscan) HOP="$2";; --superscan) SUP="$2";; --reanalyze) REAN="$2";; --wait) WAIT="$2";;
+    --device) DEV="$2";; --bladerf-job) JOB="$2";; --plan-args) PLANARGS="$2";; --overflow-probe) OVP="$2";; --hopscan) HOP="$2";; --superscan) SUP="$2";; --superscan-plan) SPLAN="$2";; --satdb-refresh) SATDB="$2";; --reanalyze) REAN="$2";; --wait) WAIT="$2";;
     *) usage;;
   esac
   shift 2
@@ -32,6 +33,7 @@ case "$PROC" in suite|baseline|fullrange) ;; *) echo "--procedure: suite, baseli
 case "$DEV" in b200|bladerf) ;; *) echo "--device: b200 or bladerf" >&2; exit 2;; esac
 case "$JOB" in dense-dc|survey|survey-anchor|dense-dc+survey) ;; *) echo "--bladerf-job: dense-dc, survey, survey-anchor or dense-dc+survey" >&2; exit 2;; esac
 [[ "$WAIT" =~ ^[0-9]+$ ]] || { echo "--wait: seconds" >&2; exit 2; }
+[ -z "$SPLAN" ] || [[ "$SPLAN" =~ ^(sat|sat-full|sat-s)$ ]] || { echo "--superscan-plan: sat | sat-full | sat-s" >&2; exit 2; }
 [ -z "$REAN" ] || [[ "$REAN" =~ ^(hopscan|superscan)-[0-9]{8}-[0-9]{6}$ ]] || { echo "--reanalyze: hopscan-YYYYMMDD-HHMMSS or superscan-YYYYMMDD-HHMMSS" >&2; exit 2; }
 mkdir -p "$SESSIONS/queue" "$SESSIONS/status"
 ID="$MODE-$(date +%Y%m%d-%H%M%S)-$$"
@@ -46,6 +48,8 @@ TYPE=integer; case "$GAIN" in *.*) TYPE=real;; esac
   [ "$OVP" != 1 ] || printf '<key>overflow_probe</key><integer>1</integer>\n'
   [ "$HOP" != 1 ] || printf '<key>hopscan</key><integer>1</integer>\n'
   [ "$SUP" != 1 ] || printf '<key>superscan</key><integer>1</integer>\n'
+  [ -z "$SPLAN" ] || printf '<key>superscan_plan</key><string>%s</string>\n' "$SPLAN"
+  [ "$SATDB" != 1 ] || printf '<key>satdb_refresh</key><integer>1</integer>\n'
   [ -z "$REAN" ] || printf '<key>reanalyze</key><string>%s</string>\n' "$REAN"
   [ -z "$PLANARGS" ] || printf '<key>plan_args</key><string>%s</string>\n' "$PLANARGS"
   echo '</dict></plist>'

@@ -1,0 +1,67 @@
+[INFO] [UHD] Mac OS; Clang version 21.0.0 (clang-2100.1.1.101); Boost_109200; UHD_4.10.0.0
+[INFO] [b200_impl.cpp:431] [B200] Detected Device: B200mini
+[INFO] [B200] Detected Device: B200mini
+[INFO] [b200_impl.cpp:477] [B200] Operating over USB 3.
+[INFO] [B200] Operating over USB 3.
+[INFO] [b200_impl.cpp:628] [B200] Initialize CODEC control...
+[INFO] [B200] Initialize CODEC control...
+[INFO] [b200_impl.cpp:697] [B200] Initialize Radio control...
+[INFO] [B200] Initialize Radio control...
+[INFO] [b200_impl.cpp:1108] [B200] Performing register loopback test... 
+[INFO] [B200] Performing register loopback test... 
+[INFO] [b200_impl.cpp:1117] [B200] Register loopback test passed
+[INFO] [B200] Register loopback test passed
+[INFO] [b200_impl.cpp:823] [B200] Setting master clock rate selection to 'automatic'.
+[INFO] [B200] Setting master clock rate selection to 'automatic'.
+[INFO] [b200_impl.cpp:1158] [B200] Asking for clock rate 16.000000 MHz... 
+[INFO] [B200] Asking for clock rate 16.000000 MHz... 
+[INFO] [b200_impl.cpp:1171] [B200] Actually got clock rate 16.000000 MHz.
+[INFO] [B200] Actually got clock rate 16.000000 MHz.
+[INFO] [b200_impl.cpp:1158] [B200] Asking for clock rate 32.000000 MHz... 
+[INFO] [B200] Asking for clock rate 32.000000 MHz... 
+[INFO] [b200_impl.cpp:1171] [B200] Actually got clock rate 32.000000 MHz.
+[INFO] [B200] Actually got clock rate 32.000000 MHz.
+INFO: Using device: B200mini
+INFO: repeats: 123
+INFO: samples: 1007616 (time: 0.50381 s)
+INFO: max_buffer_size (samples): 199920 (repeats: 24.40, time: 0.09996 s)
+INFO: buffer_size (samples): 199920 (repeats: 24.40, time: 0.09996 s)
+INFO: buffer_repeats: 6
+INFO: FFT bin spacing: 244.14062 Hz; window ENBW: 421.57162 Hz (1.72676 bins)
+INFO: overlap: 0.25000
+INFO: bin_size: 244.14 Hz
+INFO: bins: 8192
+INFO: bins (after crop): 6144
+INFO: sample_rate: 2.000 MHz
+INFO: sample_rate (after crop): 1.500 MHz
+INFO: freq_range: 10.000 MHz
+INFO: hopping: YES
+INFO: hop_size: 1.500 MHz
+INFO: hops: 7
+INFO: min_center_freq: 140.750 MHz
+INFO: max_center_freq: 149.750 MHz
+INFO: min_freq (after crop): 140.000 MHz
+INFO: max_freq (after crop): 150.500 MHz
+WARNING: RX scheduling gap: 19.465 ms at +29.681 s during measurement
+WARNING: RX scheduling gap: 10.652 ms at +30.002 s during measurement
+WARNING: RX scheduling gap: 15.907 ms at +85.857 s during settling
+WARNING: RX scheduling gap: 10.505 ms at +86.354 s during measurement
+WARNING: RX scheduling gap: 16.100 ms at +92.998 s during measurement
+WARNING: RX scheduling gap: 16.867 ms at +103.367 s during settling
+WARNING: RX scheduling gap: 44.244 ms at +139.022 s during measurement
+WARNING: RX scheduling gap: 31.718 ms at +141.506 s during measurement
+WARNING: RX scheduling gap: 48.534 ms at +144.836 s during measurement
+WARNING: RX scheduling gap: 14.097 ms at +145.160 s during measurement
+WARNING: RX scheduling gap: 50.439 ms at +145.702 s during measurement
+WARNING: RX scheduling gap: 14.297 ms at +146.445 s during measurement
+WARNING: RX scheduling gap: 29.250 ms at +147.390 s during measurement
+WARNING: RX scheduling gap: 20.684 ms at +147.559 s during measurement
+WARNING: RX scheduling gap: 13.698 ms at +147.944 s during measurement
+WARNING: RX scheduling gap: 22.688 ms at +153.387 s during measurement
+WARNING: RX scheduling gap: 16.452 ms at +161.336 s during measurement
+WARNING: RX scheduling gap: 12.286 ms at +191.163 s during measurement
+WARNING: RX scheduling gap: 41.832 ms at +193.813 s during measurement
+WARNING: RX scheduling gap: 13.017 ms at +210.944 s during measurement
+WARNING: RX scheduling gaps >= 10.0 ms: further messages suppressed
+INFO: Time limit of 900.0 s exceeded, completed 213 runs
+INFO: Total time: 900.340 s
