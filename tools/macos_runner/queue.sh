@@ -3,7 +3,7 @@
 #   tools/macos_runner/queue.sh probe|setup|scan [--seconds N] [--gain DB]
 #       [--antenna RX2|TX/RX] [--input antenna|terminated] [--procedure suite|baseline|fullrange]
 #       [--device b200|bladerf] [--bladerf-job dense-dc|survey|survey-anchor|dense-dc+survey]
-#       [--plan-args "--no-telemetry"] [--overflow-probe 1] [--wait SECONDS]
+#       [--plan-args "--no-telemetry"] [--overflow-probe 1] [--hopscan 1] [--wait SECONDS]
 # Prints the request id. With --wait: prints the status JSON and the run log tail;
 # exit 0 = finished OK, 1 = finished with an error or rejected, 3 = still running.
 set -euo pipefail
@@ -13,12 +13,12 @@ SESSIONS="${SPR_SESSIONS:-$REPO/sessions}"
 usage() { sed -n '2,8p' "$0" >&2; exit 2; }
 MODE="${1:-}"; [ $# -gt 0 ] && shift
 case "$MODE" in probe|setup|scan) ;; *) usage;; esac
-SECS=30; GAIN=20; ANT=RX2; IN=antenna; PROC=suite; DEV=b200; JOB=dense-dc+survey; WAIT=0; PLANARGS=; OVP=
+SECS=30; GAIN=20; ANT=RX2; IN=antenna; PROC=suite; DEV=b200; JOB=dense-dc+survey; WAIT=0; PLANARGS=; OVP=; HOP=
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || usage
   case "$1" in
     --seconds) SECS="$2";; --gain) GAIN="$2";; --antenna) ANT="$2";; --input) IN="$2";; --procedure) PROC="$2";;
-    --device) DEV="$2";; --bladerf-job) JOB="$2";; --plan-args) PLANARGS="$2";; --overflow-probe) OVP="$2";; --wait) WAIT="$2";;
+    --device) DEV="$2";; --bladerf-job) JOB="$2";; --plan-args) PLANARGS="$2";; --overflow-probe) OVP="$2";; --hopscan) HOP="$2";; --wait) WAIT="$2";;
     *) usage;;
   esac
   shift 2
@@ -42,6 +42,7 @@ TYPE=integer; case "$GAIN" in *.*) TYPE=real;; esac
   printf '<key>input</key><string>%s</string><key>procedure</key><string>%s</string>\n' "$IN" "$PROC"
   printf '<key>device</key><string>%s</string><key>bladerf_job</key><string>%s</string>\n' "$DEV" "$JOB"
   [ "$OVP" != 1 ] || printf '<key>overflow_probe</key><integer>1</integer>\n'
+  [ "$HOP" != 1 ] || printf '<key>hopscan</key><integer>1</integer>\n'
   [ -z "$PLANARGS" ] || printf '<key>plan_args</key><string>%s</string>\n' "$PLANARGS"
   echo '</dict></plist>'
 } > "$SESSIONS/queue/.$ID.tmp"

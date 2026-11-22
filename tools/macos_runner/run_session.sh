@@ -256,6 +256,21 @@ RESULT=overflow_probe_done"
   exit 0
 fi
 
+# ---- 3c. hopscan (request key, integer 1): the 140-150 MHz single-thread hop scan for SCAN_SECONDS with the UHD
+# ring enlarged in the device string (device-open arg), finishing the hop in flight instead of cutting it.
+if [ "${HOPSCAN:-$(req_field hopscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; then
+  SESSION="$OUTDIR/hopscan-$STAMP"; mkdir -p "$SESSION"
+  OUT="$SESSION/scan_140_150.jsonl"; ERR="$SESSION/scan.log"; T0=$(date +%s)
+  "$WRAP" -d "driver=uhd,type=b200,serial=$SERIAL,num_recv_frames=512" -A "$ANTENNA" -C 0 -f 140M:150M -r 2M -b 8192 -g "$GAIN_DB" -o 25 -t 0.5 \
+    -e "$SCAN_SECONDS" --deadline-policy finish-hop --fft-window blackman --dc-mask-width 5000 --tune-delay 0.05 \
+    --fft-threads 1 --max-threads 1 --partial-policy reject -F json -O "$OUT" > "$ERR" 2>&1
+  RC=$?; REC=$(wc -l < "$OUT" 2>/dev/null | tr -d ' ')
+  echo "hopscan exit=$RC records=${REC:-0} settle_overflow_warnings=$(grep -c 'during settling' "$ERR") measurement_overflow=$(grep -c 'Measurement failed: SDR overflow' "$ERR") seconds=$(( $(date +%s) - T0 )) of=$SCAN_SECONDS" | tee "$SESSION/result.txt"
+  finish "SESSION=$SESSION
+RESULT=hopscan_exit_$RC"
+  exit "$RC"
+fi
+
 if [ "$PROCEDURE" = baseline ]; then
   SESSION="$OUTDIR/baseline-$STAMP"; mkdir -p "$SESSION"
   FAILED=""
