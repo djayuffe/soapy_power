@@ -59,32 +59,41 @@ GUIDE_HZ = 6e3        # search half-width around a predicted Doppler curve (TLE 
 CONTROL_HZ = 45e3     # same search shifted off every curve: false-alarm control
 
 
+def _band_cache(Bd):
+    c = Bd.get('_gcache')
+    if c is None:
+        S = Bd['S']; D = S['D']; m0 = np.nanmedian(D); s0 = 1.4826 * np.nanmedian(np.abs(D - m0))
+        c = Bd['_gcache'] = dict(thr_base=(m0, s0), t_row=np.nanmedian(S['T'], 1), f=S['f'], fsrc=S['fsrc'])
+    return c
+
+
 def guided(A, p, tx, shift=0.0, k_sigma=5.0):
     """Search the band residual along one predicted Doppler curve, sweep by sweep (bursty beacons included).
     Returns hits [(sweep, t_s, f_obs, offset_hz, level_db)] or None when the curve is not inside a band."""
-    f_tx = tx['f_hz'] + shift; out = None
+    f_tx = tx['f_hz'] + shift
     for Bd in A['bands']:
-        S = Bd['S']; b = Bd['band']
+        b = Bd['band']
         if not (b['lo_hz'] <= f_tx <= b['hi_hz']):
             continue
-        D = S['D']; m0, s0 = Bd.get('_dstat') or (np.nanmedian(D), 1.4826 * np.nanmedian(np.abs(D - np.nanmedian(D))))
-        Bd['_dstat'] = (m0, s0); thr = m0 + k_sigma * s0; out = []
-        for r in range(D.shape[0]):
-            t_abs = np.nanmedian(S['T'][r]);
-            if not np.isfinite(t_abs) or np.interp(t_abs, p['t'], p['el']) <= 0:
+        S = Bd['S']; D = S['D']; c = _band_cache(Bd); m0, s0 = c['thr_base']; thr = m0 + k_sigma * s0
+        t = c['t_row']; ok = np.isfinite(t)
+        el = np.full(len(t), -90.0); el[ok] = np.interp(t[ok], p['t'], p['el'])
+        rows = np.flatnonzero(ok & (el > 0))
+        if not len(rows):
+            return []
+        fp = f_tx * (1 - np.interp(t[rows], p['t'], p['rr']) / sd.C)
+        lo = np.searchsorted(c['f'], fp - GUIDE_HZ); hi = np.searchsorted(c['f'], fp + GUIDE_HZ, side='right'); out = []
+        for r, a, b_, f_ in zip(rows, lo, hi, fp):
+            if b_ - a < 3:
                 continue
-            fp = float(sd.doppler(p, f_tx, t_abs))
-            cols = np.flatnonzero(np.abs(S['fsrc'] - fp) <= GUIDE_HZ)
-            if len(cols) < 3:
-                continue
-            row = D[r, cols]
+            row = D[r, a:b_]
             if not np.isfinite(row).any():
                 continue
             j = int(np.nanargmax(row))
             if row[j] > thr:
-                fo = float(S['fsrc'][cols[j]]); out.append((r, float(t_abs - A['t_ref']), fo, fo - fp, float(row[j])))
-        break
-    return out
+                fo = float(c['fsrc'][a + j]); out.append((int(r), float(t[r] - A['t_ref']), fo, fo - float(f_), float(row[j])))
+        return out
+    return None
 
 
 def consistent_hits(hits, tol=1.5e3):

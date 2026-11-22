@@ -305,6 +305,9 @@ fi
 #   sat      137-138, 145.8-146.0, 435-438 MHz                       (6 hops,  ~3.8 s revisit)
 #   sat-full 137-138, 144-146, 399.9-403, 430-440 MHz                (20 hops, ~13 s revisit)
 #   sat-s    2200-2290, 2400-2450 MHz                                (185 hops, survey)
+# superscan_gain string: auto (default) | dB. auto = one sweep per gain 10..70 dB over the same centres with the raw-IQ
+# headroom guard (stops at the first overload), tools/gaincal.py picks the smallest gain within 1 dB of the best
+# input-referred noise that keeps max |I|,|Q| < 0.5 and p99.9 < 0.2 of full scale; falls back to the request gain.
 # After the scan: refresh the satellite database if older than 24 h, then the report identifies tracks.
 if [ "${SUPERSCAN:-$(req_field superscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; then
   SESSION="$OUTDIR/superscan-$STAMP"; mkdir -p "$SESSION"
@@ -312,13 +315,31 @@ if [ "${SUPERSCAN:-$(req_field superscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; 
   PLAN="$(req_field superscan_plan)"; [ -n "$PLAN" ] || PLAN=sat
   CENTERS=$("$PY" "$REPO/tools/satplan.py" "$PLAN" "$SESSION/bands.json" 2>>"$ERR") || { echo "superscan plan '$PLAN' failed" | tee "$SESSION/result.txt"; finish "SESSION=$SESSION
 RESULT=superscan_plan_failed"; exit 2; }
-  echo "superscan plan=$PLAN centers=$CENTERS" | tee -a "$LOG"; T0=$(date +%s)
+  echo "superscan plan=$PLAN centers=$CENTERS" | tee -a "$LOG"
+  SGAIN="$(req_field superscan_gain)"; [ -n "$SGAIN" ] || SGAIN=auto
+  if [ "$SGAIN" = auto ]; then
+    CAL="$SESSION/gaincal"; mkdir -p "$CAL"; TC=$(date +%s)
+    for G in 10 20 30 40 50 60 70; do
+      "$WRAP" -d "driver=uhd,type=b200,serial=$SERIAL,num_recv_frames=512" -A "$ANTENNA" -C 0 -r 2M -b 8192 -g "$G" -t 0.5 \
+        --centers "$CENTERS" -u 1 --fft-window blackman --dc-mask-width 5000 --tune-delay 0.05 --fft-threads 1 --max-threads 1 \
+        --partial-policy reject --headroom --headroom-max 1.0 --headroom-p999 1.0 --rejection-evidence "$CAL/rejected-$G" \
+        -F json -O "$CAL/gain_$G.jsonl" > "$CAL/gain_$G.log" 2>&1
+      GRC=$?; echo "$GRC" > "$CAL/gain_$G.rc"; echo "gaincal gain=$G exit=$GRC" | tee -a "$LOG"
+      [ "$GRC" = 0 ] || break
+    done
+    GSEL=$("$PY" "$REPO/tools/gaincal.py" "$SESSION/gaincal.json" "$CAL" --bands "$SESSION/bands.json" --fallback "$GAIN_DB" --png "$SESSION/gaincal.png" 2>>"$ERR")
+    [ -n "$GSEL" ] && GAIN_DB="$GSEL"
+    echo "superscan gain auto -> $GAIN_DB dB ($(( $(date +%s) - TC )) s calibration)" | tee -a "$LOG" "$SESSION/result.txt"
+  else
+    GAIN_DB="$SGAIN"; echo "superscan gain fixed $GAIN_DB dB" | tee -a "$LOG" "$SESSION/result.txt"
+  fi
+  T0=$(date +%s)
   "$WRAP" -d "driver=uhd,type=b200,serial=$SERIAL,num_recv_frames=512" -A "$ANTENNA" -C 0 -r 2M -b 8192 -g "$GAIN_DB" -t 0.5 \
     --centers "$CENTERS" -e "$SCAN_SECONDS" --deadline-policy finish-hop \
     --fft-window blackman --dc-mask-width 5000 --tune-delay 0.05 --fft-threads 1 --max-threads 1 --partial-policy reject \
     -F json -O "$OUT" >> "$ERR" 2>&1
   RC=$?; REC=$(wc -l < "$OUT" 2>/dev/null | tr -d ' ')
-  echo "superscan plan=$PLAN exit=$RC records=${REC:-0} settle_overflow_warnings=$(grep -c 'during settling' "$ERR") measurement_overflow=$(grep -c 'Measurement failed: SDR overflow' "$ERR") seconds=$(( $(date +%s) - T0 )) of=$SCAN_SECONDS" | tee "$SESSION/result.txt"
+  echo "superscan plan=$PLAN gain=$GAIN_DB exit=$RC records=${REC:-0} settle_overflow_warnings=$(grep -c 'during settling' "$ERR") measurement_overflow=$(grep -c 'Measurement failed: SDR overflow' "$ERR") seconds=$(( $(date +%s) - T0 )) of=$SCAN_SECONDS" | tee -a "$SESSION/result.txt"
   satdb_refresh 24 | tee -a "$SESSION/result.txt"
   report analyze_superscan.py "$OUT" "$SESSION" superscan --bands "$SESSION/bands.json" --qth "$OUTDIR/qth.json" --satdb "$OUTDIR/satdb"
   finish "SESSION=$SESSION

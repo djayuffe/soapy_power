@@ -57,6 +57,17 @@ class RuntimeTests(unittest.TestCase):
     def scan(self,sdr,**kwargs):
         sdr.sweep(10000,10000,64,4,runs=1,max_threads=1,**kwargs)
 
+    def test_headroom_metrics_recorded_per_explicit_centre_for_gain_calibration(self):
+        sdr,out = self.capable_receiver()
+        self.signal(sdr,.1+.2j)
+        sdr.sweep(10000,10000,64,4,runs=1,max_threads=1,centers=[13000,9000,20000],
+                  quality_policy=self.policy(max_component=1.0,p999_component=1.0))
+        recs = [json.loads(l) for l in out.getvalue().splitlines()]
+        self.assertEqual([r['metadata']['tuned_center_hz'] for r in recs],[13000,9000,20000])
+        for r in recs:
+            self.assertAlmostEqual(r['metadata']['headroom']['max_component'],.2,places=6)
+            self.assertEqual(r['metadata']['headroom']['threshold_095_fraction'],0)
+
     def test_safe_raw_check_records_metadata(self):
         sdr,out = self.capable_receiver()
         self.signal(sdr,.1+.2j)

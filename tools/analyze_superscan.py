@@ -40,31 +40,34 @@ C_DOP, C_DRIFT, C_STABLE, C_EVENT, C_PRED = '#00d1ff', '#ff4d6d', '#8fa0bd', '#7
 
 # ---------------------------------------------------------------------------------------------- loading
 def load(path):
-    R = [json.loads(l) for l in open(path) if l.strip()]
-    if not R:
+    order, hop, sweep, recs, io = [], [], [], [], []; meta0 = None; statuses = set(); conts = set(); last_h = None; sw = 0
+    with open(path) as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            r = json.loads(line); m = r['metadata']; c = m['tuned_center_hz']
+            k = next((i for i, o in enumerate(order) if abs(c - o) < 1), None)
+            if k is None:
+                order.append(c); k = len(order) - 1
+            if last_h is not None and k <= last_h:
+                sw += 1
+            last_h = k
+            p = np.array([np.nan if v is None else v for v in r['power']], np.float32)
+            recs.append((sw, k, p, datetime.datetime.fromisoformat(r['time_start']).timestamp(), datetime.datetime.fromisoformat(r['time_stop']).timestamp()))
+            io.append((sw, k, m.get('host_io', {})))
+            statuses.add(str(m.get('measurement_status'))); conts.add(str(m.get('continuity')))
+            if meta0 is None:
+                meta0 = (r, m)
+    if not recs:
         raise SystemExit('no records')
-    cs = np.array([r['metadata']['tuned_center_hz'] for r in R])
-    order = []
-    for c in cs:                                   # hop order = first appearance
-        if not any(abs(c - o) < 1 for o in order):
-            order.append(c)
-    hop = np.array([int(np.argmin([abs(c - o) for o in order])) for c in cs])
-    sw = np.zeros(len(R), int)
-    for i in range(1, len(R)):
-        sw[i] = sw[i - 1] + (hop[i] <= hop[i - 1])
-    nsw, nh, n = sw.max() + 1, len(order), len(R[0]['power'])
-    P = np.full((nsw, nh, n), np.nan, np.float32); T0 = np.full((nsw, nh), np.nan); T1 = np.full((nsw, nh), np.nan); io = []
-    for r, h, s in zip(R, hop, sw):
-        P[s, h] = np.array([np.nan if v is None else v for v in r['power']], np.float32)
-        T0[s, h] = datetime.datetime.fromisoformat(r['time_start']).timestamp()
-        T1[s, h] = datetime.datetime.fromisoformat(r['time_stop']).timestamp()
-        io.append((s, h, r['metadata'].get('host_io', {})))
-    m = R[0]['metadata']
-    info = dict(step_hz=float(R[0]['step_hz']), bins=n, hops=nh, sweeps=int(nsw), records=len(R), centers_hz=[float(c) for c in order],
-                sample_rate_hz=m.get('sample_rate_hz'), window=m.get('window'), segments=m.get('segment_count'), unit=R[0]['unit'],
-                statuses=sorted({str(r['metadata'].get('measurement_status')) for r in R}),
-                continuity=sorted({str(r['metadata'].get('continuity')) for r in R}),
-                gain=m.get('context', {}).get('gains') if isinstance(m.get('context'), dict) else None)
+    nsw, nh, n = sw + 1, len(order), len(recs[0][2])
+    P = np.full((nsw, nh, n), np.nan, np.float32); T0 = np.full((nsw, nh), np.nan); T1 = np.full((nsw, nh), np.nan)
+    for s_, h, p, a, b in recs:
+        P[s_, h] = p; T0[s_, h] = a; T1[s_, h] = b
+    r0, m = meta0
+    info = dict(step_hz=float(r0['step_hz']), bins=n, hops=nh, sweeps=int(nsw), records=len(recs), centers_hz=[float(c) for c in order],
+                sample_rate_hz=m.get('sample_rate_hz'), window=m.get('window'), segments=m.get('segment_count'), unit=r0['unit'],
+                statuses=sorted(statuses), continuity=sorted(conts), gain=(m.get('context') or {}).get('gains'))
     return P, T0, T1, np.array(order), io, info
 
 
@@ -536,6 +539,21 @@ def id_pages(A, pdf, out, tag):
     fig.savefig(out / f'{tag}_p8_passes.png', dpi=110); pdf.savefig(fig); plt.close(fig)
 
 
+def gain_page(A, pdf, out, tag):
+    gc = A.get('gaincal')
+    if not gc:
+        return
+    fig = ah.page(pdf, 'Gain calibration', f"chosen {gc.get('chosen_gain_db')} dB · {gc.get('reason', '')}")
+    png = A.get('gaincal_png')
+    if png and Path(png).exists():
+        ax = fig.add_axes([0.04, 0.16, 0.92, 0.68]); ax.imshow(plt.imread(png)); ax.axis('off')
+    rows = [r for r in gc.get('rows', [])]
+    txt = '   '.join(f"{r['gain_db']:.0f} dB: {'safe' if r['safe'] else 'UNSAFE'}"
+                   + (f", noise {r['input_noise_db']:.1f}, max {r['max_component']:.2f}, p99.9 {r['p999_component']:.3f}" if r.get('input_noise_db') is not None else f", rc {r['rc']}") for r in rows)
+    fig.text(0.04, 0.08, '\n'.join(textwrap.wrap(txt, 190)), fontsize=9.5, color='#c9d4e6', va='top')
+    fig.savefig(out / f'{tag}_p0_gain.png', dpi=110); pdf.savefig(fig); plt.close(fig)
+
+
 def timing_page(A, pdf, out, tag):
     fig = ah.page(pdf, 'Timing and integrity', 'dwell per hop, retune gaps per transition (incl. the 137↔435 MHz jumps), host read latency')
     tm = A['timing']; ax = fig.add_axes([0.06, 0.12, 0.5, 0.7])
@@ -597,6 +615,9 @@ def main():
     qpath = qpath or (str(src.parent.parent / 'qth.json') if (src.parent.parent / 'qth.json').exists() else None)
     dbdir = dbdir or (str(src.parent.parent / 'satdb') if (src.parent.parent / 'satdb').exists() else None)
     sid.identify(A, dbdir, qpath)
+    gcp = src.parent / 'gaincal.json'
+    if gcp.exists():
+        A['gaincal'] = json.loads(gcp.read_text()); A['gaincal_png'] = str(src.parent / 'gaincal.png')
     allt = [t for Bd in A['bands'] for t in Bd['tracks']]
     A['summary'] = s = dict(tag=tag, file=str(src), start=A['start'], **{k: v for k, v in A['info'].items()}, timing=A['timing'],
                             doppler_tracks=sum(t['kind'] == 'doppler' for t in allt), drift_tracks=sum(t['kind'] in ('drift', 'common-mode drift') for t in allt),
@@ -606,9 +627,11 @@ def main():
                                         hops=[float(A['centers'][h]) for h in Bd['S']['hops']], lines=Bd['lines'][:40], events=Bd['events'], wideband=Bd['wideband'],
                                         tracks=[{k: v for k, v in t.items() if k != 'points'} for t in Bd['tracks'] if t['kind'] != 'stable' or 'id' in t]) for Bd in A['bands']],
                             identification={k: v for k, v in A['id'].items() if k != 'passes'},
+                            gain_selection=dict(used=A['info'].get('gain'), calibration={k: v for k, v in (A.get('gaincal') or {}).items() if k != 'rows'} or None),
                             passes=[{k: v for k, v in p.items() if not k.startswith('curve_')} for p in A['id'].get('passes', [])])
     pdf = PdfPages(out / f'{tag}_analysis.pdf')
     summary_page(A, pdf, out, tag)
+    gain_page(A, pdf, out, tag)
     for Bd in A['bands']:
         fig, _ = band_figure(A, Bd, out, tag); pdf.savefig(fig); plt.close(fig)
     fig = doppler_figure(A, out, tag); fig.savefig(out / f'{tag}_doppler.png', dpi=130); pdf.savefig(fig); plt.close(fig)
