@@ -471,10 +471,11 @@ def summary_page(A, pdf, out, tag):
         y -= 0.13
     I = A.get('id', {})
     if I.get('available'):
-        ids = I['ids']; nh = I['not_heard']
-        ct = I.get('control', {})
-        head = (f"Identification: {len(ids)} signal(s) matched · {len(I['passes'])} satellites with in-band downlinks above the horizon · {len(nh)} predicted ≥10° but not heard"
-                f" · guided-search control {ct.get('false_detections', 0)}/{ct.get('searches', 0)} false")
+        ids = I['ids']; nh = I['not_heard']; ct = I.get('control', {})
+        conf = [x for x in ids if x['confidence'] != 'frequency-only']; cand = [x for x in ids if x['confidence'] == 'frequency-only']
+        head = (f"Identification: {len(conf)} confirmed by Doppler · {len(cand)} frequency-only candidate(s) · {len(I['passes'])} satellites with in-band downlinks above the horizon"
+                f" · {len(nh)} ≥10° not heard · guided-search control {ct.get('false_detections', 0)}/{ct.get('searches', 0)} false")
+        ids = conf + cand
         body = [f"{x['name']} ({x['norad']}) {x['mode']} {int(x['baud'] or 0)} Bd at {x['f_mhz']:.4f} MHz: {x['confidence']}, offset {x['offset_hz'] / 1e3:+.1f} kHz"
                 + (f", rms {x['rms_hz']:.0f} Hz" if x.get('rms_hz') is not None else '') + f", format {x['format_check']}" for x in ids[:4]]
         body += [f"not heard: " + ', '.join(f"{p['name']} (max {p['max_el']:.0f}°)" for p in nh[:8])] if nh else []
@@ -626,7 +627,8 @@ def main():
                             bands=[dict(name=Bd['band']['name'], lo_hz=Bd['band']['lo_hz'], hi_hz=Bd['band']['hi_hz'], sigma_db=Bd['sig'], detect_threshold_db=Bd['thr'],
                                         hops=[float(A['centers'][h]) for h in Bd['S']['hops']], lines=Bd['lines'][:40], events=Bd['events'], wideband=Bd['wideband'],
                                         tracks=[{k: v for k, v in t.items() if k != 'points'} for t in Bd['tracks'] if t['kind'] != 'stable' or 'id' in t]) for Bd in A['bands']],
-                            identification={k: v for k, v in A['id'].items() if k != 'passes'},
+                            identification=dict({k: v for k, v in A['id'].items() if k not in ('passes', 'not_heard')},
+                                                not_heard=[{k: v for k, v in p.items() if not k.startswith('curve_')} for p in A['id'].get('not_heard', [])]),
                             gain_selection=dict(used=A['info'].get('gain'), calibration={k: v for k, v in (A.get('gaincal') or {}).items() if k != 'rows'} or None),
                             passes=[{k: v for k, v in p.items() if not k.startswith('curve_')} for p in A['id'].get('passes', [])])
     pdf = PdfPages(out / f'{tag}_analysis.pdf')
@@ -663,7 +665,9 @@ def main():
             for e in Bd['events']:
                 w.writerow([Bd['band']['name'], f"{e['f_mhz']:.5f}", f"{e['t_start_s']:.1f}", f"{e['t_end_s']:.1f}", e['sweeps'], f"{e['peak_db']:.2f}", f"{e['width_khz']:.2f}", e['on_track']])
     print(json.dumps(dict(sweeps=s['sweeps'], records=s['records'], doppler=s['doppler_tracks'], drift=s['drift_tracks'], stable=s['stable_tracks'],
-                          lines=s['persistent_lines'], events=s['events'], wideband=s['wideband'], identified=len(A['id'].get('ids', [])),
+                          lines=s['persistent_lines'], events=s['events'], wideband=s['wideband'],
+                          identified=sum(x['confidence'] != 'frequency-only' for x in A['id'].get('ids', [])),
+                          candidates=sum(x['confidence'] == 'frequency-only' for x in A['id'].get('ids', [])),
                           passes=len(A['id'].get('passes', [])), id_available=A['id'].get('available'), id_reason=A['id'].get('reason'), viewers=views)))
     return 0
 
