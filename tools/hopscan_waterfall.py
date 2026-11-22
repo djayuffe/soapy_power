@@ -399,7 +399,7 @@ function smooth(fb,ts){                    // power average over fb bins x ts sw
   const smp=[];for(let i=0;i<D.length;i+=97){const v=D[i];if(v===v)smp.push(v)}
   smp.sort((a,b)=>a-b);const med=smp[smp.length>>1],dev=smp.map(v=>Math.abs(v-med)).sort((a,b)=>a-b);sig=1.4826*dev[dev.length>>1];
 }
-const fOf=c=>M.f0+c*M.step, hopOf=c=>Math.min(M.nh-1,Math.floor(c/M.keep));
+const fOf=c=>M.f0+c*M.step, hopOf=c=>M.hopcol?M.hopcol[c]:Math.min(M.nh-1,Math.floor(c/M.keep));
 function offKhz(c){const h=hopOf(c);return (fOf(c)-M.centers[h])*1e3}
 function cv(id){const e=$(id),r=e.getBoundingClientRect(),d=window.devicePixelRatio||1;e.width=Math.max(1,Math.round(r.width*d));e.height=Math.max(1,Math.round(r.height*d));
   const g=e.getContext('2d');g.setTransform(d,0,0,d,0,0);return [g,r.width,r.height]}
@@ -427,6 +427,10 @@ function draw(){
   g.fillStyle='#8fa0bd';g.font='11px sans-serif';g.textAlign='right';
   const tstep=niceStep(M.tend,h,40);for(let t=0;t<=M.tend;t+=tstep){const y=h-(t/M.tend)*h;g.fillText(t.toFixed(0)+' s',G-4,Math.max(10,y+4));g.fillRect(G-2,y,2,1)}
   for(const cc of M.centers){const c=(cc-M.f0)/M.step;if(c>=x0&&c<=x1){const x=G+(c-x0)/(x1-x0)*(w-G);g.fillStyle='#ffb000';g.beginPath();g.moveTo(x-4,0);g.lineTo(x+4,0);g.lineTo(x,7);g.fill()}}
+  for(const tk of (M.tracks||[])){g.strokeStyle=tk.kind==='doppler'?'#00d1ff':'#ff4d6d';g.lineWidth=1.2;g.beginPath();let pen=false;
+    for(let i=0;i<tk.f.length;i++){const c=(tk.f[i]-M.f0)/M.step;if(c<x0||c>x1){pen=false;continue}const x=G+(c-x0)/(x1-x0)*(w-G),y=h-(tk.r[i]+.5)/R*h;if(pen)g.lineTo(x,y);else g.moveTo(x,y);pen=true}g.stroke();
+    const c0=(tk.f[0]-M.f0)/M.step;if(c0>=x0&&c0<=x1){g.fillStyle=g.strokeStyle;g.font='11px sans-serif';g.textAlign='left';g.fillText(tk.label,G+(c0-x0)/(x1-x0)*(w-G)+5,h-(tk.r[0]+.5)/R*h+12)}}
+  g.lineWidth=1;
   if(hover){const x=G+(hover.c-x0)/(x1-x0)*(w-G);g.strokeStyle='rgba(255,255,255,.35)';g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,h);g.stroke()}
   drawSpec(colv,pw,how);drawAx();drawTrace(colv,pw);
 }
@@ -479,6 +483,7 @@ function setup(){
   $('sub').textContent=`${R} sweeps × ${M.nh} hops · start ${M.start} · ${M.span} s · native ${(M.step*1e6).toFixed(0)} Hz bins · residual after receiver-artifact and floor removal, each record levelled · native σ ${M.sigma.toFixed(3)} dB`;
   $('foot').textContent=`Levels ${M.unit}, uncalibrated and relative to the median floor. Grey = blank: ±${M.centre_khz} kHz around each hop centre (▼). Rows are sweeps; the hover time is the measured start of that hop. Orange ▼ persistent lines, cyan ▲ intermittent emissions. Whether a line is a real carrier or a receiver spur is not decided by this data. Data quantised to 0.025 dB.`;
   const grp=(label,items,txt)=>{if(!items.length)return;const g=document.createElement('optgroup');g.label=label;for(const k of items){const o=document.createElement('option');o.value=k.f;o.textContent=txt(k);g.appendChild(o)}$('cand').appendChild(g)};
+  grp('Doppler / drift tracks',(M.tracks||[]).map(t=>({f:t.f[Math.floor(t.f.length/2)],label:t.label})),k=>k.label);
   grp('intermittent emissions',M.events,k=>`${k.f.toFixed(4)} MHz ${k.db>=0?'+':''}${k.db.toFixed(1)} dB · ${k.t0}–${k.t1} s`);
   grp('persistent lines',M.cands,k=>`${k.f.toFixed(4)} MHz +${k.db.toFixed(2)} dB (${k.pct}%)`);
   $('side').innerHTML=`<div>${M.events.length} intermittent emissions</div><div style="margin-top:4px">${M.cands.length} persistent lines ≥ 0.5 dB</div><div style="margin-top:4px">${M.records} records</div><div style="margin-top:4px">colour range = displayed pixels' median + low…high × their spread</div>`;

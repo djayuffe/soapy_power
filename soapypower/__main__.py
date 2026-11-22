@@ -37,6 +37,16 @@ def freq_or_freq_range(string):
     return freqs
 
 
+def center_list(string):
+    """Comma-separated hop centre frequencies (multipliers allowed), visited in the given order every run."""
+    centers = [float_with_multiplier(f) for f in string.split(',') if f.strip()]
+    if not centers:
+        raise ValueError('expected at least one centre frequency')
+    if len(set(centers)) != len(centers):
+        raise ValueError('centre frequencies must be distinct')
+    return centers
+
+
 def correction_pair(text):
     try:
         values = tuple(float(value) for value in text.split(','))
@@ -366,6 +376,9 @@ def setup_argument_parser():
     quality.add_argument('--telemetry-policy', help='Typed telemetry polling/validity policy JSON')
     quality.add_argument('--settling-model', help='Reference-validated settling model; unmatched steps use configured delay')
     quality.add_argument('--rf-state', action='store_true', help='Record advertised RF/BB tuning and sensor snapshots before/after each hop')
+    quality.add_argument('--centers', type=center_list, metavar='HZ,HZ,...',
+                         help='Explicit hop centres (RF), visited in this order every run; replaces the -f hop plan. '
+                              'Use for interleaved multi-band scans with the DC spike kept out of the bands of interest')
     quality.add_argument('--ensure-coverage', action='store_true', help='Plan overlapping positive-weight coverage outside the DC exclusion')
     quality.add_argument('--usable-halfwidth', type=float_with_multiplier, help='Trusted IF halfwidth for coverage planning (Hz)')
     quality.add_argument('--headroom', action='store_true', help='Reject unsafe raw IQ before publishing a hop')
@@ -385,6 +398,8 @@ DEVICE_OPEN_ONLY_KEYS = ('num_recv_frames', 'recv_frame_size', 'num_send_frames'
 
 def validate_arguments(parser, args):
     """Reject invalid numerical options before opening an SDR stream."""
+    if getattr(args, 'centers', None) and args.ensure_coverage:
+        parser.error('--centers and --ensure-coverage are mutually exclusive (explicit centres replace the coverage planner)')
     misplaced = sorted(k for k in (args.stream_args or {}) if k in DEVICE_OPEN_ONLY_KEYS)
     if misplaced:
         parser.error('--stream-args {} is ignored by UHD at stream setup (read only when the device is opened); '
@@ -564,6 +579,8 @@ def main():
             rf_range = sorted(args.lnb_lo+direction*x for x in tuner) if tuner is not None else None
             plan = masked_frequency_plan(*args.freq,half,df,args.dc_mask_width,
                 direction*(-args.dc_offset if args.iq_conjugate else args.dc_offset),rf_range)
+        elif args.centers:
+            plan = args.centers
         else:
             plan = sdr.freq_plan(args.freq[0], args.freq[1], args.bins, args.overlap, quiet=True)
         args.time = args.total_time / len(plan)
@@ -582,7 +599,7 @@ def main():
     try:
         sdr.sweep(
             args.freq[0], args.freq[1], args.bins, args.repeats,
-            runs=args.runs, time_limit=args.elapsed, overlap=args.overlap, crop=args.crop,
+            runs=args.runs, time_limit=args.elapsed, overlap=args.overlap, crop=args.crop, centers=args.centers,
             fft_window=args.fft_window, fft_overlap=args.fft_overlap / 100, log_scale=not args.linear,
             remove_dc=args.remove_dc, detrend=args.detrend if args.detrend != 'none' else None,
             lnb_lo=args.lnb_lo, tune_delay=args.tune_delay, reset_stream=args.reset_stream,

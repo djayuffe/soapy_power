@@ -351,6 +351,15 @@ class HardwareIntegrationTests(unittest.TestCase):
         self.assertEqual(record['metadata']['context']['gains'], {'overall': 20.7})
         self.assertEqual(record['metadata']['segment_count'], 7)
 
+    def test_explicit_centers_are_visited_in_order_every_run(self):
+        sdr, output = self.capable_receiver()
+        sdr.sweep(10000, 10000, 64, 4, runs=2, max_threads=1, centers=[13000, 9000, 20000])
+        records = [json.loads(line) for line in output.getvalue().splitlines()]
+        tuned = [r['metadata']['tuned_center_hz'] for r in records]
+        self.assertEqual(tuned, [13000, 9000, 20000] * 2)
+        with self.assertRaises(ValueError):
+            sdr.sweep(10000, 10000, 64, 4, runs=1, max_threads=1, centers=[13000, 13000])
+
     def test_explicit_corrections_reapplied_after_every_tune(self):
         sdr, output = self.capable_receiver(dc_correction='on', iq_correction='on')
         sdr.sweep(10000, 13000, 64, 4, runs=1, max_threads=1)

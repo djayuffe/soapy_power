@@ -987,8 +987,9 @@ class SoapyPower:
               timestamp_tolerance_samples=0.25, require_timestamps=False,
               workspace_budget_bytes=64 * 1024**2, allow_estimated_dc=False, reference_lock_sensor=None,
               reopen_stream=False, deadline_policy='interrupt', quality_policy=None, receiver_profile=None,
-              ensure_coverage=False, usable_halfwidth=None, observe_rf_state=False, telemetry_policy=None, settling_model=None):
-        """Sweep spectrum using frequency hopping"""
+              ensure_coverage=False, usable_halfwidth=None, observe_rf_state=False, telemetry_policy=None, settling_model=None,
+              centers=None):
+        """Sweep spectrum using frequency hopping (the -f plan, or explicit RF hop ``centers`` in the given order)"""
         if deadline_policy not in ('interrupt', 'finish-hop'):
             raise ValueError('deadline policy must be interrupt or finish-hop')
         runs = integer(runs, 'runs')
@@ -996,8 +997,15 @@ class SoapyPower:
         overlap = self.nearest_overlap(overlap, bins)
         lnb_lo = finite(lnb_lo, 'lnb_lo')
         direction = -1 if lnb_high_side else 1
-        rf_centers = self.freq_plan(min_freq, max_freq, bins, overlap, quiet=True,
-                                    frequency_sign=direction)
+        if centers:
+            if ensure_coverage:
+                raise ValueError('explicit centers and ensure_coverage are mutually exclusive')
+            rf_centers = [finite(c, 'center frequency', positive=True) for c in centers]
+            if len(set(rf_centers)) != len(rf_centers):
+                raise ValueError('explicit centers must be distinct')
+        else:
+            rf_centers = self.freq_plan(min_freq, max_freq, bins, overlap, quiet=True,
+                                        frequency_sign=direction)
         coverage_halfwidth = None
         if ensure_coverage:
             df = self.device.sample_rate / bins
@@ -1039,6 +1047,8 @@ class SoapyPower:
             )
             if ensure_coverage:
                 logger.info('Mask-aware plan: %d centers, usable halfwidth %.9g Hz',len(rf_centers),coverage_halfwidth)
+            elif centers:
+                logger.info('Explicit plan: %d centers %s MHz', len(rf_centers), ', '.join('{:.4f}'.format(c / 1e6) for c in rf_centers))
             else:
                 self.freq_plan(min_freq, max_freq, bins, overlap, frequency_sign=direction)
             run = 0
@@ -1048,7 +1058,7 @@ class SoapyPower:
                 t_run_start = time.monotonic()
                 logger.debug('Run: {}'.format(run))
 
-                self._coverage_request = (min_freq, max_freq, None) if max_freq > min_freq else None
+                self._coverage_request = (min_freq, max_freq, None) if max_freq > min_freq and not centers else None
                 accepted_centers = []
                 for freq in freq_list:
                     if self._cancelled():
