@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """DC-free hop plans for satellite bands (2 MS/s B200, 8192 bins).
 
-  satplan.py PRESET|BANDS.json OUT_bands.json [--rate MSPS]   -> writes bands.json (bands + centres), prints the centres
+  satplan.py PRESET|BANDS.json OUT_bands.json [--rate MSPS] [--dither KHZ]   -> writes bands.json, prints the centres
+  --dither: add a second grid shifted by KHZ, so every band frequency is seen from two LOs (RF line vs LO spur).
   --rate: sample rate in MS/s (default 2). The trusted half-width scales with it (0.425 x rate: 0.85 MHz at 2 MS/s,
   measured flat to -1 dB at 0.91 MHz); the DC exclusion stays 100 kHz. Bins for 244 Hz resolution: 4096 x rate.
 
@@ -61,7 +62,8 @@ def plan(bands, usable=USABLE, dc=DC):
 def main():
     a = sys.argv[1:]
     rate = float(a[a.index('--rate') + 1]) if '--rate' in a else 2.0
-    a = [x for i, x in enumerate(a) if x != '--rate' and (i == 0 or a[i - 1] != '--rate')]
+    dith = float(a[a.index('--dither') + 1]) * 1e3 if '--dither' in a else 0.0
+    a = [x for i, x in enumerate(a) if x not in ('--rate', '--dither') and (i == 0 or a[i - 1] not in ('--rate', '--dither'))]
     if len(a) < 2:
         print(__doc__)
         for r in (2, 4, 8):
@@ -71,6 +73,8 @@ def main():
     src = sys.argv[1]
     bands = PRESETS[src] if src in PRESETS else [(b['name'], b['lo_hz'], b['hi_hz']) for b in json.loads(Path(src).read_text())['bands']]
     p = plan(bands, usable=0.425 * rate * 1e6); p['preset'] = src if src in PRESETS else 'custom'
+    if dith:
+        p['centers_hz'] = sorted(set(p['centers_hz'] + [round((c + dith) / 1e3) * 1e3 for c in p['centers_hz']])); p['dither_hz'] = dith
     p['sample_rate_hz'] = rate * 1e6; p['bins'] = int(round(4096 * rate))
     Path(sys.argv[2]).write_text(json.dumps(p, indent=1))
     print(','.join(f'{c / 1e6:.6g}M' for c in p['centers_hz']))

@@ -292,6 +292,75 @@ def wideband(S, sig, t_ref, frac_min=0.02):
     return sorted(out, key=lambda e: e['t_s'])
 
 
+def refine_wide(raw_tracks, S, sig, step, t_ref, wide_hz=2e3):
+    """A wide signal's peak wanders inside its band: replace each point by the power-weighted centroid of the
+    signal (Doppler-aligned -10 dB width), then merge tracks of the same signal (time overlap, same centroid)."""
+    out = []
+    for tr in raw_tracks:
+        rows = [int(np.argmin(np.abs(S['T'][:, i] - t))) for t, i in zip(tr['t'], tr['i'])]
+        fm = sid.measure_format(S, rows, list(tr['i']), sig, step, 1.0)
+        tr['bw_hz'] = fm['bw_hz']
+        if fm['bw_hz'] > wide_hz:
+            half = max(2, int(fm['bw_hz'] / step / 2)); nf = []
+            for r, i, f0 in zip(rows, tr['i'], tr['f']):
+                a, b = max(0, i - half), min(S['B'].shape[1], i + half + 1)
+                x = np.clip(10 ** (np.nan_to_num(S['B'][r, a:b], nan=-99.0) / 10) - 1.0, 0, None)
+                nf.append(float(np.sum(S['fsrc'][a:b] * x) / np.sum(x)) if x.sum() > 0 else f0)
+            tr['f'] = nf; tr['centroid'] = True
+        out.append(tr)
+    out.sort(key=lambda t: -len(t['f'])); keep = []
+    for tr in out:
+        dup = False
+        for k in keep:
+            t0, t1 = max(tr['t'][0], k['t'][0]), min(tr['t'][-1], k['t'][-1])
+            if t1 - t0 > 0.5 * min(tr['t'][-1] - tr['t'][0], k['t'][-1] - k['t'][0]):
+                tol = max(k.get('bw_hz', step), tr.get('bw_hz', step)) / 2 + 2 * step
+                if abs(np.median(tr['f']) - np.median(k['f'])) < tol:
+                    dup = True
+                    for t, f, i, pw in zip(tr['t'], tr['f'], tr['i'], tr['p']):       # fill sweeps the kept track missed
+                        if all(abs(t - x) > 0.5 for x in k['t']):
+                            k['t'].append(t); k['f'].append(f); k['i'].append(i); k['p'].append(pw)
+                    o = np.argsort(k['t']); k['t'] = [k['t'][j] for j in o]; k['f'] = [k['f'][j] for j in o]; k['i'] = [k['i'][j] for j in o]; k['p'] = [k['p'][j] for j in o]
+                    break
+        if not dup:
+            keep.append(tr)
+    return keep
+
+
+def line_origin(lines, Rr, centers, step, dc, usable):
+    """RF signal or LO-related spur: look at each persistent line from every hop whose trusted window covers it.
+    Present from every covering LO -> RF; from only some -> LO-related spur; a single covering LO -> unverified."""
+    n = Rr.shape[2]
+    for L in lines:
+        f = L['f_mhz'] * 1e6; seen = []
+        for h, c in enumerate(centers):
+            off = f - c
+            if not (dc <= abs(off) <= usable):
+                continue
+            j = int(round(off / step)) + n // 2
+            seg = Rr[:, h, max(0, j - 30):j + 31].astype(float)
+            prof = 10 * np.log10(np.nanmean(10 ** (seg / 10), 0)); base = np.nanmedian(prof)
+            ex = float(np.nanmax(prof[27:34]) - base) if prof.size >= 34 else float('nan')
+            seen.append(dict(lo_mhz=float(c / 1e6), offset_khz=float(off / 1e3), excess_db=ex))
+        L['views'] = seen
+        if len(seen) < 2:
+            L['origin'] = 'single LO (unverified)'
+        else:
+            pres = [v['excess_db'] >= max(0.3, 0.4 * L['excess_db']) for v in seen]
+            L['origin'] = 'RF (all %d LOs)' % len(seen) if all(pres) else ('LO spur (only %s)' % ', '.join(f"{v['lo_mhz']:.2f}{v['offset_khz']:+.0f}k" for v, p in zip(seen, pres) if p) if any(pres) else 'not resolved')
+    # the same LO offset carrying a line in two different hops is LO-relative even if each was seen from one LO only
+    offs = [(L, round(v['offset_khz'] / (2 * step / 1e3))) for L in lines for v in L['views'] if v['excess_db'] >= max(0.3, 0.4 * L['excess_db'])]
+    for L, o in offs:
+        los = {round(v['lo_mhz'], 3) for M, oo in offs if oo == o for v in M['views'] if round(v['offset_khz'] / (2 * step / 1e3)) == o}
+        if len(los) >= 2 and not L['origin'].startswith('RF'):
+            L['origin'] = f"LO spur (same {o * 2 * step / 1e3:+.0f} kHz offset in {len(los)} hops)"
+    for L in lines:                                  # internal reference: the B200's 40 MHz clock (10 MHz steps flagged too)
+        f = L['f_mhz'] * 1e6; k = round(f / 10e6)
+        if abs(f - k * 10e6) < 2.5e3 and not L['origin'].startswith('LO spur'):
+            L['origin'] += f" · at {k * 10} MHz (reference harmonic?)"
+    return lines
+
+
 # ------------------------------------------------------------------------------------------------ analysis
 def analyse(path, bands_cfg):
     P, T0, T1, centers, io, info = load(path)
@@ -307,12 +376,13 @@ def analyse(path, bands_cfg):
         _, sig = mad(S['B']); dm, dsig = mad(S['D'])
         thr = max(dm + 5 * dsig, 0.8)
         trs = []
-        for tr in track(S, thr, dsig):
+        for tr in refine_wide(track(S, thr, dsig), S, sig, step, t_ref):
             c = classify(tr, step, t_ref); c['hop'] = int(S['hop'][int(np.median(tr['i']))]); c['points'] = (np.array(tr['t']) - t_ref, np.array(tr['f']))
-            c['band'] = bd['name']; trs.append(c)
+            c['band'] = bd['name']; c['centroid'] = bool(tr.get('centroid')); c['bw_hz'] = tr.get('bw_hz'); trs.append(c)
         trs = common_mode(trs)
         moving = [(min(t['points'][1]), max(t['points'][1])) for t in trs if t['kind'] != 'stable']
         lines, mres = persistent_lines(S, sig, step, moving)
+        lines = line_origin(lines, Rr, centers, step, dc, usable)
         ev = events(S, sig, lines, [t for t in trs if t['kind'] == 'doppler'], t_ref)
         out.append(dict(band=bd, S=S, sig=sig, dsig=dsig, thr=thr, tracks=trs, lines=lines, mres=mres, events=ev, wideband=wideband(S, sig, t_ref)))
     dwell = (T1 - T0); gaps = T0[:, 1:] - T1[:, :-1]; wrap = T0[1:, 0] - T1[:-1, -1]
@@ -466,7 +536,7 @@ def summary_page(A, pdf, out, tag):
         if Bd['wideband']:
             body.append(f"{len(Bd['wideband'])} wideband transient(s) at " + ', '.join(f"{w['t_s']:.0f} s ({w['f_lo_mhz']:.2f}–{w['f_hi_mhz']:.2f} MHz, {w['bins_over_3sigma_pct']:.0f}% bins >3σ)" for w in Bd['wideband'][:4]))
         if Bd['lines']:
-            body.append('strongest lines: ' + ', '.join(f"{c['f_mhz']:.4f} (+{c['excess_db']:.2f})" for c in Bd['lines'][:4]))
+            body.append('strongest lines: ' + ', '.join(f"{c['f_mhz']:.4f} (+{c['excess_db']:.2f}, {c.get('origin', '?').split(' (')[0]})" for c in Bd['lines'][:4]))
         fig.text(0.04, y, head, fontsize=12.5, fontweight='bold', va='top')
         fig.text(0.04, y - 0.028, '\n'.join(textwrap.wrap(' · '.join(body) or 'no content above the detection thresholds', wrapw)[:3]), fontsize=9.5 if len(A['bands']) > 3 else 10.5, va='top', color='#c9d4e6')
         y -= dy
@@ -657,10 +727,11 @@ def main():
             w.writerow([p['norad'], p['name'], p['sat_status'], f"{p['max_el']:.1f}", f"{p['t_max_el_s']:.0f}", f"{p['t_rise_s']:.0f}", f"{p['t_set_s']:.0f}", p['heard'],
                         '; '.join(f"{x['f_mhz']:.4f} {x['mode']} {int(x['baud'] or 0)}{'' if x['alive'] else ' (dead)'}" for x in p['transmitters'])])
     with open(out / f'{tag}_lines.csv', 'w', newline='') as fh:
-        w = csv.writer(fh); w.writerow(['band', 'f_mhz', 'excess_db', 'width_khz', 'sweeps_pct'])
+        w = csv.writer(fh); w.writerow(['band', 'f_mhz', 'excess_db', 'width_khz', 'sweeps_pct', 'origin', 'views'])
         for Bd in A['bands']:
             for c in Bd['lines']:
-                w.writerow([Bd['band']['name'], f"{c['f_mhz']:.5f}", f"{c['excess_db']:.2f}", f"{c['width_khz']:.2f}", f"{c['sweeps_pct']:.0f}"])
+                w.writerow([Bd['band']['name'], f"{c['f_mhz']:.5f}", f"{c['excess_db']:.2f}", f"{c['width_khz']:.2f}", f"{c['sweeps_pct']:.0f}", c.get('origin', ''),
+                            '; '.join(f"LO {v['lo_mhz']:.2f} {v['offset_khz']:+.0f} kHz {v['excess_db']:+.2f} dB" for v in c.get('views', []))])
     with open(out / f'{tag}_events.csv', 'w', newline='') as fh:
         w = csv.writer(fh); w.writerow(['band', 'f_mhz', 't_start_s', 't_end_s', 'sweeps', 'peak_db', 'width_khz', 'on_doppler_track'])
         for Bd in A['bands']:

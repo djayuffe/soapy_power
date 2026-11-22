@@ -53,6 +53,21 @@ class PlanTests(unittest.TestCase):
                     self.assertTrue(sp.covered(f, p['centers_hz']), (name, f))
                     self.assertTrue(all(abs(f - c) >= sp.DC or abs(f - c) > sp.USABLE for c in p['centers_hz']) or sp.covered(f, p['centers_hz']))
 
+    def test_dithered_grid_sees_band_frequencies_from_two_los(self):
+        import subprocess, tempfile, json as js
+        with tempfile.TemporaryDirectory() as d:
+            out = subprocess.run([sys.executable, str(Path(sp.__file__)), 'sat-full', d + '/b.json', '--rate', '8', '--dither', '300'],
+                                 capture_output=True, text=True, check=True).stdout.strip()
+            p = js.loads(Path(d + '/b.json').read_text())
+        c = p['centers_hz']; u = 0.425 * 8e6
+        self.assertEqual(p['dither_hz'], 300e3); self.assertEqual(len(out.split(',')), len(c))
+        twice = once = 0
+        for b in p['bands']:
+            for f in np.arange(b['lo_hz'], b['hi_hz'] + 1, 5e3):
+                k = sum(sp.DC <= abs(f - x) <= u for x in c); self.assertGreaterEqual(k, 1, f)
+                twice += k >= 2; once += 1
+        self.assertGreater(twice / once, 0.75)
+
     def test_format_bandwidths(self):
         self.assertEqual(sd.format_consistency(dict(mode='CW'), 1200.0, 244.14), 'consistent')
         self.assertEqual(sd.format_consistency(dict(mode='GMSK', baud=9600), 11e3, 244.14), 'consistent')

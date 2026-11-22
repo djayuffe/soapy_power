@@ -303,6 +303,7 @@ fi
 #   superscan_plan  sat | sat-full | sat-s (default sat-full)     tools/satplan.py: DC >= 100 kHz outside every band
 #   superscan_rate  8 | 4 | 2 MS/s (default 8)                    sat-full: 5 / 11 / 20 hops, bins 4096 x rate (244 Hz)
 #   superscan_gain  auto (default) | dB
+#   superscan_dither kHz (default 0): second hop grid shifted by kHz, every band frequency seen from two LOs
 # Rate pilot: 30 s at the planned rate; any SDR overflow halves the rate (8 -> 4 -> 2) and re-plans. Analog bandwidth
 # -w = 1.25 x rate keeps out-of-band energy off the ADC at high gain; UHD ring num_recv_frames = 256 x rate, capped at
 # 1024 (2048 fails on macOS with "usb rx6 submit failed: LIBUSB_ERROR_OTHER", seen 2026-11-22); at 8 MS/s the frames
@@ -316,13 +317,15 @@ if [ "${SUPERSCAN:-$(req_field superscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; 
   OUT="$SESSION/superscan.jsonl"; ERR="$SESSION/scan.log"; : > "$SESSION/result.txt"
   PLAN="$(req_field superscan_plan)"; [ -n "$PLAN" ] || PLAN=sat-full
   RATE="$(req_field superscan_rate)"; case "$RATE" in 2|4|8) ;; *) RATE=8;; esac
+  DITH="$(req_field superscan_dither)"; case "$DITH" in ''|*[!0-9]*) DITH=0;; esac
   ss_plan() {
-    CENTERS=$("$PY" "$REPO/tools/satplan.py" "$PLAN" "$SESSION/bands.json" --rate "$RATE" 2>>"$ERR") || return 1
+    if [ "$DITH" -gt 0 ]; then CENTERS=$("$PY" "$REPO/tools/satplan.py" "$PLAN" "$SESSION/bands.json" --rate "$RATE" --dither "$DITH" 2>>"$ERR") || return 1
+    else CENTERS=$("$PY" "$REPO/tools/satplan.py" "$PLAN" "$SESSION/bands.json" --rate "$RATE" 2>>"$ERR") || return 1; fi
     BINS=$(( 4096 * RATE )); NRF=$(( 256 * RATE )); [ "$NRF" -le 1024 ] || NRF=1024   # macOS libusb refuses 2048 transfers
     BWHZ=$(( 1250000 * RATE )); WS=$(( RATE * 40000000 + 33554432 ))
     DEVSTR="driver=uhd,type=b200,serial=$SERIAL,num_recv_frames=$NRF"
     [ "$RATE" -lt 8 ] || DEVSTR="$DEVSTR,recv_frame_size=16360"   # 1024 x 16360 B = 0.5 s of ring at 8 MS/s (full-range stack setting)
-    echo "superscan plan=$PLAN rate=${RATE}M bins=$BINS bw=$BWHZ centers=$CENTERS" | tee -a "$LOG" "$SESSION/result.txt"
+    echo "superscan plan=$PLAN rate=${RATE}M dither=${DITH}k bins=$BINS bw=$BWHZ centers=$CENTERS" | tee -a "$LOG" "$SESSION/result.txt"
   }
   ss_run() {  # ss_run <gain> <outfile> <extra args...>
     local g="$1" o="$2"; shift 2

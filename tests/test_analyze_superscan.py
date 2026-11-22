@@ -100,6 +100,21 @@ except Exception:
 
 
 @unittest.skipUnless(HAVE and HAVE_SGP4, 'needs matplotlib, scipy and sgp4')
+class LineOriginTests(unittest.TestCase):
+    def test_rf_line_seen_from_both_los_and_spur_from_one(self):
+        import analyze_superscan as an
+        rate, n = 2e6, 4096; step = rate / n; c = [145.0e6, 145.3e6]
+        rng = np.random.default_rng(3); R = rng.normal(0, 0.3, (40, 2, n)).astype(np.float32)
+        rf, spur = 145.15e6, 145.0e6 + 600e3          # spur: fixed +600 kHz offset in hop 0 only
+        for h in (0, 1):
+            R[:, h, int(round((rf - c[h]) / step)) + n // 2] += 8
+        R[:, 0, int(round((spur - c[0]) / step)) + n // 2] += 8
+        L = an.line_origin([dict(f_mhz=rf / 1e6, excess_db=8.0), dict(f_mhz=spur / 1e6, excess_db=8.0)], R, c, step, 100e3, 0.425 * rate)
+        self.assertTrue(L[0]['origin'].startswith('RF'), L[0]['origin'])
+        self.assertTrue(L[1]['origin'].startswith('LO spur'), L[1]['origin'])
+        self.assertEqual(len(L[1]['views']), 2)
+
+
 class IdentificationTests(unittest.TestCase):
     run_tool = SuperscanTests.run_tool
     QTH = dict(lat_deg=63.3, lon_deg=10.3, alt_m=50)
