@@ -279,7 +279,8 @@ def setup_argument_parser():
     device_title.add_argument('--device-settings', metavar='STRING', type=device_settings, default='',
                               help='SoapySDR device settings (example: biastee=true)')
     device_title.add_argument('--stream-args', metavar='KEY=VALUE,...', type=device_settings, default='',
-                              help='SoapySDR RX stream arguments (example: buffers=128,buflen=65536,transfers=16)')
+                              help='SoapySDR RX stream arguments (example: buffers=128,buflen=65536,transfers=16). UHD USB ring sizing '
+                                   '(num_recv_frames, recv_frame_size) is NOT a stream argument: use -d "driver=uhd,...,num_recv_frames=N"')
     device_title.add_argument('--force-rate', action='store_true',
                               help='ignore list of sample rates provided by device and allow any value')
     device_title.add_argument('--force-bandwidth', action='store_true',
@@ -377,8 +378,18 @@ def setup_argument_parser():
     return parser
 
 
+# UHD reads these when the device is opened (transport/ring sizing); as stream arguments they are
+# silently ignored, which looks like a working fix but changes nothing. Put them in the -d string.
+DEVICE_OPEN_ONLY_KEYS = ('num_recv_frames', 'recv_frame_size', 'num_send_frames', 'send_frame_size')
+
+
 def validate_arguments(parser, args):
     """Reject invalid numerical options before opening an SDR stream."""
+    misplaced = sorted(k for k in (args.stream_args or {}) if k in DEVICE_OPEN_ONLY_KEYS)
+    if misplaced:
+        parser.error('--stream-args {} is ignored by UHD at stream setup (read only when the device is opened); '
+                     'pass it in the device string instead, e.g. -d "driver=uhd,serial=...,{}={}"'.format(
+                         ','.join(misplaced), misplaced[0], args.stream_args[misplaced[0]]))
     for name in ('rate', 'bin_size', 'time', 'total_time', 'elapsed'):
         value = getattr(args, name)
         if value is not None and (not math.isfinite(value) or value <= 0):

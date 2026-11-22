@@ -203,6 +203,16 @@ class InputTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     validate_arguments(parser, parser.parse_args(arguments))
 
+    def test_transport_args_in_stream_args_are_rejected_with_pointer_to_device_string(self):
+        parser = setup_argument_parser()
+        for key in ('num_recv_frames', 'recv_frame_size'):
+            with self.subTest(key=key), mock.patch('sys.stderr', io.StringIO()) as err:
+                with self.assertRaises(SystemExit):
+                    validate_arguments(parser, parser.parse_args(['--stream-args', key + '=256']))
+                self.assertIn('device string', err.getvalue())
+        validate_arguments(parser, parser.parse_args(['--stream-args', 'buffers=128']))
+        validate_arguments(parser, parser.parse_args(['-d', 'driver=uhd,num_recv_frames=256']))
+
     def test_help_without_sdr_binding(self):
         result = subprocess.run([sys.executable, '-m', 'soapypower', '--help'],
                                 capture_output=True, text=True)
