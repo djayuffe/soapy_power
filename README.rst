@@ -17,6 +17,16 @@ Requirements
 SciPy and pyFFTW provide optional accelerated FFT backends. Performance and
 memory use depend on FFT size, backend, thread count and the host system.
 
+Local browser GUI
+-----------------
+
+Run ``python -m soapypower.gui --repo /path/to/soapy_power`` (Python 3.9+),
+or ``soapy_power_gui`` after installation. The local workspace displays saved
+spectra, receiver telemetry, acquisition history and report links. Acquisition
+uses the existing macOS runner; without it, saved results remain viewable.
+See `GUI instructions <docs/GUI.md>`_ for setup, supported workflows, safe stop
+requests and the limits of live previews.
+
 Measurement and maintenance
 ---------------------------
 

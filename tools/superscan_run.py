@@ -48,13 +48,14 @@ def awake():
             process.terminate();process.wait(timeout=5)
 
 
-def run_child(command, log_path, data_path, stall_s, poll_s=.25):
+def run_child(command, log_path, data_path, stall_s, poll_s=.25, cancel_file=None):
     """Kill a stalled process group, retaining stdout evidence and accepted prefix."""
     with log_path.open('wb') as log:
         child = subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
         last_progress=time.monotonic();size=0;stalled=False
         try:
             while child.poll() is None:
+                if cancel_file is not None and Path(cancel_file).exists():raise KeyboardInterrupt()
                 current=data_path.stat().st_size if data_path.exists() else 0
                 if current>size:size=current;last_progress=time.monotonic()
                 if time.monotonic()-last_progress>stall_s:
@@ -114,25 +115,34 @@ def supervise(session, command, seconds, gain, *, min_gain=20., gain_step=6., ma
     session=Path(session);session.mkdir(parents=True,exist_ok=True);manifest=session/'captures.json'
     if manifest.exists():raise ValueError('fresh supervisor session required; refusing to overwrite evidence')
     if not command or not all(math.isfinite(x) for x in (seconds,gain,min_gain,gain_step,stall_s,backoff_s,max_gap_s)) or seconds<=0 or not 0<=min_gain<=gain<=76 or gain_step<=0 or stall_s<=0 or backoff_s<0 or max_gap_s<0 or max_attempts<1 or transport_retries<0:raise ValueError('invalid supervision policy')
-    state=dict(version=1,status='running',requested_seconds=seconds,credited_seconds=0.,rf_dwell_seconds=0.,policy=dict(min_gain=min_gain,gain_step_db=gain_step,max_attempts=max_attempts,transport_retries=transport_retries,stall_s=stall_s,max_gap_s=max_gap_s),captures=[],attempts=[])
+    state=dict(version=1,supports_stop_request=True,status='running',requested_seconds=seconds,credited_seconds=0.,rf_dwell_seconds=0.,policy=dict(min_gain=min_gain,gain_step_db=gain_step,max_attempts=max_attempts,transport_retries=transport_retries,stall_s=stall_s,max_gap_s=max_gap_s),captures=[],attempts=[])
     failures=0;last_class='fatal';result=2
     try:
         for attempt in range(1,max_attempts+1):
+            if (session/'stop-request.json').exists():
+                state['status']='cancelled';result=130;last_class='cancelled';break
             left=seconds-state['credited_seconds']
             if left<=0:result=0;break
             raw=session/f'attempt-{attempt:03d}.jsonl';accepted=session/f'capture-{attempt:03d}.jsonl';log=session/f'attempt-{attempt:03d}.log';rejected=session/f'rejected-main-{attempt}'
             args=list(command)+['-g',str(gain),'-e',str(math.ceil(left)),'--deadline-policy','finish-hop','--rejection-evidence',str(rejected),'-F','json','-O',str(raw)]
             state['current_attempt']=dict(number=attempt,gain_db=gain,raw_file=raw.name,log_file=log.name,started_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
             publish(manifest,state)
-            code,stalled=execute(args,log,raw,stall_s)
+            cancelled=False
+            try:
+                if execute is run_child:code,stalled=execute(args,log,raw,stall_s,cancel_file=session/'stop-request.json')
+                else:code,stalled=execute(args,log,raw,stall_s)
+            except KeyboardInterrupt:
+                code,stalled,cancelled=-signal.SIGTERM,False,True
             metrics=accepted_prefix(raw,accepted,gain,max_gap_s)
             text=log.read_text(errors='replace')
-            kind='transport' if stalled else classify_failure(code,text)
+            kind='cancelled' if cancelled else 'transport' if stalled else classify_failure(code,text)
             record=dict(attempt=attempt,gain_db=gain,exit=code,failure_class=kind,watchdog_stalled=stalled,raw_file=raw.name,accepted_file=accepted.name,log_file=log.name,**metrics)
             state['attempts'].append(record)
             state['credited_seconds']+=metrics['credited_seconds'];state['rf_dwell_seconds']+=metrics['rf_dwell_seconds']
             if metrics['records']:state['captures'].append(dict(file=accepted.name,gain_db=gain,**metrics))
             publish(manifest,state)
+            if cancelled:
+                state['status']='cancelled';last_class='cancelled';result=130;break
             if kind=='fatal':last_class=kind;break
             if state['credited_seconds']>=seconds:result=0;break
             last_class=kind

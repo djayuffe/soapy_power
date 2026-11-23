@@ -18,9 +18,12 @@ setup(
     project_urls={'Upstream': 'https://github.com/xmikos/soapy_power'},
     license='MIT',
     packages=['soapypower'],
+    package_data={'soapypower':['web/*.html','web/*.css','web/*.js']},
+    include_package_data=True,
     entry_points={
         'console_scripts': [
             'soapy_power=soapypower.__main__:main',
+            'soapy_power_gui=soapypower.gui:main',
             'soapy_power_calibration=soapypower.calibration_cli:main',
             'soapy_power_noise_audit=soapypower.noise_audit:main',
             'soapy_power_experiment=soapypower.experiments:main',
