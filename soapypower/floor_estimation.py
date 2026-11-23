@@ -219,6 +219,17 @@ def group_peaks(index, gap=1):
 
 # ----------------------------------------------------- LO diversity / drive scaling
 
+def distinct_lo_count(lo_hz, resolution_hz=0):
+    """Count resolvably distinct settings; repeated captures do not add LO diversity."""
+    values=np.sort(np.asarray(lo_hz,dtype=float))
+    if values.ndim!=1 or not np.isfinite(values).all():raise ValueError('invalid LO settings')
+    tolerance=max(float(resolution_hz or 0),1e-9)
+    count=0;last=-np.inf
+    for value in values:
+        if value-last>=tolerance:count+=1;last=value
+    return count
+
+
 def classify_lo_slope(lo_hz, if_hz, orders=(1, 3, 5, 7), resolution_hz=None):
     """Classify one tone from where its IF lands at several LO settings.
 
@@ -231,7 +242,7 @@ def classify_lo_slope(lo_hz, if_hz, orders=(1, 3, 5, 7), resolution_hz=None):
     """
     lo = np.asarray(lo_hz, dtype=float)
     f = np.asarray(if_hz, dtype=float)
-    if lo.size < 3 or np.ptp(lo) <= 0:
+    if distinct_lo_count(lo,resolution_hz)<3 or np.ptp(lo) <= 0:
         return {'status': 'unidentifiable', 'reason': 'needs >= 3 distinct LO settings'}
     res = float(resolution_hz) if resolution_hz else 0.0
     span = float(np.ptp(lo))

@@ -54,6 +54,13 @@ finish() { { echo "STAMP=$STAMP"; echo "LOG=$LOG"; echo "INPUT=$INPUT"; echo "PR
 echo "== soapy_power $MODE $STAMP  repo=$REPO  $(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null) $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null)"
 echo "   scan_seconds=$SCAN_SECONDS gain_db=$GAIN_DB antenna=$ANTENNA input=$INPUT procedure=$PROCEDURE device=$DEVICE_KIND  PATH=$PATH"
 
+# Hold the whole session awake, including setup, calibration, recovery and report generation.
+if [ "$MODE" = scan ] && [ "$(uname -s)" = Darwin ]; then
+  /usr/bin/caffeinate -i -s -w "$$" &
+  AWAKE_PID=$!
+  trap 'kill "$AWAKE_PID" 2>/dev/null || true' EXIT
+fi
+
 # ---- Homebrew 0.8-ABI stack. `brew upgrade` moves /opt/homebrew/opt/soapysdr to 0.9 (Python 3.15 bindings,
 # modules0.9) but keeps the superseded 0.8 keg until `brew cleanup`. Modules built for 0.8 (SoapyUHD,
 # SoapyBladeRF) name libSoapySDR.0.8 by its opt path; dyld resolves it by leaf name through
@@ -216,7 +223,7 @@ if [ -n "$MISSING" ]; then
   if [ ! -x "$VENV/bin/python" ] && [ "$MODE" = setup ]; then
     echo "== setup: lager $VENV fra $PY (--system-site-packages), installerer numpy scipy simplesoapy simplespectral"
     "$PY" -m venv --system-site-packages "$VENV" || { finish "RESULT=venv_failed"; exit 1; }
-    "$VENV/bin/python" -m pip install -q --disable-pip-version-check numpy scipy simplesoapy simplespectral || { finish "RESULT=pip_failed"; exit 1; }
+    "$VENV/bin/python" -m pip install -q --disable-pip-version-check numpy scipy simplesoapy simplespectral matplotlib sgp4 pypdf reportlab || { finish "RESULT=pip_failed"; exit 1; }
   fi
   if [ -x "$VENV/bin/python" ]; then PY="$VENV/bin/python"; MISSING="$(deps "$PY")"; fi
 fi
@@ -268,6 +275,12 @@ report() {  # report <analyzer.py> <scan.jsonl> <session dir> <tag> [extra args.
   echo "${tag}_report exit=$ARC via=${RPY:-none} files=$(ls "$ses/analysis" 2>/dev/null | wc -l | tr -d ' ') seconds=$(( $(date +%s) - t1 ))" | tee -a "$ses/result.txt"
 }
 
+report_set() {
+  local ses="$1"
+  MPLBACKEND=Agg "$PY" "$REPO/tools/analyze_scan_set.py" "$ses/analysis" "$ses" > "$ses/analysis.log" 2>&1; ARC=$?
+  echo "superscan_report exit=$ARC" | tee -a "$ses/result.txt"
+}
+
 # ---- satellite database (SatNOGS transmitters + TLEs) for superscan identification; no SDR use.
 satdb_refresh() {  # satdb_refresh [max_age_hours]: refresh $OUTDIR/satdb when missing or older than max_age_hours
   local age=${1:-0} meta="$OUTDIR/satdb/meta.json"
@@ -290,8 +303,9 @@ REAN="$(req_field reanalyze)"
 if [ -n "$REAN" ]; then
   case "$REAN" in
     hopscan-*)   SESSION="$OUTDIR/$REAN"; report analyze_hopscan.py "$SESSION/scan_140_150.jsonl" "$SESSION" hopscan;;
-    superscan-*) SESSION="$OUTDIR/$REAN"; satdb_refresh 24 >> "$LOG" 2>&1
-                 report analyze_superscan.py "$SESSION/superscan.jsonl" "$SESSION" superscan --bands "$SESSION/bands.json" --qth "$OUTDIR/qth.json" --satdb "$OUTDIR/satdb";;
+    superscan-*) SESSION="$OUTDIR/$REAN";
+                 if [ -f "$SESSION/captures.json" ]; then report_set "$SESSION"
+                 else report analyze_superscan.py "$SESSION/superscan.jsonl" "$SESSION" superscan --bands "$SESSION/bands.json"; fi;;
     *) ARC=bad_name;;
   esac
   finish "SESSION=$OUTDIR/$REAN
@@ -310,8 +324,8 @@ fi
 # are enlarged to 16360 B instead so the ring still holds 0.5 s.
 # Gain auto: one sweep per gain 30..76 dB with the raw-IQ headroom guard (stops at the first overload); gaincal.py picks
 # the smallest gain within 1 dB of the best input-referred noise with max |I|,|Q| < 0.5 and p99.9 < 0.2 of full scale.
-# Main scan resumes after an overflow (up to 5 segments) until SCAN_SECONDS of scanning are done.
-# After the scan: refresh the satellite database if older than 24 h, then the report identifies tracks.
+# Main scan resumes after an overflow (up to 20 segments) until SCAN_SECONDS of scanning are done.
+# Before acquisition: refresh and freeze satellite/QTH references. Reports use that immutable snapshot.
 if [ "${SUPERSCAN:-$(req_field superscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; then
   SESSION="$OUTDIR/superscan-$STAMP"; mkdir -p "$SESSION"
   OUT="$SESSION/superscan.jsonl"; ERR="$SESSION/scan.log"; : > "$SESSION/result.txt"
@@ -321,20 +335,30 @@ if [ "${SUPERSCAN:-$(req_field superscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; 
   ss_plan() {
     if [ "$DITH" -gt 0 ]; then CENTERS=$("$PY" "$REPO/tools/satplan.py" "$PLAN" "$SESSION/bands.json" --rate "$RATE" --dither "$DITH" 2>>"$ERR") || return 1
     else CENTERS=$("$PY" "$REPO/tools/satplan.py" "$PLAN" "$SESSION/bands.json" --rate "$RATE" 2>>"$ERR") || return 1; fi
+    printf '%s\n' '{"version":1,"temperature_interval_s":1,"temperature_max_age_s":3,"require_temperature":true,"require_native_chain":true,"reference_lock":"selected"}' > "$SESSION/telemetry-policy.json"
     BINS=$(( 4096 * RATE )); NRF=$(( 256 * RATE )); [ "$NRF" -le 1024 ] || NRF=1024   # macOS libusb refuses 2048 transfers
     BWHZ=$(( 1250000 * RATE )); WS=$(( RATE * 40000000 + 33554432 ))
     DEVSTR="driver=uhd,type=b200,serial=$SERIAL,num_recv_frames=$NRF"
     [ "$RATE" -lt 8 ] || DEVSTR="$DEVSTR,recv_frame_size=16360"   # 1024 x 16360 B = 0.5 s of ring at 8 MS/s (full-range stack setting)
     echo "superscan plan=$PLAN rate=${RATE}M dither=${DITH}k bins=$BINS bw=$BWHZ centers=$CENTERS" | tee -a "$LOG" "$SESSION/result.txt"
   }
-  ss_run() {  # ss_run <gain> <outfile> <extra args...>
+  ss_args() {
+    SS_ARGS=( "$WRAP" -d "$DEVSTR" -A "$ANTENNA" -C 0 -r "${RATE}M" -b "$BINS" -w "$BWHZ" -t 0.5 --centers "$CENTERS"
+      --fft-window blackman --dc-mask-width 5000 --tune-delay 0.05 --fft-threads 1 --max-threads 1 --partial-policy reject
+      --reopen-stream --require-timestamps --lock-sensor lo_locked --rf-state --telemetry-policy "$SESSION/telemetry-policy.json" )
+  }
+  ss_run() {
     local g="$1" o="$2"; shift 2
-    "$WRAP" -d "$DEVSTR" -A "$ANTENNA" -C 0 -r "${RATE}M" -b "$BINS" -w "$BWHZ" -g "$g" -t 0.5 --centers "$CENTERS" \
-      --fft-window blackman --dc-mask-width 5000 --tune-delay 0.05 --fft-threads 1 --max-threads 1 --partial-policy reject \
-      -F json -O "$o" "$@"
+    ss_args
+    "${SS_ARGS[@]}" -g "$g" -F json -O "$o" "$@"
   }
   ss_plan || { echo "superscan plan '$PLAN' failed" | tee -a "$SESSION/result.txt"; finish "SESSION=$SESSION
 RESULT=superscan_plan_failed"; exit 2; }
+  satdb_refresh 24 >> "$SESSION/reference-refresh.log" 2>&1 || echo 'reference refresh failed; retaining previous cache' >> "$SESSION/result.txt"
+  "$PY" "$REPO/tools/satdb.py" snapshot "$OUTDIR/satdb" "$SESSION/reference" --qth "$OUTDIR/qth.json" > "$SESSION/reference-snapshot.log" 2>&1 || {
+    echo 'reference snapshot failed; scan may proceed without satellite attribution' >> "$SESSION/result.txt"
+    mkdir -p "$SESSION/reference"; printf '%s\n' '{"status":"unavailable"}' > "$SESSION/reference/unavailable.json"
+  }
   while [ "$RATE" -gt 2 ]; do                       # rate pilot
     ss_run 50 "$SESSION/pilot-${RATE}M.jsonl" -e 30 --deadline-policy finish-hop > "$SESSION/pilot-${RATE}M.log" 2>&1; PRC=$?
     POV=$(grep -c 'Measurement failed' "$SESSION/pilot-${RATE}M.log"); PSET=$(grep -c 'overflow during settling' "$SESSION/pilot-${RATE}M.log")
@@ -356,31 +380,28 @@ RESULT=superscan_plan_failed"; exit 2; }
       echo "$GRC" > "$CAL/gain_$G.rc"; echo "gaincal gain=$G exit=$GRC" | tee -a "$LOG"
       [ "$GRC" = 0 ] || grep -q 'SDR overflow\|SDR read failed or timed out' "$CAL/gain_$G.log" || break   # stop at the first real (headroom) rejection
     done
-    GSEL=$("$PY" "$REPO/tools/gaincal.py" "$SESSION/gaincal.json" "$CAL" --bands "$SESSION/bands.json" --fallback "$GAIN_DB" --png "$SESSION/gaincal.png" 2>>"$ERR")
-    [ -n "$GSEL" ] && GAIN_DB="$GSEL"
+    GSEL=$("$PY" "$REPO/tools/gaincal.py" "$SESSION/gaincal.json" "$CAL" --bands "$SESSION/bands.json" --burst-margin-db 12 --png "$SESSION/gaincal.png" 2>>"$ERR")
+    if [ -z "$GSEL" ]; then
+      echo 'No reserve-qualified gain; scan not started' >> "$SESSION/result.txt"
+      finish "SESSION=$SESSION
+RESULT=superscan_gain_unqualified"; exit 2
+    fi
+    GAIN_DB="$GSEL"
     echo "superscan gain auto -> $GAIN_DB dB ($(( $(date +%s) - TC )) s calibration)" | tee -a "$LOG" "$SESSION/result.txt"
   else
     GAIN_DB="$SGAIN"; echo "superscan gain fixed $GAIN_DB dB" | tee -a "$LOG" "$SESSION/result.txt"
   fi
-  T0=$(date +%s); : > "$OUT"; SEG=0; RC=1
-  while [ "$SEG" -lt 20 ]; do                    # resumes only after a USB transport fault (8 MS/s: ~1 per 5-10 min)
-    LEFT=$(( SCAN_SECONDS - ( $(date +%s) - T0 ) )); [ "$LEFT" -ge 20 ] || break
-    SEG=$(( SEG + 1 ))
-    ss_run "$GAIN_DB" "$SESSION/segment-$SEG.jsonl" -e "$LEFT" --deadline-policy finish-hop > "$SESSION/segment-$SEG.err" 2>&1; RC=$?
-    cat "$SESSION/segment-$SEG.err" >> "$ERR"
-    cat "$SESSION/segment-$SEG.jsonl" >> "$OUT" 2>/dev/null; rm -f "$SESSION/segment-$SEG.jsonl"
-    echo "superscan segment=$SEG exit=$RC left_before=${LEFT}s" | tee -a "$LOG" "$SESSION/result.txt"
-    [ "$RC" = 0 ] && break
-    grep -q 'SDR overflow\|SDR read failed or timed out' "$SESSION/segment-$SEG.err" || break   # resume only after this segment's overflow / read timeout, never other failures
-    sleep 2                                      # let libusb release the device before it is opened again
-  done
-  REC=$(wc -l < "$OUT" 2>/dev/null | tr -d ' ')
-  echo "superscan plan=$PLAN rate=${RATE}M gain=$GAIN_DB exit=$RC segments=$SEG records=${REC:-0} settle_overflow_warnings=$(grep -c 'during settling' "$ERR") measurement_overflow=$(grep -c 'Measurement failed: SDR overflow' "$ERR") read_timeouts=$(grep -c 'SDR read failed or timed out' "$ERR") seconds=$(( $(date +%s) - T0 )) of=$SCAN_SECONDS" | tee -a "$SESSION/result.txt"
-  satdb_refresh 24 | tee -a "$SESSION/result.txt"
-  report analyze_superscan.py "$OUT" "$SESSION" superscan --bands "$SESSION/bands.json" --qth "$OUTDIR/qth.json" --satdb "$OUTDIR/satdb"
+  T0=$(date +%s); ss_args
+  "$PY" "$REPO/tools/superscan_run.py" "$SESSION" --seconds "$SCAN_SECONDS" --gain "$GAIN_DB" --min-gain 20 --gain-step 6 -- \
+    "${SS_ARGS[@]}" --headroom --headroom-max 0.5 --headroom-p999 0.2 --headroom-workspace "$WS" > "$ERR" 2>&1; RC=$?
+  echo "superscan supervisor exit=$RC seconds=$(( $(date +%s) - T0 )) requested=$SCAN_SECONDS manifest=$SESSION/captures.json" | tee -a "$SESSION/result.txt"
+  # Each gain context has a separate capture/report. Never relabel mixed-gain raw data.
+  report_set "$SESSION"
   finish "SESSION=$SESSION
 RESULT=superscan_exit_$RC;REPORT=$ARC"
-  exit "$RC"
+  [ "$RC" = 0 ] || exit "$RC"
+  [ "$ARC" = 0 ] || exit 1
+  exit 0
 fi
 
 # ---- 3c. hopscan (request key, integer 1): the 140-150 MHz single-thread hop scan for SCAN_SECONDS with the UHD

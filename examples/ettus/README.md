@@ -350,3 +350,80 @@ provenance combiner and other analysis commands are documented in
 
 See [telemetry policies and reference models](TELEMETRY.md) for typed sensors,
 warmup/validity gates, native filter phase, and the isolated SoapyUHD extension.
+
+### Superscan evidence and publication
+
+The macOS superscan runner keeps raw-IQ headroom checks, RX LO-lock checks,
+verified timestamps, RF state and fresh native telemetry enabled during the main
+capture. The 8 MS/s `sat-full --dither 300` plan uses 14 centers to guarantee
+at least two trusted LO views throughout the requested bands, including DC
+exclusion holes. More centers increase revisit time; pilot the plan on the host.
+
+Before acquisition the runner refreshes the shared satellite cache, then freezes
+it with the observer position into `SESSION/reference`. A failed refresh retains
+the previous complete cache. A failed snapshot allows RF capture but disables
+reference-based attribution. To make a snapshot explicitly:
+
+```sh
+python tools/satdb.py snapshot sessions/satdb SESSION/reference --qth sessions/qth.json
+```
+
+The default orbital-element age gate is 14 days at both ends of the capture;
+`--max-tle-age-days` configures the snapshot policy. This is an engineering
+eligibility limit, not a guarantee of orbit accuracy. Reanalysis prefers frozen
+references. Legacy shared-cache analysis is labelled retrospective. PSD Doppler
+matches are candidates; no decoded identity, analog linearity or absolute-power
+calibration is implied. Guided and stacked searches use source-hop midpoints,
+not a common sweep timestamp.
+
+Analysis outputs are built in a private generation and published through an
+atomic symlink replacement after all stages and input hashes pass. A failed
+render returns nonzero and retains the previous complete report. Resolve the
+output symlink once before reading a group of files; `bundle-manifest.json`
+records input/output SHA-256 hashes. Old generations remain available for audit.
+A first migration of a real output directory archives it intact and has a brief
+name-availability gap. Keep raw JSONL outside the analysis destination.
+
+### Unattended recovery and full partitioned analysis
+
+The superscan runner holds a macOS `caffeinate -i -s` assertion through setup,
+calibration, capture, recovery and reporting. It changes no permanent power
+settings. Forced sleep, lid closure or physical disconnect can still interrupt
+USB; holding an assertion does not certify a cable or USB controller.
+
+Automatic gain selection now requires a configurable 12 dB amplitude reserve
+on both peak and p99.9 components in the pilot. With no qualified point, the
+runner refuses automatic selection. This reserve is an engineering margin;
+a short pilot cannot guarantee future RF burst levels or analog linearity.
+
+`tools/superscan_run.py` supervises the main receive command. It preserves raw
+`attempt-NNN.jsonl` and logs, excludes a crash-truncated final fragment from
+`capture-NNN.jsonl`, and records hashes, quality checks and durations in
+`captures.json`. A complete malformed or unqualified row is fatal. Recognized
+USB failures receive bounded retries; unrelated native crashes remain fatal.
+A file-growth watchdog terminates a stalled process group. Cancellation also
+terminates its child process group. Headroom rejection requires retained,
+hash-verified IQ before a bounded 6 dB gain backoff; the default gain floor is
+20 dB. Every gain context receives its own capture and report.
+
+The scan budget credits validated record durations and normal within-attempt
+retune gaps up to five seconds. Larger gaps and all inter-attempt downtime are
+excluded. Summed RF dwell is reported separately. The accepted prefix can exceed
+the requested time by the final hop duration; setup is outside that budget.
+
+Generate a complete report from any number of legacy or supervised sessions:
+
+```sh
+python -m pip install numpy scipy matplotlib sgp4 pypdf reportlab
+python tools/analyze_scan_set.py OUTPUT \
+  sessions/superscan-YYYYMMDD-HHMMSS \
+  sessions/superscan-YYYYMMDD-HHMMSS
+```
+
+The atomically published bundle includes a combined multipage PDF, every-record
+telemetry CSV, native-resolution per-context analyses and interactive waterfalls,
+JSON inventories, input/output hashes, and phase diagnostics for retained rejected
+IQ when available. Waveform phase cannot be recovered from PSD. Absolute levels
+and detection counts across different gains/rates must not be pooled as calibrated
+measurements or unique transmitter totals. Never concatenate different gain/rate
+contexts into one raw superscan file.

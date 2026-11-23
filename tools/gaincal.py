@@ -6,7 +6,7 @@
 
 Levels are digital (dB(input power/Hz)), so floor(G) - G is the input-referred noise. It falls while the ADC/IF
 noise dominates and flattens once the front end dominates. Chosen gain = the smallest gain whose input-referred
-noise is within 1 dB of the best safe gain, where safe means: the sweep completed, every hop's raw IQ stayed
+noise is within 1 dB of the best safe gain, with a configurable burst reserve (12 dB by default), where pilot-safe means: the sweep completed, every hop's raw IQ stayed
 below 0.5 of full scale (max component) and 0.2 at the 99.9th percentile, and no sample reached 0.95 (the
 --headroom guard rejects the run otherwise). Prints the chosen gain (dB) on stdout."""
 import json, math, sys
@@ -28,11 +28,13 @@ def measure(path, dc=100e3, usable=850e3):
         hr = m.get('headroom') or {}
         hops.append(dict(center_hz=float(m['tuned_center_hz']), floor_db=float(np.median(p[sel])), peak_db=float(np.max(p[sel])),
                          max_component=hr.get('max_component'), p999_component=hr.get('p999_component'), t095=hr.get('threshold_095_fraction'),
-                         status=m.get('measurement_status')))
+                         status=m.get('measurement_status'),continuity=m.get('continuity')))
     return hops
 
 
-def choose(cal_dir, bands=None, fallback=None, usable=850e3):
+def choose(cal_dir, bands=None, fallback=None, usable=850e3, burst_margin_db=12., expected_centers=None):
+    if not math.isfinite(burst_margin_db) or not 0<=burst_margin_db<=60: raise ValueError("invalid burst reserve")
+    reserve = 10**(burst_margin_db/20)
     cal = Path(cal_dir); rows = []
     expected = None
     for f in sorted(cal.glob('gain_*.jsonl'), key=lambda p: float(p.stem.split('_')[1])):
@@ -40,25 +42,30 @@ def choose(cal_dir, bands=None, fallback=None, usable=850e3):
         rc = int(rcf.read_text().strip()) if rcf.exists() and rcf.read_text().strip().lstrip('-').isdigit() else None
         hops = measure(f, usable=usable) if f.stat().st_size else []
         expected = max(expected or 0, len(hops))
-        hr_ok = bool(hops) and all(h['max_component'] is not None and h['max_component'] < MAX_COMPONENT and h['p999_component'] < P999_COMPONENT and h['t095'] == 0 for h in hops)
         rows.append(dict(gain_db=g, rc=rc, hops=hops, n_hops=len(hops),
                          input_noise_db=float(np.median([h['floor_db'] - g for h in hops])) if hops else None,
                          floor_db=float(np.median([h['floor_db'] for h in hops])) if hops else None,
                          max_component=max((h['max_component'] or 0) for h in hops) if hops else None,
                          p999_component=max((h['p999_component'] or 0) for h in hops) if hops else None))
     for r in rows:
-        r['safe'] = bool(r['rc'] == 0 and r['n_hops'] == expected and r['n_hops'] > 0 and r['max_component'] is not None
-                         and r['max_component'] < MAX_COMPONENT and r['p999_component'] < P999_COMPONENT
-                         and all(h['t095'] == 0 for h in r['hops']))
-    safe = [r for r in rows if r['safe']]
+        def qualified(h):
+            values=[h.get(k) for k in ('max_component','p999_component','t095','floor_db')]
+            return all(isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v) for v in values) and 0<=values[0]<MAX_COMPONENT and 0<=values[1]<P999_COMPONENT and values[2]==0 and h['status']=='complete' and h['continuity']=='verified'
+        r['safe']=bool(r['rc']==0 and r['n_hops']==expected and r['n_hops']>0 and len({h['center_hz'] for h in r['hops']})==r['n_hops'] and all(qualified(h) for h in r['hops']))
+    center_sets=[{round(h['center_hz']) for h in r['hops']} for r in rows if r['safe']]
+    expected_set={round(x) for x in expected_centers} if expected_centers is not None else (max(center_sets,key=len) if center_sets else set())
+    for r in rows:
+        r['safe'] = r['safe'] and {round(h['center_hz']) for h in r['hops']} == expected_set
+        r['reserve_qualified'] = r['safe'] and r['max_component']*reserve < MAX_COMPONENT and r['p999_component']*reserve < P999_COMPONENT
+    safe = [r for r in rows if r['reserve_qualified']]
     if not safe:
-        return dict(chosen_gain_db=fallback, reason='no safe calibration point; fallback gain used', rows=rows)
+        return dict(chosen_gain_db=fallback, selection_qualified=False, reason='no reserve-qualified calibration point; explicit fallback requires live qualification' if fallback is not None else 'no reserve-qualified calibration point; refusing automatic selection', rows=rows, analog_linearity_verified=False,input_noise_calibrated=False,burst_margin_db=burst_margin_db)
     best = min(r['input_noise_db'] for r in safe)
     pick = min((r for r in safe if r['input_noise_db'] <= best + WITHIN_DB), key=lambda r: r['gain_db'])
     top = max(safe, key=lambda r: r['gain_db'])
-    reason = (f"smallest safe gain within {WITHIN_DB:.1f} dB of the best input-referred noise ({best:.1f} dB); "
+    reason = (f"{burst_margin_db:g} dB burst reserve; smallest pilot-qualified gain within {WITHIN_DB:.1f} dB of the best input-referred noise ({best:.1f} dB); "
               f"highest safe gain tested {top['gain_db']:.0f} dB (max component {top['max_component']:.2f}, p99.9 {top['p999_component']:.3f})")
-    out = dict(chosen_gain_db=pick['gain_db'], reason=reason, best_input_noise_db=best, rows=rows,
+    out = dict(selection_qualified=True,burst_margin_db=burst_margin_db,chosen_gain_db=pick['gain_db'], reason=reason, best_input_noise_db=best, rows=rows,analog_linearity_verified=False,input_noise_calibrated=False,
                limits=dict(max_component=MAX_COMPONENT, p999_component=P999_COMPONENT, within_db=WITHIN_DB))
     if bands:
         per = []
@@ -105,7 +112,7 @@ def main():
         print(__doc__); return 2
     bj = json.loads(Path(a[a.index('--bands') + 1]).read_text()) if '--bands' in a else {}
     fb = float(a[a.index('--fallback') + 1]) if '--fallback' in a else None
-    res = choose(a[1], bj.get('bands'), fb, usable=float(bj.get('usable_halfwidth_hz', 850e3)))
+    res = choose(a[1], bj.get('bands'), fb, usable=float(bj.get('usable_halfwidth_hz', 850e3)),burst_margin_db=float(a[a.index('--burst-margin-db')+1]) if '--burst-margin-db' in a else 12.,expected_centers=bj.get('centers_hz'))
     Path(a[0]).write_text(json.dumps(res, indent=1, default=float))
     png = a[a.index('--png') + 1] if '--png' in a else str(Path(a[0]).with_suffix('.png'))
     try:

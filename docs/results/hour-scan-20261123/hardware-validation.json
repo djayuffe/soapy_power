@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "status": "completed",
+  "requested_seconds": 20.0,
+  "credited_seconds": 20.41098380088806,
+  "rf_dwell_seconds": 15.613744974136353,
+  "policy": {
+    "min_gain": 20,
+    "gain_step_db": 6,
+    "max_attempts": 20,
+    "transport_retries": 4,
+    "stall_s": 60,
+    "max_gap_s": 5.0
+  },
+  "captures": [
+    {
+      "file": "capture-001.jsonl",
+      "gain_db": 60.0,
+      "records": 31,
+      "credited_seconds": 20.41098380088806,
+      "rf_dwell_seconds": 15.613744974136353,
+      "excluded_gap_seconds": 0.0,
+      "first_unix": 1795421638.337258,
+      "last_unix": 1795421658.748242,
+      "trailing_fragment": false,
+      "raw_sha256": "8c647552c21b3eddb559d9cdc5ddcec4a5fb980a14ad1f7eb47083180ea21699"
+    }
+  ],
+  "attempts": [
+    {
+      "attempt": 1,
+      "gain_db": 60.0,
+      "exit": 0,
+      "failure_class": "finished",
+      "watchdog_stalled": false,
+      "raw_file": "attempt-001.jsonl",
+      "accepted_file": "capture-001.jsonl",
+      "log_file": "attempt-001.log",
+      "records": 31,
+      "credited_seconds": 20.41098380088806,
+      "rf_dwell_seconds": 15.613744974136353,
+      "excluded_gap_seconds": 0.0,
+      "first_unix": 1795421638.337258,
+      "last_unix": 1795421658.748242,
+      "trailing_fragment": false,
+      "raw_sha256": "8c647552c21b3eddb559d9cdc5ddcec4a5fb980a14ad1f7eb47083180ea21699"
+    }
+  ],
+  "current_attempt": null,
+  "remaining_seconds": 0.0,
+  "last_failure_class": "fatal"
+}

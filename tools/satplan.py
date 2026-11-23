@@ -2,7 +2,7 @@
 """DC-free hop plans for satellite bands (2 MS/s B200, 8192 bins).
 
   satplan.py PRESET|BANDS.json OUT_bands.json [--rate MSPS] [--dither KHZ]   -> writes bands.json, prints the centres
-  --dither: add a second grid shifted by KHZ, so every band frequency is seen from two LOs (RF line vs LO spur).
+  --dither: add a shifted grid and repair remaining single-view/DC intervals for two-LO coverage (RF line vs LO spur).
   --rate: sample rate in MS/s (default 2). The trusted half-width scales with it (0.425 x rate: 0.85 MHz at 2 MS/s,
   measured flat to -1 dB at 0.91 MHz); the DC exclusion stays 100 kHz. Bins for 244 Hz resolution: 4096 x rate.
 
@@ -59,6 +59,27 @@ def plan(bands, usable=USABLE, dc=DC):
                 bands=[dict(name=n, lo_hz=lo, hi_hz=hi) for n, lo, hi in merged])
 
 
+def ensure_lo_diversity(p,minimum=2):
+    """Repair continuous single-view intervals, including shifted-grid DC holes."""
+    centers=list(p['centers_hz']);original=set(centers);u=p['usable_halfwidth_hz'];dc=p['dc_exclude_hz']
+    if not 0<dc<u:raise ValueError('usable bandwidth must exceed positive DC exclusion')
+    for _ in range(10000):
+        missing=None
+        for band in p['bands']:
+            lo,hi=band['lo_hz'],band['hi_hz']
+            edges=sorted({lo,hi}|{v for c in centers for v in (c-u,c-dc,c+dc,c+u) if lo<v<hi})
+            probes=edges+[(a+b)/2 for a,b in zip(edges,edges[1:])]
+            missing=next((f for f in probes if sum(dc<=abs(f-c)<=u for c in centers)<minimum),None)
+            if missing is not None:break
+        if missing is None:
+            p['centers_hz']=sorted(centers);p['minimum_lo_views']=minimum;p['lo_diversity_repairs_hz']=sorted(set(centers)-original);return p
+        center=round((missing-(u+dc)/2)/1000)*1000
+        while center in centers:center-=1000
+        if not dc<=abs(missing-center)<=u:raise ValueError('cannot repair LO diversity at this bandwidth')
+        centers.append(center)
+    raise ValueError('LO diversity repair budget exceeded')
+
+
 def main():
     a = sys.argv[1:]
     rate = float(a[a.index('--rate') + 1]) if '--rate' in a else 2.0
@@ -75,9 +96,10 @@ def main():
     p = plan(bands, usable=0.425 * rate * 1e6); p['preset'] = src if src in PRESETS else 'custom'
     if dith:
         p['centers_hz'] = sorted(set(p['centers_hz'] + [round((c + dith) / 1e3) * 1e3 for c in p['centers_hz']])); p['dither_hz'] = dith
+        p=ensure_lo_diversity(p)
     p['sample_rate_hz'] = rate * 1e6; p['bins'] = int(round(4096 * rate))
     Path(sys.argv[2]).write_text(json.dumps(p, indent=1))
-    print(','.join(f'{c / 1e6:.6g}M' for c in p['centers_hz']))
+    print(','.join(f'{c / 1e6:.6f}M' for c in p['centers_hz']))
     return 0
 
 

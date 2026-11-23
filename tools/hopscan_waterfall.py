@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Waterfalls / heatmaps for a soapy_power hop scan (-F json), all built from the artifact-free residual.
+"""Waterfalls / heatmaps for a soapy_power hop scan (-F json), diagnostic residual with receiver-template suppression.
 
 Processing (same as analyze_hopscan.py, plus):
   * the receiver DC/low-frequency skirt (median over hops) and the slow floor are removed;
@@ -118,6 +118,7 @@ def pool(Z, keep, nh, p, how):
 
 
 def draw(ax, A, W, Z, how, vmin, vmax, cmap=CMAP, target_px=5400):
+    from waterfall_geometry import dwell_mesh
     """Staircase waterfall: hop h's rows span its own measured start times."""
     keep, nh, f, step_mhz = W['keep'], A['nh'], A['f'], A['step'] / 1e6
     p = _pfactor(keep, nh, target_px)
@@ -130,8 +131,9 @@ def draw(ax, A, W, Z, how, vmin, vmax, cmap=CMAP, target_px=5400):
     for h, B in enumerate(blocks):
         cols = np.arange(h * keep, (h + 1) * keep, p)
         xe = np.append(f[cols] - step_mhz / 2, f[(h + 1) * keep - 1] + step_mhz / 2)
-        ye = np.append(W['ts'][:, h], W['te'][-1, h])
-        m = ax.pcolormesh(xe, ye, np.ma.masked_invalid(B), cmap=cm, vmin=vmin, vmax=vmax, shading='flat', rasterized=True)
+        ye,paint=dwell_mesh(B,W['ts'][:,h],W['te'][:,h])
+        if not len(ye):continue
+        m = ax.pcolormesh(xe, ye, np.ma.masked_invalid(paint), cmap=cm, vmin=vmin, vmax=vmax, shading='flat', rasterized=True)
     ax.grid(False); ax.set_xlim(f[0], f[-1]); ax.set_ylim(0, W['te'][-1].max())
     return m, p
 
@@ -307,7 +309,7 @@ def viewer(A, W, out, tag):
     meta = dict(title=f'Waterfall {f[0]:.1f}–{f[-1]:.1f} MHz', tag=tag, start=W['start'], rows=int(q.shape[0]), cols=int(q.shape[1]),
                 f0=float(f[0]), step=float(A['step'] / 1e6), keep=int(W['keep']), nh=int(A['nh']),
                 centers=[float(c) for c in A['centers'] / 1e6], qlo=Q_LO, qstep=Q_STEP, qlin=Q_LIN, qtop=float(top_step),
-                T=[[round(float(x), 3) for x in row] for row in W['ts']], tend=round(float(W['te'][-1].max()), 3),
+                T=[[round(float(x), 3) if np.isfinite(x) else None for x in row] for row in W['ts']], Tend=[[round(float(x),3) if np.isfinite(x) else None for x in row] for row in W['te']], tend=round(float(W['te'][-1].max()), 3),
                 sigma=round(W['sig'], 4), unit=s['unit'], span=round(s['span_s'], 1), records=s['records'],
                 cands=[dict(f=round(c['f_mhz'], 5), db=round(c['peak_excess_db'], 2), pct=round(c['sweeps_detected_pct']), off=round(c['offset_khz']))
                        for c in A['cand']],
@@ -429,7 +431,7 @@ function draw(){
   const off=document.createElement('canvas');off.width=pw;off.height=R;off.getContext('2d').putImageData(img,0,0);
   g.fillStyle='#070b14';g.fillRect(0,0,w,h);g.imageSmoothingEnabled=false;g.drawImage(off,G,0,w-G,h);
   g.fillStyle='#8fa0bd';g.font='11px sans-serif';g.textAlign='right';
-  const tstep=niceStep(M.tend,h,40);for(let t=0;t<=M.tend;t+=tstep){const y=h-(t/M.tend)*h;g.fillText(t.toFixed(0)+' s',G-4,Math.max(10,y+4));g.fillRect(G-2,y,2,1)}
+  const tstep=Math.max(1,Math.ceil(niceStep(R,h,40)));for(let t=0;t<=R;t+=tstep){const y=h-(t/R)*h;g.fillText(t.toFixed(0)+' sw',G-4,Math.max(10,y+4));g.fillRect(G-2,y,2,1)}
   for(const cc of M.centers){const c=(cc-M.f0)/M.step;if(c>=x0&&c<=x1){const x=G+(c-x0)/(x1-x0)*(w-G);g.fillStyle='#ffb000';g.beginPath();g.moveTo(x-4,0);g.lineTo(x+4,0);g.lineTo(x,7);g.fill()}}
   for(const tk of (M.tracks||[])){g.strokeStyle=tk.kind==='doppler'?'#00d1ff':tk.kind==='predicted'?'#ffd166':'#ff4d6d';g.setLineDash(tk.kind==='predicted'?[4,4]:[]);g.lineWidth=1.2;g.beginPath();let pen=false;
     for(let i=0;i<tk.f.length;i++){const c=(tk.f[i]-M.f0)/M.step;if(c<x0||c>x1){pen=false;continue}const x=G+(c-x0)/(x1-x0)*(w-G),y=h-(tk.r[i]+.5)/R*h;if(pen)g.lineTo(x,y);else g.moveTo(x,y);pen=true}g.stroke();
@@ -465,7 +467,7 @@ function drawTrace(colv,pw){
   let lo=LO,hi=HI;if(hover){const p=Math.max(0,Math.min(pw-1,hover.p));for(let r=0;r<R;r++){const v=colv[r*pw+p];if(v===v){if(v>hi)hi=v;if(v<lo)lo=v}}}
   const X=v=>8+(v-lo)/(hi-lo)*(w-16);
   g.strokeStyle='#24324f';g.beginPath();g.moveTo(X(0)+.5,0);g.lineTo(X(0)+.5,h);g.stroke();
-  g.fillStyle='#8fa0bd';g.font='10px sans-serif';g.fillText('level vs time at cursor',8,12);
+  g.fillStyle='#8fa0bd';g.font='10px sans-serif';g.fillText('level vs sweep at cursor',8,12);
   if(!hover)return;const p=Math.max(0,Math.min(pw-1,hover.p));
   g.strokeStyle='#00d1ff';g.beginPath();let pen=false;
   for(let r=0;r<R;r++){const v=colv[r*pw+p];if(v!==v){pen=false;continue}const x=X(v),y=h-(r+.5)/R*h;if(pen)g.lineTo(x,y);else g.moveTo(x,y);pen=true}g.stroke();
@@ -475,7 +477,8 @@ function readout(e){
   const r=$('wf').getBoundingClientRect(),xs=e.clientX-r.left,ys=e.clientY-r.top;if(xs<G)return;
   const c=Math.max(0,Math.min(C-1,Math.floor(colAt(xs,r.width)))),row=Math.max(0,Math.min(R-1,Math.floor((1-ys/r.height)*R)));
   const pw=Math.max(1,Math.round((r.width-G)*(window.devicePixelRatio||1)));hover={c,p:Math.floor((xs-G)/(r.width-G)*pw)};
-  const h=hopOf(c),v=D[row*C+c],t=M.T[row][h];
+  const h=hopOf(c),v=D[row*C+c],t=h>=0?M.T[row][h]:null;
+  if(t==null){$('read').textContent='Unobserved frequency/time cell';return}
   let s=0,n=0;for(let k=0;k<R;k++){const u=D[k*C+c];if(u===u){s+=Math.pow(10,u/10);n++}}const mean=n?10*Math.log10(s/n):NaN;
   const fmt=x=>x!==x?'blank':(x>=0?'+':'')+x.toFixed(2)+' dB';
   $('read').innerHTML=`<b>${fOf(c).toFixed(5)} MHz</b> · t <b>${t.toFixed(1)} s</b> (sweep ${row+1}/${R}, hop ${h+1} at ${M.centers[h].toFixed(2)} MHz, ${offKhz(c)>=0?'+':''}${offKhz(c).toFixed(1)} kHz) · value <b>${fmt(v)}</b>${v===v?' ('+(v/sig).toFixed(1)+'σ)':''} · run mean ${fmt(mean)}`;

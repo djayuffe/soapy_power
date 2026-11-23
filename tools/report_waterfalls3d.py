@@ -28,8 +28,15 @@ def load(path):
     for k in ('features-on', 'features-off'):
         if k not in W: continue
         g = np.array([[np.nan if x is None else x for x in r] for r in W[k]['grid']], float); t = np.array([np.nan if x is None else x for x in W[k]['t0_s']], float)
-        ok = np.isfinite(g).mean(1) > .5; out[k] = (g[ok], t[ok])
+        ok = (np.isfinite(g).mean(1) > .5) & np.isfinite(t); out[k] = (g[ok], t[ok])
     return f, out
+
+
+def time_extent(data):
+    """One shared display axis containing every observed pass timestamp."""
+    times=[float(v) for _,t in data.values() for v in t if np.isfinite(v)]
+    if not times:raise ValueError('no observed waterfall timestamps')
+    return max(1.0,float(np.ceil(max(times)/50)*50))
 
 
 def nice_step(span, n=8):
@@ -47,13 +54,14 @@ def peaks(x, mx, k=6, sep=0.02):
 def build(f, g, t, lo, hi, title, nm, suite=None, step=1):
     m = (f >= lo) & (f <= hi); x = f[m][::step]; z = np.clip(g[:, m][:, ::step], ZMIN, ZMAX); zf = np.where(np.isfinite(z), z, ZMIN)
     X, Y = np.meshgrid(x, t)
-    ls = LightSource(azdeg=300, altdeg=38); rgb = ls.shade(zf, cmap=CMAP, norm=NORM, blend_mode='soft', vert_exag=1.6, dx=max(x[1] - x[0], 1e-9), dy=np.median(np.diff(t)) if len(t) > 1 else 1)
+    ls = LightSource(azdeg=300, altdeg=38)
+    rgb=ls.shade(zf,cmap=CMAP,norm=NORM,blend_mode='soft',vert_exag=1.6,dx=max(x[1]-x[0],1e-9),dy=np.median(np.diff(t))) if len(t)>1 and len(x)>1 else CMAP(NORM(zf))
     fig = plt.figure(figsize=(20, 12.5), dpi=110); ax = fig.add_axes([-.07, -.02, 1.1, 1.0], projection='3d')
     for a in (ax.xaxis, ax.yaxis, ax.zaxis):
         a.set_pane_color((0.03, 0.05, 0.09, 1)); a.line.set_color('#2b3a55'); a._axinfo['grid']['color'] = (0.3, 0.4, 0.6, 0.22)
     ax.set_xlim(lo, hi); ax.set_ylim(0, TMAX); ax.set_zlim(ZFLOOR, ZMAX)
-    ax.contourf(X, Y, zf, zdir='z', offset=ZFLOOR, levels=np.linspace(ZMIN, ZMAX, 25), cmap=CMAP, norm=NORM, alpha=.95)      # floor heat-map projection
-    ax.plot_surface(X, Y, zf, facecolors=rgb, rstride=1, cstride=1, linewidth=0, antialiased=True, shade=False)
+    if z.shape[0]>1 and z.shape[1]>1:ax.contourf(X, Y, np.ma.masked_invalid(z), zdir='z', offset=ZFLOOR, levels=np.linspace(ZMIN, ZMAX, 25), cmap=CMAP, norm=NORM, alpha=.95)      # floor heat-map projection
+    ax.plot_surface(X, Y, np.ma.masked_invalid(z), facecolors=rgb, rstride=1, cstride=1, linewidth=0, antialiased=True, shade=False)
     mx = np.nanmax(z, 0); tm = t[np.nanargmax(np.where(np.isfinite(z), z, -1e9), 0)]
     verts = [list(zip(x, np.maximum(mx, ZMIN))) + [(x[-1], ZFLOOR), (x[0], ZFLOOR)]]
     wall = PolyCollection(verts, facecolors='#00d1ff', alpha=.16, edgecolors='none'); ax.add_collection3d(wall, zs=TMAX, zdir='y')   # back wall: max-hold
@@ -86,6 +94,8 @@ def main():
     a = [x for x in sys.argv[1:] if not x.startswith('--')]; gif = '--gif' in sys.argv
     path, outdir = a[0], Path(a[1]); outdir.mkdir(parents=True, exist_ok=True); suite = json.load(open(a[2]))['telemetry_on'] if len(a) > 2 and Path(a[2]).exists() else None
     f, d = load(path); made = []
+    global TMAX
+    TMAX=time_extent(d)
     for key, nm in (('features-on', 'ON'), ('features-off', 'OFF')):
         if key not in d: continue
         g, t = d[key]

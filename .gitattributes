@@ -1,2 +1,4 @@
 # Unified-diff context lines preserve the source patch's significant prefix.
 patches/*.patch -whitespace
+*.pdf binary
+*.png binary

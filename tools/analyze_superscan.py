@@ -19,6 +19,7 @@ import collections, csv, datetime, json, math, sys, textwrap, warnings
 from pathlib import Path
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from waterfall_geometry import dwell_mesh
 import analyze_hopscan as ah                      # noqa: E402  style + Agg backend
 import hopscan_waterfall as hw                    # noqa: E402  viewer template, quantiser, colormaps
 import superscan_id as sid                       # noqa: E402  identification (SatNOGS + SGP4) and signal format
@@ -38,6 +39,17 @@ BG, PANEL, FG = ah.BG, ah.PANEL, ah.FG
 C_DOP, C_DRIFT, C_STABLE, C_EVENT, C_PRED = '#00d1ff', '#ff4d6d', '#8fa0bd', '#7CFC9A', '#ffd166'
 
 
+def fit_heading(fig, x, y, text, **kwargs):
+    """Fit variable-length band/candidate headings inside the page margins."""
+    artist = fig.text(x,y,text,**kwargs)
+    available = fig.bbox.width*(.975-x)
+    for _ in range(6):
+        width = artist.get_window_extent(fig.canvas.get_renderer()).width
+        if width <= available: break
+        artist.set_fontsize(artist.get_fontsize()*.98*available/width)
+    return artist
+
+
 # ---------------------------------------------------------------------------------------------- loading
 def load(path):
     order, hop, sweep, recs, io = [], [], [], [], []; meta0 = None; statuses = set(); conts = set(); last_h = None; sw = 0
@@ -46,6 +58,21 @@ def load(path):
             if not line.strip():
                 continue
             r = json.loads(line); m = r['metadata']; c = m['tuned_center_hz']
+            if m.get('measurement_status')!='complete' or m.get('continuity')!='verified':
+                raise ValueError('superscan analysis requires complete timestamp-verified records')
+            n=len(r['power']);step=float(r['step_hz'])
+            if n<2 or not np.isfinite(step) or step<=0 or not np.isfinite(c):raise ValueError('invalid superscan grid')
+            if r.get('unit')!='dB(input power/Hz)':raise ValueError('superscan needs relative logarithmic PSD')
+            first=r.get('first_bin_center_hz',c-(n//2)*step)
+            if not np.isfinite(first) or not math.isclose(first,c-(n//2)*step,abs_tol=max(1e-3,step*1e-6),rel_tol=0):
+                raise ValueError('unsupported superscan RF/IF frequency mapping')
+            signature=(n,step,m.get('sample_rate_hz'),m.get('window'),m.get('segment_count'),r['unit'],json.dumps(m.get('context') or {},sort_keys=True,allow_nan=False))
+            if meta0 is not None and signature!=capture_signature:raise ValueError('superscan receiver/grid state changed')
+            capture_signature=signature
+            for field in ('time_start','time_stop'):
+                dt=datetime.datetime.fromisoformat(r[field])
+                if dt.tzinfo is None:raise ValueError('superscan timestamps require an explicit timezone')
+            if datetime.datetime.fromisoformat(r['time_stop'])<=datetime.datetime.fromisoformat(r['time_start']):raise ValueError('invalid superscan dwell')
             k = next((i for i, o in enumerate(order) if abs(c - o) < 1), None)
             if k is None:
                 order.append(c); k = len(order) - 1
@@ -53,6 +80,10 @@ def load(path):
                 sw += 1
             last_h = k
             p = np.array([np.nan if v is None else v for v in r['power']], np.float32)
+            for index in set(r.get('estimated_bins',[]))|set(r.get('masked_bins',[])):
+                if not isinstance(index,int) or isinstance(index,bool) or not 0<=index<n:raise ValueError('invalid masked/estimated bin index')
+                p[index]=np.nan
+            if np.isinf(p).any():raise ValueError('infinite superscan power')
             recs.append((sw, k, p, datetime.datetime.fromisoformat(r['time_start']).timestamp(), datetime.datetime.fromisoformat(r['time_stop']).timestamp()))
             io.append((sw, k, m.get('host_io', {})))
             statuses.add(str(m.get('measurement_status'))); conts.add(str(m.get('continuity')))
@@ -65,7 +96,7 @@ def load(path):
     for s_, h, p, a, b in recs:
         P[s_, h] = p; T0[s_, h] = a; T1[s_, h] = b
     r0, m = meta0
-    info = dict(step_hz=float(r0['step_hz']), bins=n, hops=nh, sweeps=int(nsw), records=len(recs), centers_hz=[float(c) for c in order],
+    info = dict(step_hz=float(r0['step_hz']), bins=n, hops=nh, sweeps=int(nsw), complete_sweeps=int(np.isfinite(T0).all(axis=1).sum()), partial_sweeps=int((~np.isfinite(T0).all(axis=1)).sum()), records=len(recs), centers_hz=[float(c) for c in order],
                 sample_rate_hz=m.get('sample_rate_hz'), window=m.get('window'), segments=m.get('segment_count'), unit=r0['unit'],
                 statuses=sorted(statuses), continuity=sorted(conts), gain=(m.get('context') or {}).get('gains'))
     return P, T0, T1, np.array(order), io, info
@@ -98,20 +129,22 @@ def stitch(R, T0, T1, centers, step, band, dc, usable):
         off = np.abs(x - centers); ok = (off >= dc) & (off <= usable)
         if ok.any():
             h = int(np.argmin(np.where(ok, off, np.inf))); hop[k] = h; col[k] = int(round((x - centers[h]) / step)) + n // 2
-    good = hop >= 0; f, hop, col = f[good], hop[good], col[good]
-    B = R[:, hop, col].astype(float)
-    fsrc = centers[hop] + (col - n // 2) * step
-    hops_used = sorted(set(hop.tolist()))
-    for h in hops_used:                            # level every record of this band to its own median
-        m = hop == h; B[:, m] -= np.nanmedian(B[:, m], 1)[:, None]
-    Tm = (T0 + T1) / 2
-    return dict(f=f, fsrc=fsrc, hop=hop, col=col, B=B, T=Tm[:, hop], hops=hops_used, T0=T0[:, hops_used], T1=T1[:, hops_used])
+    good = (hop >= 0) & (col >= 0) & (col < n)
+    hop[~good]=-1;col[~good]=-1
+    B=np.full((R.shape[0],len(f)),np.nan)
+    B[:,good]=R[:,hop[good],col[good]]
+    fsrc=f.copy();fsrc[good]=centers[hop[good]]+(col[good]-n//2)*step
+    hops_used=sorted(set(hop[good].tolist()))
+    for h in hops_used:
+        m=hop==h;B[:,m]-=np.nanmedian(B[:,m],1)[:,None]
+    Tm=(T0+T1)/2;T=np.full(B.shape,np.nan);T[:,good]=Tm[:,hop[good]]
+    return dict(f=f,fsrc=fsrc,hop=hop,col=col,B=B,T=T,hops=hops_used,T0=T0[:,hops_used],T1=T1[:,hops_used],step_hz=step)
 
 
 def smooth_f(B, nb=3):
     fin = np.isfinite(B); L = np.where(fin, 10 ** (B / 10), 0.0)
     num = uniform_filter(L, (1, nb), mode='constant'); den = uniform_filter(fin.astype(float), (1, nb), mode='constant')
-    return np.where(den > 0.5, 10 * np.log10(np.maximum(num, 1e-30) / np.maximum(den, 1e-30)), np.nan)
+    return np.where(fin & (den > 0.5), 10 * np.log10(np.maximum(num, 1e-30) / np.maximum(den, 1e-30)), np.nan)
 
 
 def mad(x):
@@ -336,7 +369,7 @@ def origin_note(A):
     if not n2:
         return 'Stable lines real vs receiver spur: not decided (each line seen from one LO; use satplan.py --dither).'
     k = lambda p: sum(x.get('origin', '').startswith(p) for x in L)
-    return (f"Line origin from two LOs per frequency: {k('RF')} RF, {k('LO spur')} LO-related spur, {k('single')} seen from one LO only, "
+    return (f"Line-origin hypotheses from sequential LO views: {k('RF')} RF, {k('LO spur')} LO-related spur, {k('single')} seen from one LO only, "
             f"{sum('reference harmonic' in x.get('origin', '') for x in L)} at a 10 MHz multiple (B200 reference?) — lines CSV.")
 
 
@@ -356,17 +389,19 @@ def line_origin(lines, Rr, centers, step, dc, usable):
             ex = float(np.nanmax(prof[27:34]) - base) if prof.size >= 34 else float('nan')
             seen.append(dict(lo_mhz=float(c / 1e6), offset_khz=float(off / 1e3), excess_db=ex))
         L['views'] = seen
+        L['origin_confidence']='diagnostic_only'
+        L['automatically_excluded']=False
         if len(seen) < 2:
             L['origin'] = 'single LO (unverified)'
         else:
             pres = [v['excess_db'] >= max(0.3, 0.4 * L['excess_db']) for v in seen]
-            L['origin'] = 'RF (all %d LOs)' % len(seen) if all(pres) else ('LO spur (only %s)' % ', '.join(f"{v['lo_mhz']:.2f}{v['offset_khz']:+.0f}k" for v, p in zip(seen, pres) if p) if any(pres) else 'not resolved')
+            L['origin'] = 'RF-consistent (all %d LOs)' % len(seen) if all(pres) else ('LO spur candidate (only %s)' % ', '.join(f"{v['lo_mhz']:.2f}{v['offset_khz']:+.0f}k" for v, p in zip(seen, pres) if p) if any(pres) else 'not resolved')
     # the same LO offset carrying a line in two different hops is LO-relative even if each was seen from one LO only
     offs = [(L, round(v['offset_khz'] / (2 * step / 1e3))) for L in lines for v in L['views'] if v['excess_db'] >= max(0.3, 0.4 * L['excess_db'])]
     for L, o in offs:
         los = {round(v['lo_mhz'], 3) for M, oo in offs if oo == o for v in M['views'] if round(v['offset_khz'] / (2 * step / 1e3)) == o}
         if len(los) >= 2 and not L['origin'].startswith('RF'):
-            L['origin'] = f"LO spur (same {o * 2 * step / 1e3:+.0f} kHz offset in {len(los)} hops)"
+            L['origin'] = f"LO spur candidate (same {o * 2 * step / 1e3:+.0f} kHz offset in {len(los)} hops)"
     for L in lines:                                  # internal reference: the B200's 40 MHz clock (10 MHz steps flagged too)
         f = L['f_mhz'] * 1e6; k = round(f / 10e6)
         if abs(f - k * 10e6) < 2.5e3 and not L['origin'].startswith('LO spur'):
@@ -383,7 +418,7 @@ def analyse(path, bands_cfg):
     out = []
     for bd in bands:
         S = stitch(Rr, T0, T1, centers, step, bd, dc, usable)
-        if not len(S['f']):
+        if not S['hops']:
             continue
         S['D'] = smooth_f(S['B'], 3)
         _, sig = mad(S['B']); dm, dsig = mad(S['D'])
@@ -416,19 +451,23 @@ def slug(name):
 
 def waterfall(ax, X, S, t_ref, vmin, vmax, cmap='inferno', target_px=3400):
     """Per hop block of the band, rows at that hop's own measured times; columns pooled (max) to whole pixels."""
-    f = S['f'] / 1e6; cm = plt.get_cmap(cmap).copy(); cm.set_bad(hw.MASKED); ax.set_facecolor(hw.MASKED); m = None
+    f = S['f'] / 1e6; cell_step=S.get('step_hz',(S['f'][1]-S['f'][0]) if len(f)>1 else 1.0)/1e6; cm = plt.get_cmap(cmap).copy(); cm.set_bad(hw.MASKED); ax.set_facecolor(hw.MASKED); m = None
     p = max(1, int(math.ceil(len(f) / target_px)))
     k = 0
     while k < len(f):
         h = S['hop'][k]; e = k
+        if h<0:
+            k+=1;continue
         while e < len(f) and S['hop'][e] == h:
             e += 1
         cols = np.arange(k, e, p); Z = np.stack([np.nanmax(X[:, c:min(c + p, e)], 1) for c in cols], 1)
-        xe = np.append(f[cols] - (f[1] - f[0]) / 2, f[e - 1] + (f[1] - f[0]) / 2)
+        xe = np.append(f[cols] - cell_step / 2, f[e - 1] + cell_step / 2)
         hi = list(S['hops']).index(h); ts = S['T0'][:, hi] - t_ref
         ok = np.isfinite(ts)
-        ye = np.append(ts[ok], (S['T1'][:, hi] - t_ref)[ok][-1])
-        m = ax.pcolormesh(xe, ye, np.ma.masked_invalid(Z[ok]), cmap=cm, vmin=vmin, vmax=vmax, shading='flat', rasterized=True)
+        ye,paint=dwell_mesh(Z,ts,S['T1'][:,hi]-t_ref)
+        if not len(ye):
+            k=e;continue
+        m = ax.pcolormesh(xe, ye, np.ma.masked_invalid(paint), cmap=cm, vmin=vmin, vmax=vmax, shading='flat', rasterized=True)
         k = e
     ax.grid(False); ax.set_xlim(f[0], f[-1])
     return m
@@ -488,7 +527,7 @@ def band_figure(A, Bd, out, tag):
     ax.set_xlabel('MHz', fontsize=14); ax.set_ylabel('seconds since start', fontsize=14); ax.tick_params(labelsize=12)
     ax.set_ylim(0, A['timing']['span_s'])
     cb = fig.colorbar(mm, cax=fig.add_axes([0.952, 0.075, 0.01, 0.655])); cb.set_label(f'dB above floor (3-bin average, σ {s0:.3f} dB)', fontsize=12)
-    fig.text(0.05, 0.01, f"cyan = LEO-Doppler-like track (dashed: S-curve fit) · red = drifting · green = intermittent / wideband · yellow = predicted Doppler of satellites above the horizon (solid: heard) · "
+    fig.text(0.05, 0.01, f"cyan = LEO-Doppler-like track (dashed: S-curve fit) · red = drifting · green = intermittent / wideband · yellow = predicted Doppler of satellites above the horizon (solid: candidate match) · "
              f"levels {A['info']['unit']}, uncalibrated · grey = not covered (DC exclusion ±{A['cfg'].get('dc_exclude_hz', 1e5) / 1e3:.0f} kHz handled by hop choice)", fontsize=11, color='#8fa0bd')
     name_ = f'{tag}_waterfall_{slug(name)}.png'; fig.savefig(out / name_, dpi=150); return fig, name_
 
@@ -560,14 +599,14 @@ def summary_page(A, pdf, out, tag):
             body.append(f"{len(Bd['wideband'])} wideband transient(s) at " + ', '.join(f"{w['t_s']:.0f} s ({w['f_lo_mhz']:.2f}–{w['f_hi_mhz']:.2f} MHz, {w['bins_over_3sigma_pct']:.0f}% bins >3σ)" for w in Bd['wideband'][:4]))
         if Bd['lines']:
             body.append('strongest lines: ' + ', '.join(f"{c['f_mhz']:.4f} (+{c['excess_db']:.2f}, {c.get('origin', '?').split(' (')[0]})" for c in Bd['lines'][:4]))
-        fig.text(0.04, y, head, fontsize=12.5, fontweight='bold', va='top')
+        fit_heading(fig, 0.04, y, head, fontsize=12.5, fontweight='bold', va='top')
         fig.text(0.04, y - 0.028, '\n'.join(textwrap.wrap(' · '.join(body) or 'no content above the detection thresholds', wrapw)[:3]), fontsize=9.5 if len(A['bands']) > 3 else 10.5, va='top', color='#c9d4e6')
         y -= dy
     I = A.get('id', {})
     if I.get('available'):
         ids = I['ids']; nh = I['not_heard']; ct = I.get('control', {})
         conf = [x for x in ids if x['confidence'] != 'frequency-only']; cand = [x for x in ids if x['confidence'] == 'frequency-only']
-        head = (f"Identification: {len(conf)} confirmed by Doppler · {len(cand)} frequency-only candidate(s) · {len(I['passes'])} satellites in band above the horizon"
+        head = (f"Identification: {len(conf)} Doppler-consistent candidates · {len(cand)} frequency-only candidate(s) · {len(I['passes'])} satellites in band above the horizon"
                 f" · {len(nh)} ≥10° not heard")
         body = [f"false-alarm controls: off-curve {ct.get('false_detections', 0)}/{ct.get('searches', 0)} on noise"
                 + (f" ({ct['on_detected_signal']} crossed a detected signal)" if ct.get('on_detected_signal') else '')
@@ -578,12 +617,12 @@ def summary_page(A, pdf, out, tag):
             cn = collections.Counter(f"{x['name']} {x['f_tx_hz'] / 1e6:.3f}" for x in cand)
             body += ['frequency-only: ' + ', '.join(f"{k}{f' ×{n}' if n > 1 else ''}" for k, n in cn.most_common(4))]
         body += [f"not heard: " + ', '.join(f"{p['name']} (max {p['max_el']:.0f}°)" for p in nh[:6])] if nh else []
-        fig.text(0.04, y, head, fontsize=12.5, fontweight='bold', va='top', color=C_PRED)
+        fit_heading(fig, 0.04, y, head, fontsize=12.5, fontweight='bold', va='top', color=C_PRED)
         fig.text(0.04, y - 0.028, '\n'.join(textwrap.wrap(' · '.join(body) or 'no observed signal matched a predicted downlink', wrapw)[:5]), fontsize=9.5, va='top', color='#c9d4e6')
         y -= dy + 0.03
-        nd = ('Absolute levels (uncalibrated). ' + origin_note(A) + ' Identification uses the SatNOGS transmitter list and TLEs dated '
-              + str((I.get('db_meta') or {}).get('fetched_utc', '?'))[:16] + f" and the observer position ({I.get('qth_source', 'unknown source')}); "
-              'a confirmed match is a Doppler-curve fit, a frequency-only candidate is a coincidence in frequency; nothing is decoded.')
+        nd = ('Absolute levels (uncalibrated). ' + origin_note(A) + ' Satellite cache fetched '
+              + str((I.get('db_meta') or {}).get('fetched_utc', '?'))[:16] + f"; {I.get('reference_basis','reference provenance unavailable')}; TLE epoch-age gate {I.get('tle_policy',{}).get('max_age_days','?')} days, {len(I.get('excluded_elements',[]))} excluded. "
+              'A Doppler fit is a candidate, not decoded identity. Off-curve controls do not calibrate global false-discovery probability or analog linearity.')
     else:
         nd = f"Which satellite a track belongs to: identification not available ({I.get('reason', 'not run')}). Absolute levels (uncalibrated). " + origin_note(A)
     if A['cfg'].get('dc_exclude_hz', 1e5) < 5e4:
@@ -591,6 +630,18 @@ def summary_page(A, pdf, out, tag):
     fig.text(0.04, max(y, 0.12), 'Not decided by this data', fontsize=12.5, fontweight='bold', color=ah.C2, va='top')
     fig.text(0.04, max(y, 0.12) - 0.03, '\n'.join(textwrap.wrap(nd, 175)), fontsize=10.5, va='top', color='#c9d4e6')
     fig.savefig(out / f'{tag}_p1_summary.png', dpi=110); pdf.savefig(fig); plt.close(fig)
+
+
+def identification_chunks(rows, limits):
+    """Paginate by actual wrapped row height, rather than dropping tall rows."""
+    chunk=[];height=.035
+    for row in rows:
+        cells=['\n'.join(textwrap.wrap(str(value),limit)) for value,limit in zip(row,limits)]
+        h=.035+.024*(max(x.count('\n')+1 for x in cells)-1)
+        if h>.85: raise ValueError('identification row exceeds printable height; use JSON inventory')
+        if chunk and (height+h>.90 or len(chunk)>=12):yield chunk;chunk=[];height=.035
+        chunk.append(cells);height+=h
+    if chunk:yield chunk
 
 
 def id_pages(A, pdf, out, tag):
@@ -614,25 +665,37 @@ def id_pages(A, pdf, out, tag):
                          '', i.get('confidence', 'no match'), i.get('format_check', '')[:30]])
     if len(rows) == 1:
         rows.append(['—', '', '', 'no track or intermittent emission detected', '', '', '', '', '', '', ''])
-    ax = fig.add_axes([0.03, 0.08, 0.94, 0.78]); ax.axis('off')
-    tb = ax.table(cellText=rows[1:24], colLabels=rows[0], loc='upper left', cellLoc='left', colWidths=[.1, .06, .07, .2, .05, .15, .09, .06, .05, .07, .1])
-    tb.auto_set_font_size(False); tb.set_fontsize(9)
-    for (r, c), cell in tb.get_celld().items():
-        cell.set_facecolor(PANEL if r else '#14203a'); cell.set_edgecolor('#2b3a55'); cell.set_text_props(color=FG)
-    fig.savefig(out / f'{tag}_p7_identification.png', dpi=110); pdf.savefig(fig); plt.close(fig)
+    widths = np.array([.1,.06,.07,.2,.05,.15,.09,.06,.05,.07,.1]); widths /= widths.sum()
+    limits = [16,10,10,30,8,23,13,11,9,16,20]
+    for page_index, cells in enumerate(identification_chunks(rows[1:],limits)):
+        if page_index:
+            fig = ah.page(pdf, 'Identification and signal format - continued', f'Candidate evidence, part {page_index+1}; no decoded identity')
+        ax = fig.add_axes([0.03,0.08,0.94,0.78]); ax.axis('off')
+        tb = ax.table(cellText=cells,colLabels=rows[0],loc='upper left',cellLoc='left',colWidths=widths)
+        tb.auto_set_font_size(False); tb.set_fontsize(8.5)
+        for (r,c), cell in tb.get_celld().items():
+            cell.set_facecolor(PANEL if r else '#14203a'); cell.set_edgecolor('#2b3a55'); cell.set_text_props(color=FG)
+            lines = max(x.count('\n')+1 for x in cells[r-1]) if r else 1
+            cell.set_height(.035+.024*(lines-1))
+        suffix = '' if page_index==0 else f'_{page_index+1}'
+        fig.savefig(out/f'{tag}_p7_identification{suffix}.png',dpi=110); pdf.savefig(fig); plt.close(fig)
     # passes timeline
-    P = I.get('passes', [])
-    fig = ah.page(pdf, 'Satellites above the horizon with in-band downlinks', f"{len(P)} satellites · elevation vs time over the scan · thick = heard (matched) · position: {I.get('qth_source', 'n/a')}")
+    all_passes = I.get('passes', [])
+    P = sorted(all_passes,key=lambda p:(not p['heard'],-p['max_el']))[:24]
+    fig = ah.page(pdf, 'Satellites above the horizon with in-band downlinks', f"{len(P)} / {len(all_passes)} passes shown; all in passes.csv · capture window only · thick = candidate match")
     if P:
         ax = fig.add_axes([0.07, 0.1, 0.6, 0.75])
-        for k, p in enumerate(P[:40]):
-            t = np.array(p['curve_t_s']); el = np.array(p['curve_el']); elp = np.where(el > 0, el, np.nan)
+        for k, p in enumerate(P):
+            t = np.array(p['curve_t_s']); el = np.array(p['curve_el']); valid = (t>=0)&(t<=A['timing']['span_s']); t,el=t[valid],el[valid]
+            if not len(t): continue
+            elp = np.where(el>0,el,np.nan)
             ax.plot(t, elp, lw=2.4 if p['heard'] else 0.9, color=C_DOP if p['heard'] else C_PRED, alpha=1 if p['heard'] else .7)
-            j = int(np.argmax(el)); ax.annotate(p['name'][:16], (t[j], el[j]), fontsize=8, color='#c9d4e6', ha='center', va='bottom')
-        ax.axvspan(0, A['timing']['span_s'], color='#ffffff08'); ax.set_xlim(-60, A['timing']['span_s'] + 60); ax.set_ylim(0, 90)
+            if k<4:
+                j = int(np.argmax(el)); ax.annotate(p['name'][:16],(t[j],el[j]),xytext=(3 if t[j]<A['timing']['span_s']*.2 else -4,3),textcoords='offset points',fontsize=8,color='#c9d4e6',ha='left' if t[j]<A['timing']['span_s']*.2 else 'right',va='bottom')
+        ax.axvspan(0,A['timing']['span_s'],color='#ffffff08'); ax.set_xlim(0,max(1,A['timing']['span_s'])); ax.set_ylim(0, 90)
         ax.set_xlabel('seconds since scan start'); ax.set_ylabel('elevation (deg)')
         ax2 = fig.add_axes([0.7, 0.1, 0.28, 0.75]); ax2.axis('off')
-        lines = [(f"{'✓' if p['heard'] else ('?' if p.get('candidate') else '·')} {p['name'][:18]:18s} {p['max_el']:3.0f}° " + ', '.join(f"{x['f_mhz']:.3f} {x['mode'][:10]}" for x in p['transmitters'][:2]))[:62] for p in P[:40]]
+        lines = [(f"{'✓' if p['heard'] else ('?' if p.get('candidate') else '·')} {p['name'][:18]:18s} {p['max_el']:3.0f}° " + ', '.join(f"{x['f_mhz']:.3f} {x['mode'][:10]}" for x in p['transmitters'][:2]))[:62] for p in P]
         ax2.text(0, 1, '\n'.join(lines), va='top', fontsize=7.8, family='monospace', color='#c9d4e6')
     else:
         fig.text(0.5, 0.5, 'No satellite with an in-band downlink was above the horizon during the scan' if I.get('available') else f"not available: {I.get('reason', '')}",
@@ -663,7 +726,7 @@ def timing_page(A, pdf, out, tag):
     for i, v in enumerate(vals):
         ax.text(v, i, f' {v:.0f} ms', va='center', fontsize=10)
     ax2 = fig.add_axes([0.64, 0.12, 0.32, 0.7]); ax2.axis('off')
-    rows = [('records', A['info']['records']), ('complete sweeps', A['info']['sweeps']), ('statuses', ', '.join(A['info']['statuses'])),
+    rows = [('records', A['info']['records']), ('complete / partial sweeps', str(A['info'].get('complete_sweeps',A['info']['sweeps']))+' / '+str(A['info'].get('partial_sweeps',0))), ('statuses', ', '.join(A['info']['statuses'])),
             ('continuity', ', '.join(A['info']['continuity'])), ('sweep period', f"{tm['sweep_period_s']:.3f} s"), ('dwell', f"{tm['dwell_s']:.3f} s"),
             ('span', f"{tm['span_s']:.0f} s"), ('max read latency', f"{tm['max_read_latency_ms']:.1f} ms")]
     for i, (k, v) in enumerate(rows):
@@ -676,8 +739,8 @@ def viewer(A, Bd, out, tag):
     R = S['B']; q, top = hw.quantize(R)
     import base64, gzip
     blob = base64.b64encode(gzip.compress(q.tobytes(), 9)).decode('ascii')
-    hops = list(S['hops']); hopcol = [hops.index(h) for h in S['hop']]
-    Tm = [[round(float(x - A['t_ref']), 3) if np.isfinite(x) else 0.0 for x in row] for row in S['T0']]
+    hops = list(S['hops']); hopcol = [hops.index(h) if h>=0 else -1 for h in S['hop']]
+    Tm = [[round(float(x - A['t_ref']), 3) if np.isfinite(x) else None for x in row] for row in S['T0']]
     tr_meta = []
     for t in Bd['tracks']:
         if t['kind'] == 'stable':
@@ -689,9 +752,9 @@ def viewer(A, Bd, out, tag):
     for lab, tt, ff, heard in sid.predicted_curves(A, Bd['band']):
         rows = [int(np.argmin(np.abs(T0b - x))) for x in tt]
         tr_meta.append(dict(kind='predicted', f=[round(float(x) / 1e6, 6) for x in ff], r=rows, label='pred ' + lab))
-    meta = dict(title=Bd['band']['name'], tag=tag, start=A['start'], rows=int(q.shape[0]), cols=int(q.shape[1]), f0=float(f[0] / 1e6), step=float((f[1] - f[0]) / 1e6),
+    meta = dict(title=Bd['band']['name'], tag=tag, start=A['start'], rows=int(q.shape[0]), cols=int(q.shape[1]), f0=float(f[0] / 1e6), step=float(S.get('step_hz',A['info']['step_hz']) / 1e6),
                 keep=int(q.shape[1]), nh=len(hops), hopcol=hopcol, centers=[float(A['centers'][h] / 1e6) for h in hops], qlo=hw.Q_LO, qstep=hw.Q_STEP, qlin=hw.Q_LIN,
-                qtop=float(top), T=Tm, tend=round(float(A['timing']['span_s']), 3), sigma=round(Bd['sig'], 4), unit=A['info']['unit'], span=round(A['timing']['span_s'], 1),
+                qtop=float(top), T=Tm, Tend=[[round(float(x-A['t_ref']),3) if np.isfinite(x) else None for x in row] for row in S['T1']], tend=round(float(A['timing']['span_s']), 3), sigma=round(Bd['sig'], 4), unit=A['info']['unit'], span=round(A['timing']['span_s'], 1),
                 records=A['info']['records'], cands=[dict(f=round(c['f_mhz'], 5), db=round(c['excess_db'], 2), pct=round(c['sweeps_pct']), off=0) for c in Bd['lines']],
                 events=[dict(f=round(e['f_mhz'], 5), db=round(e['peak_db'], 1), t0=round(e['t_start_s']), t1=round(e['t_end_s'])) for e in Bd['events']],
                 tracks=tr_meta, luts={k: hw._lut(k) for k in ('inferno', 'viridis', 'magma', 'gray')}, centre_khz=A['cfg'].get('dc_exclude_hz', 1e5) / 1e3)
@@ -699,7 +762,7 @@ def viewer(A, Bd, out, tag):
     name = f'{tag}_waterfall_{slug(Bd["band"]["name"])}.html'; (out / name).write_text(html, encoding='utf-8'); return name
 
 
-def main():
+def _generate(output_override=None):
     a = [x for x in sys.argv[1:] if not x.startswith('--')]
     tag = sys.argv[sys.argv.index('--tag') + 1] if '--tag' in sys.argv else 'superscan'
     bpath = sys.argv[sys.argv.index('--bands') + 1] if '--bands' in sys.argv else None
@@ -708,13 +771,18 @@ def main():
     a = [x for x in a if x not in (tag, bpath, qpath, dbdir)]
     if len(a) < 2:
         print(__doc__); return 2
-    src, out = Path(a[0]), Path(a[1]); out.mkdir(parents=True, exist_ok=True)
+    src, out = Path(a[0]), Path(output_override or a[1]); out.mkdir(parents=True, exist_ok=True)
     if bpath is None and (src.parent / 'bands.json').exists():
         bpath = str(src.parent / 'bands.json')
     cfg = json.loads(Path(bpath).read_text()) if bpath else {}
     A = analyse(src, cfg); A['cfg'] = cfg
-    qpath = qpath or (str(src.parent.parent / 'qth.json') if (src.parent.parent / 'qth.json').exists() else None)
-    dbdir = dbdir or (str(src.parent.parent / 'satdb') if (src.parent.parent / 'satdb').exists() else None)
+    frozen = src.parent/'reference'
+    if frozen.exists():
+        qpath = qpath or str(frozen/'qth.json')
+        dbdir = dbdir or str(frozen/'satdb')
+    else:
+        qpath = qpath or (str(src.parent.parent/'qth.json') if (src.parent.parent/'qth.json').exists() else None)
+        dbdir = dbdir or (str(src.parent.parent/'satdb') if (src.parent.parent/'satdb').exists() else None)
     sid.identify(A, dbdir, qpath)
     gcp = src.parent / 'gaincal.json'
     if gcp.exists():
@@ -770,6 +838,24 @@ def main():
                           identified=sum(x['confidence'] != 'frequency-only' for x in A['id'].get('ids', [])),
                           candidates=sum(x['confidence'] == 'frequency-only' for x in A['id'].get('ids', [])),
                           passes=len(A['id'].get('passes', [])), id_available=A['id'].get('available'), id_reason=A['id'].get('reason'), viewers=views)))
+    return 0
+
+
+def main():
+    from report_bundle import bundle
+    if len(sys.argv) < 3: print(__doc__); return 2
+    src, dest = Path(sys.argv[1]), Path(sys.argv[2])
+    # Acquisition evidence and generated reports must have separate destinations.
+    if src.resolve().is_relative_to(dest.resolve()):
+        raise ValueError('report destination contains raw input; choose a separate analysis directory')
+    inputs = [src] + list(Path(__file__).parent.glob('*.py'))
+    for name in ('bands.json','gaincal.json','gaincal.png','reference'):
+        if (src.parent/name).exists(): inputs.append(src.parent/name)
+    for option in ('--bands','--qth','--satdb'):
+        if option in sys.argv: inputs.append(Path(sys.argv[sys.argv.index(option)+1]))
+    with bundle(dest, inputs) as stage:
+        rc = _generate(stage)
+        if rc: raise RuntimeError('analysis failed; publication refused')
     return 0
 
 

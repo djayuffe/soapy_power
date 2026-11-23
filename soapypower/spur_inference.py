@@ -20,7 +20,7 @@ import math
 
 import numpy as np
 
-from soapypower.floor_estimation import _quantile
+from soapypower.floor_estimation import _quantile, distinct_lo_count
 from soapypower.spur_model import mixing_products
 
 
@@ -226,7 +226,7 @@ def bayes_classify_track(lo_hz, if_hz, orders=(1, 3, 5, 7), resolution_hz=None,
         raise ValueError('sigma_hz must be positive')
     span = float(np.ptp(lo)) if lo.size > 1 else 0.0
     res = float(resolution_hz) if resolution_hz else sigma * math.sqrt(12.0)
-    if lo.size < 3 or span < 4.0 * max(res, 1e-12):
+    if distinct_lo_count(lo,res)<3 or span < 4.0 * max(res, 1e-12):
         return {
             'status': 'unidentifiable',
             'reason': 'needs at least three LO settings spanning four resolution bins',

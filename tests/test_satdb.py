@@ -64,7 +64,7 @@ class PlanTests(unittest.TestCase):
         twice = once = 0
         for b in p['bands']:
             for f in np.arange(b['lo_hz'], b['hi_hz'] + 1, 5e3):
-                k = sum(sp.DC <= abs(f - x) <= u for x in c); self.assertGreaterEqual(k, 1, f)
+                k = sum(sp.DC <= abs(f - x) <= u for x in c); self.assertGreaterEqual(k, 2, f)
                 twice += k >= 2; once += 1
         self.assertGreater(twice / once, 0.75)
 

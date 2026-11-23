@@ -1,0 +1,35 @@
+band,f_mhz,excess_db,width_khz,sweeps_pct,origin,views
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.59990,9.17,0.98,100,LO spur candidate (only 137.20+400k),LO 135.45 +2150 kHz +0.16 dB; LO 136.90 +700 kHz +0.00 dB; LO 137.20 +400 kHz +9.17 dB
+"VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",137.14927,0.66,0.24,27,LO spur candidate (only 136.90+249k),LO 135.45 +1699 kHz +0.12 dB; LO 136.90 +249 kHz +0.67 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.25688,5.49,1.22,99,RF-consistent (all 3 LOs),LO 142.45 +2807 kHz +5.28 dB; LO 143.90 +1357 kHz +5.44 dB; LO 144.20 +1057 kHz +5.50 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.80645,5.22,1.22,99,RF-consistent (all 3 LOs),LO 142.45 +3356 kHz +5.10 dB; LO 143.90 +1906 kHz +5.32 dB; LO 144.20 +1606 kHz +5.24 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.70732,4.35,0.98,99,RF-consistent (all 3 LOs),LO 142.45 +2257 kHz +4.22 dB; LO 143.90 +807 kHz +4.24 dB; LO 144.20 +507 kHz +4.33 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.31792,4.25,1.22,99,RF-consistent (all 3 LOs),LO 142.45 +2868 kHz +4.04 dB; LO 143.90 +1418 kHz +4.30 dB; LO 144.20 +1118 kHz +4.25 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.37896,4.08,1.22,99,RF-consistent (all 3 LOs),LO 142.45 +2929 kHz +3.87 dB; LO 143.90 +1479 kHz +4.26 dB; LO 144.20 +1179 kHz +4.07 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.86748,3.90,0.98,99,RF-consistent (all 2 LOs),LO 143.90 +1967 kHz +3.99 dB; LO 144.20 +1667 kHz +3.90 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.98955,3.60,1.22,99,RF-consistent (all 2 LOs),LO 143.90 +2090 kHz +3.99 dB; LO 144.20 +1790 kHz +3.61 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.19585,3.23,0.98,99,RF-consistent (all 3 LOs),LO 142.45 +2746 kHz +2.93 dB; LO 143.90 +1296 kHz +3.04 dB; LO 144.20 +996 kHz +3.22 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.68438,2.82,0.98,99,RF-consistent (all 3 LOs),LO 142.45 +3234 kHz +2.59 dB; LO 143.90 +1784 kHz +2.59 dB; LO 144.20 +1484 kHz +2.81 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.92852,2.68,0.98,99,RF-consistent (all 2 LOs),LO 143.90 +2029 kHz +2.95 dB; LO 144.20 +1729 kHz +2.69 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.58525,2.11,0.98,99,RF-consistent (all 3 LOs),LO 142.45 +2135 kHz +1.99 dB; LO 143.90 +685 kHz +1.91 dB; LO 144.20 +385 kHz +2.11 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.01274,1.54,0.49,99,RF-consistent (all 3 LOs),LO 142.45 +2563 kHz +1.46 dB; LO 143.90 +1113 kHz +1.60 dB; LO 144.20 +813 kHz +1.54 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.89043,1.54,0.49,98,RF-consistent (all 3 LOs),LO 142.45 +2440 kHz +1.49 dB; LO 143.90 +990 kHz +1.66 dB; LO 144.20 +690 kHz +1.54 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.56230,1.33,0.49,96,RF-consistent (all 3 LOs),LO 142.45 +3112 kHz +1.06 dB; LO 143.90 +1662 kHz +1.23 dB; LO 144.20 +1362 kHz +1.32 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.76836,1.26,0.49,87,RF-consistent (all 3 LOs),LO 142.45 +2318 kHz +1.21 dB; LO 143.90 +868 kHz +1.24 dB; LO 144.20 +568 kHz +1.26 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.95146,1.16,0.49,85,RF-consistent (all 3 LOs),LO 142.45 +2501 kHz +1.10 dB; LO 143.90 +1051 kHz +1.29 dB; LO 144.20 +751 kHz +1.14 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.15781,1.16,0.49,87,RF-consistent (all 2 LOs),LO 142.45 +1708 kHz +1.18 dB; LO 143.90 +258 kHz +1.13 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.50127,1.12,0.49,87,RF-consistent (all 3 LOs),LO 142.45 +3051 kHz +1.16 dB; LO 143.90 +1601 kHz +1.17 dB; LO 144.20 +1301 kHz +1.12 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.62334,1.10,0.49,81,RF-consistent (all 3 LOs),LO 142.45 +3173 kHz +0.99 dB; LO 143.90 +1723 kHz +0.89 dB; LO 144.20 +1423 kHz +1.12 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.43999,0.98,0.49,63,RF-consistent (all 3 LOs),LO 142.45 +2990 kHz +0.87 dB; LO 143.90 +1540 kHz +1.14 dB; LO 144.20 +1240 kHz +0.99 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.46318,0.90,0.49,55,RF-consistent (all 3 LOs),LO 142.45 +2013 kHz +0.92 dB; LO 143.90 +563 kHz +1.11 dB; LO 144.20 +263 kHz +0.91 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),145.16533,0.78,0.24,39,RF-consistent (all 3 LOs),LO 142.45 +2715 kHz +0.78 dB; LO 143.90 +1265 kHz +0.77 dB; LO 144.20 +965 kHz +0.77 dB
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.09673,0.76,0.24,35,RF-consistent (all 3 LOs),LO 142.45 +1647 kHz +0.79 dB; LO 143.90 +197 kHz +0.73 dB; LO 144.20 -103 kHz +0.75 dB
+"UHF 399.9-403 MHz (space operation / research, commercial CubeSats)",400.40005,16.29,0.98,99,LO spur candidate (only 400.10+300k),LO 398.35 +2050 kHz +0.00 dB; LO 399.80 +600 kHz +0.03 dB; LO 400.10 +300 kHz +16.27 dB
+"UHF 399.9-403 MHz (space operation / research, commercial CubeSats)",399.99990,15.70,0.98,99,RF-consistent (all 3 LOs) · at 400 MHz (reference harmonic?),LO 398.35 +1650 kHz +15.91 dB; LO 399.80 +200 kHz +16.44 dB; LO 400.10 -100 kHz +15.65 dB
+"UHF 399.9-403 MHz (space operation / research, commercial CubeSats)",401.60000,7.52,0.73,99,LO spur candidate (only 400.10+1500k),LO 398.35 +3250 kHz +0.01 dB; LO 399.80 +1800 kHz +0.61 dB; LO 400.10 +1500 kHz +7.52 dB
+"UHF 399.9-403 MHz (space operation / research, commercial CubeSats)",400.79995,1.71,0.49,99,"LO spur candidate (only 399.80+1000k, 400.10+700k)",LO 398.35 +2450 kHz +0.01 dB; LO 399.80 +1000 kHz +4.53 dB; LO 400.10 +700 kHz +1.70 dB
+"UHF 399.9-403 MHz (space operation / research, commercial CubeSats)",400.18745,0.94,0.49,60,RF-consistent (all 2 LOs),LO 398.35 +1837 kHz +1.09 dB; LO 399.80 +387 kHz +0.95 dB
+"UHF 399.9-403 MHz (space operation / research, commercial CubeSats)",401.70010,0.73,0.49,37,LO spur candidate (only 400.10+1600k),LO 398.35 +3350 kHz +0.05 dB; LO 399.80 +1900 kHz +0.04 dB; LO 400.10 +1600 kHz +0.72 dB
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),440.00000,15.38,0.73,99,RF-consistent (all 2 LOs) · at 440 MHz (reference harmonic?),LO 436.70 +3300 kHz +15.18 dB; LO 437.00 +3000 kHz +15.37 dB
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),430.01636,2.61,0.73,99,RF-consistent (all 2 LOs),LO 428.25 +1766 kHz +2.62 dB; LO 433.40 -3384 kHz +2.53 dB
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),431.20005,2.19,0.73,99,LO spur candidate (only 433.40-2200k),LO 428.25 +2950 kHz +0.03 dB; LO 433.40 -2200 kHz +2.19 dB; LO 433.70 -2500 kHz +0.06 dB

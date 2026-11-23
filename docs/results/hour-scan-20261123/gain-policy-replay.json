@@ -1,0 +1,1052 @@
+{
+  "selection_qualified": true,
+  "burst_margin_db": 12.0,
+  "chosen_gain_db": 60.0,
+  "reason": "12 dB burst reserve; smallest pilot-qualified gain within 1.0 dB of the best input-referred noise (-180.8 dB); highest safe gain tested 60 dB (max component 0.03, p99.9 0.018)",
+  "best_input_noise_db": -180.83648051212396,
+  "rows": [
+    {
+      "gain_db": 30.0,
+      "rc": 0,
+      "hops": [
+        {
+          "center_hz": 135450000.0029801,
+          "floor_db": -130.38804826552882,
+          "peak_db": -102.47338661002968,
+          "max_component": 0.004852441605180502,
+          "p999_component": 0.003265479812398553,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 136899999.9985098,
+          "floor_db": -130.40913638454833,
+          "peak_db": -126.11647372094508,
+          "max_component": 0.00311288726516068,
+          "p999_component": 0.002105776686221361,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 137200000.00298032,
+          "floor_db": -130.36587842935148,
+          "peak_db": -126.40056760725359,
+          "max_component": 0.0032959983218461275,
+          "p999_component": 0.002105776686221361,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 142450000.00298014,
+          "floor_db": -130.33328476866888,
+          "peak_db": -127.99059519653736,
+          "max_component": 0.003326516831293702,
+          "p999_component": 0.002105776686221361,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 143899999.99850985,
+          "floor_db": -130.46232455791653,
+          "peak_db": -126.54559170898416,
+          "max_component": 0.003082368755713105,
+          "p999_component": 0.0020752581767737865,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 144200000.0029801,
+          "floor_db": -130.44170786693647,
+          "peak_db": -126.0665908808233,
+          "max_component": 0.003173924284055829,
+          "p999_component": 0.0020752581767737865,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 398350000.0014898,
+          "floor_db": -131.01910868301525,
+          "peak_db": -123.30560952575743,
+          "max_component": 0.0030518502462655306,
+          "p999_component": 0.0020142211578786373,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 399799999.99701947,
+          "floor_db": -130.9525123305741,
+          "peak_db": -122.26315292778708,
+          "max_component": 0.0029908132273703814,
+          "p999_component": 0.001953184138983488,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 400100000.00149024,
+          "floor_db": -130.90074479792685,
+          "peak_db": -122.15664520442229,
+          "max_component": 0.0030518502462655306,
+          "p999_component": 0.0019837026484310627,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 428249999.9999995,
+          "floor_db": -130.87423032339774,
+          "peak_db": -129.41865743219634,
+          "max_component": 0.0028992576990276575,
+          "p999_component": 0.0019837026484310627,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433399999.99850965,
+          "floor_db": -130.84976787005354,
+          "peak_db": -129.39013652451163,
+          "max_component": 0.0032959983218461275,
+          "p999_component": 0.0019837026484310627,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433700000.0029805,
+          "floor_db": -130.83458236510498,
+          "peak_db": -129.35660730469579,
+          "max_component": 0.0029602947179228067,
+          "p999_component": 0.0019837026484310627,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436700000.0029806,
+          "floor_db": -130.81911435468436,
+          "peak_db": -123.15246454582343,
+          "max_component": 0.0030518502462655306,
+          "p999_component": 0.0019837026484310627,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436999999.99999976,
+          "floor_db": -130.8162065728223,
+          "peak_db": -122.65255705350168,
+          "max_component": 0.0031434057746082544,
+          "p999_component": 0.0019837026484310627,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        }
+      ],
+      "n_hops": 14,
+      "input_noise_db": -160.81766046375333,
+      "floor_db": -130.81766046375333,
+      "max_component": 0.004852441605180502,
+      "p999_component": 0.003265479812398553,
+      "safe": true,
+      "reserve_qualified": true
+    },
+    {
+      "gain_db": 40.0,
+      "rc": 0,
+      "hops": [
+        {
+          "center_hz": 135450000.0029801,
+          "floor_db": -129.18147654278698,
+          "peak_db": -94.75605073753344,
+          "max_component": 0.009460736066102982,
+          "p999_component": 0.0056764413602650166,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 136899999.9985098,
+          "floor_db": -129.48832882793297,
+          "peak_db": -113.88468555448623,
+          "max_component": 0.00622577453032136,
+          "p999_component": 0.003357035107910633,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 137200000.00298032,
+          "floor_db": -129.70987040172108,
+          "peak_db": -114.39330235145937,
+          "max_component": 0.005584885831922293,
+          "p999_component": 0.0032959983218461275,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 142450000.00298014,
+          "floor_db": -127.55692418184523,
+          "peak_db": -117.27445671837252,
+          "max_component": 0.005554367322474718,
+          "p999_component": 0.0030518502462655306,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 143899999.99850985,
+          "floor_db": -130.76433202700935,
+          "peak_db": -117.73392050624298,
+          "max_component": 0.0032959983218461275,
+          "p999_component": 0.002044739667326212,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 144200000.0029801,
+          "floor_db": -130.73184358606713,
+          "peak_db": -117.32142579915917,
+          "max_component": 0.0037842942401766777,
+          "p999_component": 0.002044739667326212,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 398350000.0014898,
+          "floor_db": -132.44405297293088,
+          "peak_db": -104.0984097475666,
+          "max_component": 0.003021331736817956,
+          "p999_component": 0.002105776686221361,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 399799999.99701947,
+          "floor_db": -132.4249624134788,
+          "peak_db": -104.19585903864794,
+          "max_component": 0.0025940726045519114,
+          "p999_component": 0.0016785175539553165,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 400100000.00149024,
+          "floor_db": -132.38195651583737,
+          "peak_db": -104.57629824686619,
+          "max_component": 0.0028382206801325083,
+          "p999_component": 0.0017090360634028912,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 428249999.9999995,
+          "floor_db": -132.35595351057157,
+          "peak_db": -128.12371521874346,
+          "max_component": 0.002624591113999486,
+          "p999_component": 0.0016785175539553165,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433399999.99850965,
+          "floor_db": -132.31834959916395,
+          "peak_db": -128.60134969572533,
+          "max_component": 0.002685628132894635,
+          "p999_component": 0.0016785175539553165,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433700000.0029805,
+          "floor_db": -132.28962583644795,
+          "peak_db": -130.94541114458974,
+          "max_component": 0.002624591113999486,
+          "p999_component": 0.0016785175539553165,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436700000.0029806,
+          "floor_db": -132.28448633806676,
+          "peak_db": -118.91394235196825,
+          "max_component": 0.002685628132894635,
+          "p999_component": 0.0016785175539553165,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436999999.99999976,
+          "floor_db": -132.25506124502888,
+          "peak_db": -118.96258302748899,
+          "max_component": 0.0028382206801325083,
+          "p999_component": 0.0016785175539553165,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        }
+      ],
+      "n_hops": 14,
+      "input_noise_db": -172.26977379154783,
+      "floor_db": -132.26977379154783,
+      "max_component": 0.009460736066102982,
+      "p999_component": 0.0056764413602650166,
+      "safe": true,
+      "reserve_qualified": true
+    },
+    {
+      "gain_db": 50.0,
+      "rc": 0,
+      "hops": [
+        {
+          "center_hz": 135450000.0029801,
+          "floor_db": -119.77424579674619,
+          "peak_db": -85.07677685322831,
+          "max_component": 0.02807702124118805,
+          "p999_component": 0.017334509640932083,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 136899999.9985098,
+          "floor_db": -120.11966000293432,
+          "peak_db": -103.902746036631,
+          "max_component": 0.01825006492435932,
+          "p999_component": 0.010589919984340668,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 137200000.00298032,
+          "floor_db": -120.45542773860458,
+          "peak_db": -104.39359155310926,
+          "max_component": 0.018616287037730217,
+          "p999_component": 0.010620438493788242,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 142450000.00298014,
+          "floor_db": -121.01201503810354,
+          "peak_db": -112.26754447877835,
+          "max_component": 0.013092437759041786,
+          "p999_component": 0.006958218291401863,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 143899999.99850985,
+          "floor_db": -121.89199729858575,
+          "peak_db": -107.83799426099584,
+          "max_component": 0.010040586814284325,
+          "p999_component": 0.0056764413602650166,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 144200000.0029801,
+          "floor_db": -121.92131054081005,
+          "peak_db": -107.72472088156945,
+          "max_component": 0.00924710649996996,
+          "p999_component": 0.005615404341369867,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 398350000.0014898,
+          "floor_db": -123.89441923510788,
+          "peak_db": -94.32071037709255,
+          "max_component": 0.00845362525433302,
+          "p999_component": 0.0060731819830834866,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 399799999.99701947,
+          "floor_db": -123.92656934802974,
+          "peak_db": -94.45689735430142,
+          "max_component": 0.007019255310297012,
+          "p999_component": 0.004486219957470894,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 400100000.00149024,
+          "floor_db": -123.92587200000146,
+          "peak_db": -94.86299306437428,
+          "max_component": 0.007049773819744587,
+          "p999_component": 0.004486219957470894,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 428249999.9999995,
+          "floor_db": -123.91031496499433,
+          "peak_db": -118.80888314918496,
+          "max_component": 0.006408885587006807,
+          "p999_component": 0.004364145919680595,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433399999.99850965,
+          "floor_db": -123.91286776659688,
+          "peak_db": -117.1217153108829,
+          "max_component": 0.00680562574416399,
+          "p999_component": 0.004364145919680595,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433700000.0029805,
+          "floor_db": -123.92208960456963,
+          "peak_db": -122.61932990165002,
+          "max_component": 0.006775107234716415,
+          "p999_component": 0.004364145919680595,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436700000.0029806,
+          "floor_db": -123.95335161857244,
+          "peak_db": -109.30884793994616,
+          "max_component": 0.006378367077559233,
+          "p999_component": 0.004364145919680595,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436999999.99999976,
+          "floor_db": -123.93193921744242,
+          "peak_db": -109.37530038529428,
+          "max_component": 0.006714070215821266,
+          "p999_component": 0.004364145919680595,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        }
+      ],
+      "n_hops": 14,
+      "input_noise_db": -173.9023671000511,
+      "floor_db": -123.9023671000511,
+      "max_component": 0.02807702124118805,
+      "p999_component": 0.017334509640932083,
+      "safe": true,
+      "reserve_qualified": true
+    },
+    {
+      "gain_db": 60.0,
+      "rc": 0,
+      "hops": [
+        {
+          "center_hz": 135450000.0029801,
+          "floor_db": -119.13294236163259,
+          "peak_db": -84.76315531490734,
+          "max_component": 0.02630694955587387,
+          "p999_component": 0.01840265654027462,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 136899999.9985098,
+          "floor_db": -119.46731271899671,
+          "peak_db": -110.09682015844398,
+          "max_component": 0.014648880809545517,
+          "p999_component": 0.0079958476126194,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 137200000.00298032,
+          "floor_db": -119.62241688876915,
+          "peak_db": -110.55398297348398,
+          "max_component": 0.016327397897839546,
+          "p999_component": 0.007904292084276676,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 142450000.00298014,
+          "floor_db": -118.4939268211769,
+          "peak_db": -114.48458787486996,
+          "max_component": 0.015045621432363987,
+          "p999_component": 0.008911402896046638,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 143899999.99850985,
+          "floor_db": -120.05729918977622,
+          "peak_db": -112.08517238670947,
+          "max_component": 0.010925623588263988,
+          "p999_component": 0.00680562574416399,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 144200000.0029801,
+          "floor_db": -120.08805219736927,
+          "peak_db": -112.41659024697151,
+          "max_component": 0.01040680892765522,
+          "p999_component": 0.00680562574416399,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 398350000.0014898,
+          "floor_db": -120.88792997418892,
+          "peak_db": -104.80667192200428,
+          "max_component": 0.011505475267767906,
+          "p999_component": 0.007171847857534885,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 399799999.99701947,
+          "floor_db": -120.85401743648563,
+          "peak_db": -103.83487080480197,
+          "max_component": 0.008941921405494213,
+          "p999_component": 0.00622577453032136,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 400100000.00149024,
+          "floor_db": -120.85455713245324,
+          "peak_db": -104.22268823307336,
+          "max_component": 0.009491254575550556,
+          "p999_component": 0.00622577453032136,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 428249999.9999995,
+          "floor_db": -120.83699340807041,
+          "peak_db": -118.78976272891735,
+          "max_component": 0.009765920229256153,
+          "p999_component": 0.00622577453032136,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433399999.99850965,
+          "floor_db": -120.83596761617747,
+          "peak_db": -118.81688039883643,
+          "max_component": 0.009460736066102982,
+          "p999_component": 0.00622577453032136,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433700000.0029805,
+          "floor_db": -120.84055504768165,
+          "peak_db": -119.36346888498491,
+          "max_component": 0.009704883210361004,
+          "p999_component": 0.00622577453032136,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436700000.0029806,
+          "floor_db": -120.86529969254391,
+          "peak_db": -105.78222187835712,
+          "max_component": 0.009826957248151302,
+          "p999_component": 0.00622577453032136,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436999999.99999976,
+          "floor_db": -120.84904124464302,
+          "peak_db": -105.61751844280236,
+          "max_component": 0.009369180537760258,
+          "p999_component": 0.00622577453032136,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        }
+      ],
+      "n_hops": 14,
+      "input_noise_db": -180.83648051212396,
+      "floor_db": -120.83648051212394,
+      "max_component": 0.02630694955587387,
+      "p999_component": 0.01840265654027462,
+      "safe": true,
+      "reserve_qualified": true
+    },
+    {
+      "gain_db": 70.0,
+      "rc": 0,
+      "hops": [
+        {
+          "center_hz": 135450000.0029801,
+          "floor_db": -110.93660595886509,
+          "peak_db": -77.74163303896691,
+          "max_component": 0.0803246945142746,
+          "p999_component": 0.05343789607286453,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 136899999.9985098,
+          "floor_db": -111.31947191030562,
+          "peak_db": -100.00392355320754,
+          "max_component": 0.04544204846024513,
+          "p999_component": 0.023010950535535812,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 137200000.00298032,
+          "floor_db": -111.69208670930189,
+          "peak_db": -100.56460979278803,
+          "max_component": 0.0400707945227623,
+          "p999_component": 0.022766802459955215,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 142450000.00298014,
+          "floor_db": -111.46615095807763,
+          "peak_db": -105.10609046759262,
+          "max_component": 0.0398571640253067,
+          "p999_component": 0.022980431094765663,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 143899999.99850985,
+          "floor_db": -112.39526537671955,
+          "peak_db": -103.15748097913357,
+          "max_component": 0.02636798657476902,
+          "p999_component": 0.016541028395295143,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 144200000.0029801,
+          "floor_db": -112.44039108378766,
+          "peak_db": -102.66083822017306,
+          "max_component": 0.025269320234656334,
+          "p999_component": 0.016479991376399994,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 398350000.0014898,
+          "floor_db": -113.65023811168874,
+          "peak_db": -95.48448986178681,
+          "max_component": 0.026551097631454468,
+          "p999_component": 0.01748710125684738,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 399799999.99701947,
+          "floor_db": -113.65565963993672,
+          "peak_db": -94.54994780639888,
+          "max_component": 0.022034358233213425,
+          "p999_component": 0.014282658696174622,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 400100000.00149024,
+          "floor_db": -113.67382724470006,
+          "peak_db": -94.48784805943046,
+          "max_component": 0.022736284881830215,
+          "p999_component": 0.014282658696174622,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 428249999.9999995,
+          "floor_db": -113.62974242749729,
+          "peak_db": -109.4568405832463,
+          "max_component": 0.022095395252108574,
+          "p999_component": 0.014313177205622196,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433399999.99850965,
+          "floor_db": -113.6558814660558,
+          "peak_db": -110.12533491597127,
+          "max_component": 0.02240058034658432,
+          "p999_component": 0.014191103167831898,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433700000.0029805,
+          "floor_db": -113.67150491311688,
+          "peak_db": -112.38301207013077,
+          "max_component": 0.02151554450392723,
+          "p999_component": 0.014221621677279472,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436700000.0029806,
+          "floor_db": -113.70193488917117,
+          "peak_db": -96.6589573044648,
+          "max_component": 0.020325321704149246,
+          "p999_component": 0.014191103167831898,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436999999.99999976,
+          "floor_db": -113.69337125220537,
+          "peak_db": -96.22151011646382,
+          "max_component": 0.021362951025366783,
+          "p999_component": 0.014191103167831898,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        }
+      ],
+      "n_hops": 14,
+      "input_noise_db": -183.639990269593,
+      "floor_db": -113.63999026959301,
+      "max_component": 0.0803246945142746,
+      "p999_component": 0.05343789607286453,
+      "safe": true,
+      "reserve_qualified": false
+    },
+    {
+      "gain_db": 76.0,
+      "rc": 0,
+      "hops": [
+        {
+          "center_hz": 135450000.0029801,
+          "floor_db": -106.60160069313397,
+          "peak_db": -68.5409519661244,
+          "max_component": 0.17334508895874023,
+          "p999_component": 0.11902216076850891,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 136899999.9985098,
+          "floor_db": -107.3721905320933,
+          "peak_db": -93.21975556979324,
+          "max_component": 0.07077240943908691,
+          "p999_component": 0.0402844212949276,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 137200000.00298032,
+          "floor_db": -108.22814738587103,
+          "peak_db": -93.49819491392891,
+          "max_component": 0.0722372978925705,
+          "p999_component": 0.03939938545227051,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 142450000.00298014,
+          "floor_db": -108.23624620309309,
+          "peak_db": -100.97790219899267,
+          "max_component": 0.06897181272506714,
+          "p999_component": 0.031006798148155212,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 143899999.99850985,
+          "floor_db": -109.18570531555099,
+          "peak_db": -98.16226584482811,
+          "max_component": 0.049104269593954086,
+          "p999_component": 0.024170653894543648,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 144200000.0029801,
+          "floor_db": -109.23470689891727,
+          "peak_db": -97.91201958353051,
+          "max_component": 0.03689686954021454,
+          "p999_component": 0.0241401344537735,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 398350000.0014898,
+          "floor_db": -110.1759501528508,
+          "peak_db": -89.31557043520874,
+          "max_component": 0.042664866894483566,
+          "p999_component": 0.028443243354558945,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 399799999.99701947,
+          "floor_db": -110.21245719176707,
+          "peak_db": -88.45991758478611,
+          "max_component": 0.0321054644882679,
+          "p999_component": 0.021332433447241783,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 400100000.00149024,
+          "floor_db": -110.24489924790355,
+          "peak_db": -87.9337785451591,
+          "max_component": 0.03286842629313469,
+          "p999_component": 0.021301914006471634,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 428249999.9999995,
+          "floor_db": -110.16640768702086,
+          "peak_db": -104.12302383054003,
+          "max_component": 0.03125094622373581,
+          "p999_component": 0.021362951025366783,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433399999.99850965,
+          "floor_db": -110.2095334083815,
+          "peak_db": -104.90867614753355,
+          "max_component": 0.03421124070882797,
+          "p999_component": 0.021240876987576485,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 433700000.0029805,
+          "floor_db": -110.22780726312934,
+          "peak_db": -108.73735294606318,
+          "max_component": 0.03140353783965111,
+          "p999_component": 0.021118802949786186,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436700000.0029806,
+          "floor_db": -110.30813682642207,
+          "peak_db": -90.47586950855788,
+          "max_component": 0.03418072313070297,
+          "p999_component": 0.021088285371661186,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        },
+        {
+          "center_hz": 436999999.99999976,
+          "floor_db": -110.26789968770566,
+          "peak_db": -90.15240429532679,
+          "max_component": 0.033082056790590286,
+          "p999_component": 0.021118802949786186,
+          "t095": 0.0,
+          "status": "complete",
+          "continuity": "verified"
+        }
+      ],
+      "n_hops": 14,
+      "input_noise_db": -186.17117891993584,
+      "floor_db": -110.17117891993584,
+      "max_component": 0.17334508895874023,
+      "p999_component": 0.11902216076850891,
+      "safe": true,
+      "reserve_qualified": false
+    }
+  ],
+  "analog_linearity_verified": false,
+  "input_noise_calibrated": false,
+  "limits": {
+    "max_component": 0.5,
+    "p999_component": 0.2,
+    "within_db": 1.0
+  },
+  "bands": [
+    {
+      "name": "VHF 137-138 MHz (weather sats, Orbcomm, CubeSat)",
+      "input_noise_db": [
+        [
+          30.0,
+          -160.38804826552882
+        ],
+        [
+          40.0,
+          -169.48832882793297
+        ],
+        [
+          50.0,
+          -170.11966000293432
+        ],
+        [
+          60.0,
+          -179.4673127189967
+        ],
+        [
+          70.0,
+          -181.31947191030562
+        ],
+        [
+          76.0,
+          -183.3721905320933
+        ]
+      ]
+    },
+    {
+      "name": "VHF 144-146 MHz (2 m incl. satellite sub-band)",
+      "input_noise_db": [
+        [
+          30.0,
+          -160.44170786693647
+        ],
+        [
+          40.0,
+          -170.73184358606713
+        ],
+        [
+          50.0,
+          -171.89199729858575
+        ],
+        [
+          60.0,
+          -180.05729918977622
+        ],
+        [
+          70.0,
+          -182.39526537671955
+        ],
+        [
+          76.0,
+          -185.185705315551
+        ]
+      ]
+    },
+    {
+      "name": "UHF 399.9-403 MHz (space operation / research, commercial CubeSats)",
+      "input_noise_db": [
+        [
+          30.0,
+          -160.9525123305741
+        ],
+        [
+          40.0,
+          -172.4249624134788
+        ],
+        [
+          50.0,
+          -173.92587200000145
+        ],
+        [
+          60.0,
+          -180.85455713245324
+        ],
+        [
+          70.0,
+          -183.65565963993672
+        ],
+        [
+          76.0,
+          -186.21245719176707
+        ]
+      ]
+    },
+    {
+      "name": "UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band)",
+      "input_noise_db": [
+        [
+          30.0,
+          -160.83458236510498
+        ],
+        [
+          40.0,
+          -172.28962583644795
+        ],
+        [
+          50.0,
+          -173.92208960456963
+        ],
+        [
+          60.0,
+          -180.84055504768165
+        ],
+        [
+          70.0,
+          -183.67150491311688
+        ],
+        [
+          76.0,
+          -186.22780726312934
+        ]
+      ]
+    }
+  ]
+}

@@ -20,7 +20,7 @@ def write_cal(d, gains, adc_db=-138.0, fe_db=-172.0, strong=0.002, rc_from=None)
             p = floor + rng.normal(0, 0.28, 8192); p[4086:4107] = np.nan
             peak = min(strong * 10 ** (g / 20), 0.99997)
             lines.append(json.dumps(dict(step_hz=244.140625, power=[None if np.isnan(v) else float(v) for v in p],
-                                         metadata=dict(tuned_center_hz=c, measurement_status='complete',
+                                         metadata=dict(tuned_center_hz=c, measurement_status='complete',continuity='verified',
                                                        headroom=dict(max_component=peak, p999_component=peak / 4, threshold_095_fraction=float(peak >= .95))))))
         (d / f'gain_{g}.jsonl').write_text('\n'.join(lines) + '\n'); (d / f'gain_{g}.rc').write_text('0')
 
@@ -38,7 +38,7 @@ class GainCalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t); write_cal(d, [10, 20, 30, 40, 50, 60, 70], strong=0.01)       # 0.5 reached near 34 dB
             r = gc.choose(d, fallback=20)
-            self.assertEqual(r['chosen_gain_db'], 30.0, r['reason'])
+            self.assertEqual(r['chosen_gain_db'], 20.0, r['reason'])
 
     def test_overload_stops_the_sweep_and_no_safe_point_falls_back(self):
         with tempfile.TemporaryDirectory() as t:
@@ -46,6 +46,22 @@ class GainCalTests(unittest.TestCase):
             r = gc.choose(d, fallback=20)
             self.assertEqual(r['chosen_gain_db'], 20)
             self.assertIn('fallback', r['reason'])
+
+    def test_no_qualified_point_without_explicit_fallback_refuses_selection(self):
+        with tempfile.TemporaryDirectory() as t:
+            d=Path(t);write_cal(d,[10],rc_from=10)
+            r=gc.choose(d)
+            self.assertIsNone(r['chosen_gain_db']);self.assertFalse(r['selection_qualified'])
+
+    def test_realistic_pilot_reserve_avoids_the_failed_76db_choice(self):
+        with tempfile.TemporaryDirectory() as t:
+            d=Path(t);write_cal(d,[60,70,76],strong=.00002)
+            peaks={60:(.0263,.0184),70:(.0803,.0534),76:(.1733,.1190)}
+            for g,(peak,p999) in peaks.items():
+                p=d/f'gain_{g}.jsonl';rows=[json.loads(x) for x in p.read_text().splitlines()]
+                for row in rows:row['metadata']['headroom'].update(max_component=peak,p999_component=p999)
+                p.write_text(''.join(json.dumps(x)+'\n' for x in rows))
+            r=gc.choose(d);self.assertEqual(r['chosen_gain_db'],60);self.assertEqual(r['burst_margin_db'],12)
 
 
 if __name__ == '__main__':

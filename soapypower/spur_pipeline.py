@@ -77,8 +77,9 @@ def make_capture(lo_hz, power, if_hz=None, rate_hz=None, dof=None,
         p = 10.0 ** (p / 10.0)
     elif unit.lower() not in ('linear', 'power'):
         raise ValueError('unit must be linear or db')
-    if np.any(p <= 0):
+    if not np.isfinite(p).all() or np.any(p <= 0):
         raise ValueError('power must be positive after unit conversion')
+    if rate_hz is not None and _finite(rate_hz,'rate_hz')<=0:raise ValueError('rate_hz must be positive')
     if if_hz is None:
         if rate_hz is None:
             raise ValueError('if_hz or rate_hz is required')
@@ -340,6 +341,10 @@ def analyze_sweeps(captures, orders=(1, 3, 5, 7), alpha=1e-3, dc_mask_hz=0.5e6,
     captures = [make_capture(**c) for c in captures]
     if any(len(c['power']) != len(captures[0]['power']) for c in captures):
         raise ValueError('all captures must have the same number of bins')
+    if len({c['partition'] for c in captures})>1:
+        raise ValueError('training and validation captures cannot be fitted together')
+    if any(c['rate_hz']!=captures[0]['rate_hz'] or not np.array_equal(c['if_hz'],captures[0]['if_hz']) or c['dof']!=captures[0]['dof'] for c in captures):
+        raise ValueError('pooled spur inference requires matching rate, IF grid and degrees of freedom')
     if profile is not None:
         profile = receiver_profile(profile)
     # A capture carrying a non-finite dof is not usable; infer from the data.
@@ -394,9 +399,11 @@ def analyze_sweeps(captures, orders=(1, 3, 5, 7), alpha=1e-3, dc_mask_hz=0.5e6,
     lo_span = float(np.ptp([c['lo_hz'] for c in captures]))
     separation = si.slope_separation([c['lo_hz'] for c in captures], resolution / math.sqrt(12.0), 1, 3) \
         if len(captures) >= 2 else None
-    identifiable = bool(len(captures) >= 3 and separation and separation['separable_3sigma'])
+    identifiable = bool(fe.distinct_lo_count([c['lo_hz'] for c in captures],resolution)>=3 and separation and separation['separable_3sigma'])
     report = {
         'version': 1,
+        'validation_performed': False,
+        'analysis_partition': captures[0]['partition'],
         'scope': 'relative uncalibrated power; no automatic exclusions or notches',
         'config': {
             'captures': len(captures), 'orders': list(orders), 'alpha': float(alpha),

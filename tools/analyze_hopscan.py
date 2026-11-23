@@ -333,11 +333,11 @@ def make_pdf(A, out, tag):
     done(fig, 'p10_method'); pdf.close()
 
 
-def main():
+def _generate(output_override=None):
     a = [x for x in sys.argv[1:] if not x.startswith('--')]
     if len(a) < 2:
         print(__doc__); return 2
-    out = Path(a[1]); out.mkdir(parents=True, exist_ok=True)
+    out = Path(output_override or a[1]); out.mkdir(parents=True, exist_ok=True)
     tag = sys.argv[sys.argv.index('--tag') + 1] if '--tag' in sys.argv else 'hopscan'
     A = analyse(a[0], out, tag)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -353,6 +353,24 @@ def main():
     print(json.dumps({k: A['summary'][k] for k in ('sweeps', 'floor_db', 'sweep_to_sweep_sd_db', 'theory_sd_db', 'max_residual_bin_db', 'channels_with_occupancy')}))
     hw.render(A, out, tag)                     # hero / raw / zoom waterfalls + interactive viewer
     print(json.dumps({'waterfalls': sorted(p.name for p in out.glob(f'{tag}_waterfall*'))}))
+    return 0
+
+
+def main():
+    from report_bundle import bundle
+    if len(sys.argv) < 3: print(__doc__); return 2
+    src, dest = Path(sys.argv[1]), Path(sys.argv[2])
+    # Acquisition evidence and generated reports must have separate destinations.
+    if src.resolve().is_relative_to(dest.resolve()):
+        raise ValueError('report destination contains raw input; choose a separate analysis directory')
+    inputs = [src] + list(Path(__file__).parent.glob('*.py'))
+    for name in ('bands.json','gaincal.json','gaincal.png','reference'):
+        if (src.parent/name).exists(): inputs.append(src.parent/name)
+    for option in ('--bands','--qth','--satdb'):
+        if option in sys.argv: inputs.append(Path(sys.argv[sys.argv.index(option)+1]))
+    with bundle(dest, inputs) as stage:
+        rc = _generate(stage)
+        if rc: raise RuntimeError('analysis failed; publication refused')
     return 0
 
 

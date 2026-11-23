@@ -1,0 +1,62 @@
+band,f_mhz,t_start_s,t_end_s,sweeps,peak_db,width_khz,on_doppler_track
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,23.7,73.9,6,8.88,2.93,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,155.4,175.5,3,8.41,3.42,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,755.6,845.8,10,8.36,3.91,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,926.0,956.0,4,8.31,3.66,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,575.4,595.4,3,8.15,2.93,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,635.5,655.5,3,8.09,2.93,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,695.5,715.4,3,8.06,2.93,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,275.6,295.5,3,8.04,3.17,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,515.3,545.5,4,7.95,3.66,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,445.4,475.3,4,7.85,3.42,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,215.7,235.6,3,6.72,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,705.5,725.5,3,6.42,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,515.3,545.5,4,6.21,3.42,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,1297.1,1317.1,3,6.13,3.17,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,385.3,405.3,3,6.08,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,966.0,986.1,3,5.92,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,755.6,845.8,10,5.86,3.42,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,926.0,956.0,4,5.46,3.42,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,575.4,595.4,3,5.22,0.98,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,635.5,655.5,3,5.20,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,155.4,175.5,3,5.13,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,53.8,73.9,3,5.12,0.98,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,275.6,295.5,3,4.99,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,695.5,715.4,3,4.93,0.98,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,1297.1,1317.1,3,4.91,0.98,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,886.0,906.0,3,4.85,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,996.1,1046.3,6,4.76,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,445.4,475.3,4,4.60,3.17,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,875.9,896.0,3,4.58,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,1176.6,1196.6,3,4.39,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80229,215.7,235.6,3,4.27,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80376,275.6,295.5,3,4.09,1.71,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80376,53.8,73.9,3,4.07,1.46,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79766,996.1,1046.3,6,4.01,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80376,575.4,595.4,3,4.00,1.71,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80376,635.5,655.5,3,3.95,1.46,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80376,155.4,175.5,3,3.83,1.71,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80376,695.5,715.4,3,3.69,1.46,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79619,215.7,235.6,3,3.47,0.98,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79644,1297.1,1317.1,3,3.43,1.46,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,815.8,845.8,4,3.18,1.46,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80352,215.7,235.6,3,3.15,1.22,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,455.4,465.3,2,2.87,0.98,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79619,1006.2,1026.2,3,2.71,0.73,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,285.6,295.5,2,2.58,0.24,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.79985,936.1,946.0,2,2.06,0.49,False
+VHF 144-146 MHz (2 m incl. satellite sub-band),144.80010,525.3,535.4,2,2.02,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07183,850.1,870.1,3,9.93,3.17,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07183,279.9,299.8,3,8.21,2.93,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),437.12671,1092.1,1112.1,3,5.10,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.96294,639.8,659.8,3,5.05,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.02544,1070.7,1090.7,3,4.87,2.44,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.07183,679.8,699.8,3,4.83,2.20,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,129.6,149.7,3,4.56,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.02544,329.7,349.7,3,4.39,1.71,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,609.8,629.8,3,4.23,0.73,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,449.7,469.6,3,4.17,0.49,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.88628,639.8,659.8,3,3.92,0.49,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),433.92632,289.9,299.8,2,3.75,0.49,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),435.77324,1091.4,1111.4,3,3.59,0.49,False
+UHF 430-440 MHz (70 cm incl. 435-438 satellite sub-band),434.75029,609.8,619.8,2,2.39,0.73,False

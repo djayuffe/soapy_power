@@ -71,8 +71,19 @@ def _band_cache(Bd):
         for x in steady:
             j = int(np.searchsorted(f, x)); D[:, max(0, j - 3):j + 4] = np.nan
         m0 = np.nanmedian(D); s0 = 1.4826 * np.nanmedian(np.abs(D - m0))
-        c = Bd['_gcache'] = dict(thr_base=(m0, s0), t_row=np.nanmedian(S['T'], 1), f=f, fsrc=S['fsrc'], D=D, step=float(np.median(np.diff(f))))
+        c = Bd['_gcache'] = dict(thr_base=(m0, s0), groups=[(np.flatnonzero(S['hop']==h), S['T'][:, np.flatnonzero(S['hop']==h)[0]]) for h in np.unique(S['hop']) if h >= 0], f=f, fsrc=S['fsrc'], D=D, step=float(np.median(np.diff(f))))
     return c
+
+
+def _sample_group(c, cols, rows, targets):
+    """Nearest measured RF bin on this hop; do not clamp outside its observed support."""
+    f = c['fsrc'][cols]
+    right = np.clip(np.searchsorted(f, targets),0,len(f)-1)
+    left = np.maximum(right-1,0)
+    nearest = np.where(np.abs(f[left]-targets)<=np.abs(f[right]-targets),left,right)
+    valid = np.isfinite(targets) & (np.abs(f[nearest]-targets)<=.501*c['step'])
+    values = c['D'][rows[:,None],cols[nearest]]
+    return np.where(valid,10**(values/10),np.nan)
 
 
 STACK_Z = 7.0         # detection threshold of the Doppler-corrected stack (look-elsewhere over ~49 offsets included)
@@ -94,32 +105,53 @@ def stacked(A, p, tx, shift=0.0, min_el=5.0):
         b = Bd['band']
         if not (b['lo_hz'] <= f_tx <= b['hi_hz']):
             continue
-        c = _band_cache(Bd); D = c['D']; t = c['t_row']; ok = np.isfinite(t)
-        el = np.full(len(t), -90.0); el[ok] = np.interp(t[ok], p['t'], p['el'])
-        rows = np.flatnonzero(ok & (el > min_el))
-        if len(rows) < 6:
-            return None
-        fp = f_tx * (1 - np.interp(t[rows], p['t'], p['rr']) / sd.C)
+        c = _band_cache(Bd); D = c['D']
         offs = np.arange(-GUIDE_HZ, GUIDE_HZ + c['step'] / 2, c['step'])
-        idx = np.clip(np.searchsorted(c['f'], fp[:, None] + offs[None, :]), 0, len(c['f']) - 1)
-        lin = 10 ** (D[rows[:, None], idx] / 10)
-        lin = np.sort(np.where(np.isfinite(lin), lin, np.nan), 0)
-        n = np.sum(np.isfinite(lin), 0); keep = np.maximum(1, (n * 0.9).astype(int))
-        prof = np.array([np.nanmean(lin[:k, j]) if n[j] >= 6 else np.nan for j, k in enumerate(keep)])
+        samples, times, predictions, row_ids, group_ids = [], [], [], [], []
+        for gi, (cols, t) in enumerate(c['groups']):
+            ok = np.isfinite(t) & (t >= p['t'][0]) & (t <= p['t'][-1])
+            rows = np.flatnonzero(ok & (np.interp(np.nan_to_num(t), p['t'], p['el']) > min_el))
+            if not len(rows):
+                continue
+            fp = f_tx * (1 - np.interp(t[rows], p['t'], p['rr']) / sd.C)
+            target = fp[:, None] + offs[None, :]
+            samples.append(_sample_group(c,cols,rows,target))
+            times.extend(t[rows]); predictions.extend(fp); row_ids.extend(rows); group_ids.extend([gi]*len(rows))
+        if not samples:
+            return None
+        lin = np.concatenate(samples); times = np.asarray(times); fp = np.asarray(predictions)
+        row_ids = np.asarray(row_ids); group_ids = np.asarray(group_ids)
+        def trimmed(values):
+            values = np.sort(values, axis=0); n = np.isfinite(values).sum(axis=0)
+            return np.array([np.mean(values[:max(1, int(m*.9)), j]) if m >= 6 else np.nan for j,m in enumerate(n)])
+        prof = trimmed(lin)
         if np.isfinite(prof).sum() < 20:
             return None
-        k = int(np.nanargmax(prof)); far = np.abs(np.arange(len(offs)) - k) > 4
+        k = int(np.nanargmax(prof)); support = np.isfinite(lin[:, k])
+        if len(np.unique(row_ids[support])) < 6:
+            return None
+        far = np.abs(np.arange(len(offs)) - k) > 4
         base, spread = np.nanmedian(prof[far]), np.nanstd(prof[far])
+        if not np.isfinite(base) or base <= 0:
+            return None
         z = float((prof[k] - base) / spread) if spread > 0 else 0.0
-        # a terrestrial line is the same stack WITHOUT the Doppler correction: stack every fixed frequency the curve
-        # passes over (same rows, same trimming); a real carrier is sharper along its curve than at any fixed frequency
-        exc = float(fp.max() - fp.min()); fx = np.arange(fp.min() + offs[k] - 2 * c['step'], fp.max() + offs[k] + 2.5 * c['step'], c['step'])
-        jx = np.clip(np.searchsorted(c['f'], fx), 0, len(c['f']) - 1); lx = np.sort(10 ** (D[rows[:, None], jx[None, :]] / 10), 0)
-        nx = np.sum(np.isfinite(lx), 0); fixed = np.array([np.nanmean(lx[:max(1, int(m * 0.9)), j]) if m >= 6 else np.nan for j, m in enumerate(nx)])
-        fixed_db = float(10 * np.log10(np.nanmax(fixed) / base)) if np.isfinite(fixed).any() else float('-inf')
-        return dict(z=z, offset_hz=float(offs[k]), excess_db=float(10 * np.log10(prof[k] / base)), rows=int(len(rows)), n=int(n[k]),
-                    doppler_span_hz=exc, fixed_excess_db=fixed_db, doppler_gain_db=float(10 * np.log10(prof[k] / base)) - fixed_db,
-                    t_first_s=float(t[rows[0]] - A['t_ref']), t_last_s=float(t[rows[-1]] - A['t_ref']))
+        # Test fixed carriers on exactly the contributing hop observations, never on a median sweep epoch.
+        exc = float(np.ptp(fp[support]))
+        fx = np.arange(fp[support].min()+offs[k]-2*c['step'], fp[support].max()+offs[k]+2.5*c['step'], c['step'])
+        fx = fx[(fx >= c['f'][0]) & (fx <= c['f'][-1])]
+        fixed_samples = np.full((int(support.sum()), len(fx)), np.nan)
+        for gi, (cols, _) in enumerate(c['groups']):
+            positions = np.flatnonzero(group_ids[support]==gi)
+            observations = np.flatnonzero(support)[positions]
+            if len(positions):
+                targets = np.broadcast_to(fx,(len(positions),len(fx)))
+                fixed_samples[positions] = _sample_group(c,cols,row_ids[observations],targets)
+        fixed = trimmed(fixed_samples)
+        fixed_db = float(10*np.log10(np.nanmax(fixed)/base)) if np.isfinite(fixed).any() else float('inf')
+        excess = float(10*np.log10(prof[k]/base))
+        return dict(z=z, offset_hz=float(offs[k]), excess_db=excess, rows=int(len(np.unique(row_ids[support]))), n=int(support.sum()),
+                    doppler_span_hz=exc, fixed_excess_db=fixed_db, doppler_gain_db=excess-fixed_db,
+                    timing_basis='source-hop midpoint', t_first_s=float(times[support].min()-A['t_ref']), t_last_s=float(times[support].max()-A['t_ref']))
     return None
 
 
@@ -132,22 +164,21 @@ def guided(A, p, tx, shift=0.0, k_sigma=5.0):
         if not (b['lo_hz'] <= f_tx <= b['hi_hz']):
             continue
         S = Bd['S']; c = _band_cache(Bd); D = c['D']; m0, s0 = c['thr_base']; thr = m0 + k_sigma * s0
-        t = c['t_row']; ok = np.isfinite(t)
-        el = np.full(len(t), -90.0); el[ok] = np.interp(t[ok], p['t'], p['el'])
-        rows = np.flatnonzero(ok & (el > 0))
-        if not len(rows):
-            return []
-        fp = f_tx * (1 - np.interp(t[rows], p['t'], p['rr']) / sd.C)
-        lo = np.searchsorted(c['f'], fp - GUIDE_HZ); hi = np.searchsorted(c['f'], fp + GUIDE_HZ, side='right'); out = []
-        for r, a, b_, f_ in zip(rows, lo, hi, fp):
-            if b_ - a < 3:
-                continue
-            row = D[r, a:b_]
-            if not np.isfinite(row).any():
-                continue
-            j = int(np.nanargmax(row))
-            if row[j] > thr:
-                fo = float(c['fsrc'][a + j]); out.append((int(r), float(t[r] - A['t_ref']), fo, fo - float(f_), float(row[j])))
+        best = {}
+        for cols, t in c['groups']:
+            ok = np.isfinite(t) & (t >= p['t'][0]) & (t <= p['t'][-1])
+            rows = np.flatnonzero(ok & (np.interp(np.nan_to_num(t), p['t'], p['el']) > 0))
+            fp = f_tx * (1 - np.interp(t[rows], p['t'], p['rr']) / sd.C)
+            for r, f_ in zip(rows, fp):
+                candidates = cols[(c['fsrc'][cols] >= f_-GUIDE_HZ) & (c['fsrc'][cols] <= f_+GUIDE_HZ)]
+                candidates = candidates[np.isfinite(D[r, candidates])]
+                if not len(candidates):
+                    continue
+                j = int(candidates[np.argmax(D[r, candidates])])
+                if D[r,j] > thr and (r not in best or D[r,j] > best[r][-1]):
+                    fo = float(c['fsrc'][j])
+                    best[r] = (int(r), float(t[r]-A['t_ref']), fo, fo-float(f_), float(D[r,j]))
+        out = [best[r] for r in sorted(best)]
         return out
     return None
 
@@ -201,18 +232,18 @@ def identify(A, satdb_dir=None, qth_path=None):
     # observed format for every non-trivial track and event (works without a database)
     for Bd in A['bands']:
         S = Bd['S']
-        with warnings.catch_warnings():              # an incomplete sweep's row has no time stamp at all
-            warnings.simplefilter('ignore', RuntimeWarning); Trow = np.nanmedian(S['T'], 1)
         for tr in Bd['tracks']:
-            t, fx = tr['points']; rows = [int(np.nanargmin(np.abs(Trow - t_ref - x))) for x in t]
-            cols = [int(np.argmin(np.abs(S['fsrc'] - f))) for f in fx]
+            t, fx = tr['points']
+            cols = [int(np.nanargmin(np.abs(S['fsrc'] - f))) for f in fx]
+            rows = [int(np.nanargmin(np.abs(S['T'][:,c]-t_ref-x))) for x,c in zip(t,cols)]
             span = max(t.max() - t.min(), period); duty = min(1.0, len(t) / (span / period + 1))
             tr['format'] = {k: v for k, v in measure_format(S, rows, cols, Bd['sig'], step, duty).items() if k != 'profile'}
         for e in Bd['events']:
-            r0 = int(np.nanargmin(np.abs(Trow - t_ref - e['t_start_s']))); r1 = int(np.nanargmin(np.abs(Trow - t_ref - e['t_end_s'])))
-            rows = list(range(r0, r1 + 1)); c = int(np.argmin(np.abs(S['fsrc'] - e['f_mhz'] * 1e6)))
+            c = int(np.nanargmin(np.abs(S['fsrc'] - e['f_mhz']*1e6)))
+            r0 = int(np.nanargmin(np.abs(S['T'][:,c]-t_ref-e['t_start_s']))); r1 = int(np.nanargmin(np.abs(S['T'][:,c]-t_ref-e['t_end_s'])))
+            rows = list(range(r0,r1+1))
             e['format'] = {k: v for k, v in measure_format(S, rows, [c] * len(rows), Bd['sig'], step, 1.0).items() if k != 'profile'}
-    res = dict(available=False, reason='', passes=[], ids=[], not_heard=[], db_meta=None)
+    res = dict(available=False, reason='', passes=[], ids=[], not_heard=[], db_meta=None, identity_confirmed=False, analog_linearity_verified=False, absolute_power_calibrated=False, statistical_scope='conditional candidate scores; no calibrated global false-discovery probability')
     A['id'] = res
     try:
         import sgp4  # noqa: F401
@@ -222,12 +253,30 @@ def identify(A, satdb_dir=None, qth_path=None):
         res['reason'] = 'no satellite database (queue.sh --satdb-refresh 1)'; return res
     if not qth_path or not Path(qth_path).exists():
         res['reason'] = 'no observer position (sessions/qth.json)'; return res
-    qth = json.loads(Path(qth_path).read_text()); db = sd.load(satdb_dir); tles = sd.load_tles(satdb_dir)
+    qth = sd.validate_qth(json.loads(Path(qth_path).read_text())); db = sd.load(satdb_dir); tles = sd.load_tles(satdb_dir)
     meta = json.loads(Path(satdb_dir, 'meta.json').read_text()) if Path(satdb_dir, 'meta.json').exists() else {}
     res['db_meta'] = dict(fetched_utc=meta.get('fetched_utc'), satellites_with_downlinks=len(db), tle_count=meta.get('tle_count'))
     bands = [Bd['band'] for Bd in A['bands']]
     t0, t1 = t_ref, t_ref + A['timing']['span_s']
-    preds = sd.predict(db, qth, t0, t1, bands)
+    reference = Path(satdb_dir).parent
+    max_age = sd.DEFAULT_MAX_TLE_AGE_DAYS
+    if (reference/'bundle-manifest.json').exists() and Path(satdb_dir).name == 'satdb':
+        sd.verify(reference)
+        policy = json.loads((reference/'policy.json').read_text())
+        max_age = float(policy['max_tle_age_days'])
+        manifest = json.loads((reference/'bundle-manifest.json').read_text())
+        created = __import__('datetime').datetime.fromisoformat(manifest['created_utc']).timestamp()
+        res['reference_basis'] = 'capture-time snapshot' if created <= t0 else 'retrospective snapshot'
+        res['observer_frozen'] = Path(qth_path).resolve() == (reference/'qth.json').resolve()
+        if not res['observer_frozen']: res['reference_basis'] = 'observer override; satellite database frozen separately'
+        res['reference_manifest'] = manifest
+    else:
+        res['reference_basis'] = 'retrospective mutable cache; not frozen before capture'
+    res['tle_policy'] = dict(max_age_days=max_age, engineering_age_gate=True, guarantees_orbit_accuracy=False)
+    res['excluded_elements'] = [dict(norad=x['norad'], **sd.tle_eligibility(x['l1'],x['l2'],t0,t1,max_age)) for x in tles
+                               if not sd.tle_eligibility(x['l1'],x['l2'],t0,t1,max_age)['eligible']]
+    tles = [x for x in tles if sd.tle_eligibility(x['l1'],x['l2'],t0,t1,max_age)['eligible']]
+    preds = sd.predict(db, qth, t0, t1, bands, max_tle_age_days=max_age)
     res['available'] = True; res['qth_source'] = qth.get('source', '')
     used = set()
     for Bd in A['bands']:
@@ -243,7 +292,7 @@ def identify(A, satdb_dir=None, qth_path=None):
                 narrow = tr['format']['bw_hz'] <= sd.RES_BINS * step and tr['rms_hz'] < 200.0
                 if tr['kind'] == 'doppler' and narrow:  # orbit-only: which satellite's pass has this carrier's Doppler curve
                     # (a wide signal's peak wanders inside its band, so its 'curve' cannot tell orbits apart)
-                    om = sd.match_orbit(t + t_ref, fx, tles, qth, tr['rms_hz'])
+                    om = sd.match_orbit(t + t_ref, fx, tles, qth, tr['rms_hz'], max_tle_age_days=max_age)
                     res.setdefault('orbit_candidates', []).append(dict(f_mhz=tr['f_median_hz'] / 1e6, t_start_s=tr['t_start_s'], t_end_s=tr['t_end_s'],
                                                                       candidates=[(o['name'], o['norad'], round(o['rms_hz'])) for o in om[:4]]))
                     if om and (len(om) == 1 or om[1]['rms_hz'] >= 1.3 * om[0]['rms_hz']):     # attribute only a unique orbit
@@ -272,7 +321,7 @@ def identify(A, satdb_dir=None, qth_path=None):
                     continue
                 for tx in p['transmitters']:
                     d = e['f_mhz'] * 1e6 - float(sd.doppler(p, tx['f_hz'], tm))
-                    if tx['alive'] and abs(d) < 6e3:
+                    if sd.eligible_transmitter(tx) and abs(d) < 6e3:
                         hits.append((abs(d), p, tx, d))
             hits = [h for h in hits if not sd.format_consistency(h[2], e['format']['bw_hz'], step).startswith('inconsistent')]   # cannot produce this bandwidth
             if hits:
@@ -287,7 +336,7 @@ def identify(A, satdb_dir=None, qth_path=None):
         if p['norad'] in used:
             continue
         for tx in p['transmitters']:
-            if not tx['alive']:
+            if not sd.eligible_satellite(p) or not sd.eligible_transmitter(tx):
                 continue
             hits = guided(A, p, tx)
             if hits is None:
@@ -353,7 +402,7 @@ def identify(A, satdb_dir=None, qth_path=None):
         if p['norad'] in used:
             continue
         for tx in p['transmitters']:
-            if not tx['alive']:
+            if not sd.eligible_satellite(p) or not sd.eligible_transmitter(tx):
                 continue
             r = stacked(A, p, tx)
             if r is None:
@@ -376,13 +425,20 @@ def identify(A, satdb_dir=None, qth_path=None):
     cand = {i['norad'] for i in res['ids'] if i['confidence'] == 'frequency-only'}
     for p in preds:
         alive = [x for x in p['transmitters'] if x['alive'] and x['status'] in ('active', '')]
-        row = dict(norad=p['norad'], name=p['name'], sat_status=p['sat_status'], max_el=p['max_el'], t_max_el_s=p['t_max_el'] - t_ref,
+        row = dict(norad=p['norad'], name=p['name'], sat_status=p['sat_status'],tle_epoch_utc=p.get('tle_epoch_utc'),tle_age_days_at_scan_midpoint=p.get('tle_age_days_at_scan_midpoint'), max_el=p['max_el'], t_max_el_s=p['t_max_el'] - t_ref,
                    t_rise_s=p['t_rise'] - t_ref, t_set_s=p['t_set'] - t_ref, heard=p['norad'] in used, candidate=p['norad'] in cand,
                    transmitters=[dict(f_mhz=x['f_hz'] / 1e6, mode=x['mode'], baud=x['baud'], alive=x['alive'], status=x['status'], description=x['description']) for x in p['transmitters']],
                    curve_t_s=(p['t'] - t_ref).tolist(), curve_el=np.nan_to_num(p['el'], nan=-90).tolist(), curve_rr=np.nan_to_num(p['rr']).tolist())
         res['passes'].append(row)
         if not row['heard'] and not row['candidate'] and alive and p['max_el'] >= 10:
             res['not_heard'].append(row)
+    for item in res['ids']:
+        item.update(identity_confirmed=False, evidence_class='frequency coincidence' if item['confidence']=='frequency-only' else 'PSD Doppler-consistent candidate',
+                    independent_validation=False, decoded_identity=False)
+    for Bd in A['bands']:
+        for item in Bd['tracks'] + Bd['events']:
+            if item.get('id'): item['id'].update(identity_confirmed=False, decoded_identity=False)
+    res['control_interpretation'] = 'off-curve diagnostic controls, not an independent identity test or global FDR estimate'
     return res
 
 
@@ -396,6 +452,6 @@ def predicted_curves(A, band, min_el=0.0):
             continue
         for x in p['transmitters']:
             f = x['f_mhz'] * 1e6
-            if band['lo_hz'] - 20e3 <= f <= band['hi_hz'] + 20e3:
+            if x.get('alive') is True and x.get('status','') in ('active','') and band['lo_hz'] - 20e3 <= f <= band['hi_hz'] + 20e3:
                 out.append((f"{p['name']} {x['mode']}", t[m], f * (1 - rr[m] / sd.C), p['heard']))
     return out

@@ -1,0 +1,7 @@
+616 passed, 1 skipped, 137 warnings, 112 subtests passed in 139.51s (0:02:19)
+Final shell regression: 4 passed.
+Bash syntax and git diff --check passed.
+All 42 final PDF pages rendered and visually reviewed.
+Live receive-only supervisor smoke: 31 guarded records; 20.410984 seconds credited, 15.613745 seconds RF dwell; macOS assertions verified.
+Native abort, device absence, watchdog, cancellation, gain backoff, missing IQ, changed context, truncated output, missing coverage and nested publication tested using synthetic/process fault injection.
+No deliberate physical unplug, forced sleep, RF transmission or firmware flashing was performed.
