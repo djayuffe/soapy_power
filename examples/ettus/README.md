@@ -427,3 +427,14 @@ IQ when available. Waveform phase cannot be recovered from PSD. Absolute levels
 and detection counts across different gains/rates must not be pooled as calibrated
 measurements or unique transmitter totals. Never concatenate different gain/rate
 contexts into one raw superscan file.
+
+
+Automatic `queue.sh scan --reanalyze SESSION_NAME` jobs run before SDR binding
+imports or device discovery. Saved-data reporting therefore works without an
+attached receiver. Rejected-IQ diagnostics distinguish headroom rejection from
+transport/acquisition failure. Missing metrics are recomputed only from retained
+finite IQ; incomplete prefixes are never presented as complete or accepted
+measurements. Empty/non-finite prefixes produce an explicit unavailable panel.
+Short prefixes and final partial plotting blocks are included, and original
+metadata/IQ are hash-checked and preserved. Report findings use the selected
+sessions' manifests rather than assigning another run's sleep or overload cause.

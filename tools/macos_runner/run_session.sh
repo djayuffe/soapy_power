@@ -61,6 +61,52 @@ if [ "$MODE" = scan ] && [ "$(uname -s)" = Darwin ]; then
   trap 'kill "$AWAKE_PID" 2>/dev/null || true' EXIT
 fi
 
+# ---- report helper: analysis of a hop-scan / superscan session (never changes a scan result; needs numpy+scipy+matplotlib)
+report() {  # report <analyzer.py> <scan.jsonl> <session dir> <tag> [extra args...]
+  local an="$1" src="$2" ses="$3" tag="$4"; shift 4
+  RPY=""; for cand in "$PY" /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
+    MPLBACKEND=Agg "$cand" -c 'import numpy, scipy.ndimage, matplotlib.pyplot' >/dev/null 2>&1 && { RPY="$cand"; break; }; done
+  ARC=skipped; local t1; t1=$(date +%s)
+  if [ -n "$RPY" ] && [ -s "$src" ]; then
+    MPLBACKEND=Agg "$RPY" "$REPO/tools/$an" "$src" "$ses/analysis" --tag "$tag" "$@" > "$ses/analysis.log" 2>&1; ARC=$?
+  fi
+  echo "${tag}_report exit=$ARC via=${RPY:-none} files=$(ls "$ses/analysis" 2>/dev/null | wc -l | tr -d ' ') seconds=$(( $(date +%s) - t1 ))" | tee -a "$ses/result.txt"
+}
+
+report_set() {
+  local ses="$1"
+  MPLBACKEND=Agg "$PY" "$REPO/tools/analyze_scan_set.py" "$ses/analysis" "$ses" > "$ses/analysis.log" 2>&1; ARC=$?
+  echo "superscan_report exit=$ARC" | tee -a "$ses/result.txt"
+}
+
+# Reanalysis is CPU/file-only. Dispatch before SDR bindings, discovery or device opens.
+REAN="$(req_field reanalyze)"
+if [ -n "$REAN" ]; then
+  if ! [[ "$REAN" =~ ^(hopscan|superscan)-[0-9]{8}-[0-9]{6}$ ]]; then
+    finish "RESULT=reanalyze_bad_name"; exit 2
+  fi
+  SESSION="$OUTDIR/$REAN"
+  unset PYTHONPATH SOAPY_SDR_PLUGIN_PATH
+  PY=""; IMPORTS='import numpy, scipy.ndimage, matplotlib.pyplot'
+  [ ! -f "$SESSION/captures.json" ] || IMPORTS="$IMPORTS, reportlab, pypdf"
+  for candidate in "$OUTDIR/.venv/bin/python" /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3 python3; do
+    if MPLBACKEND=Agg "$candidate" -c "$IMPORTS" >/dev/null 2>&1; then PY="$candidate"; break; fi
+  done
+  if [ -z "$PY" ]; then
+    finish "SESSION=$SESSION
+RESULT=reanalyze_missing_analysis_dependencies"; exit 1
+  fi
+  export PYTHONPATH="$REPO"
+  case "$REAN" in
+    superscan-*) if [ -f "$SESSION/captures.json" ]; then report_set "$SESSION"
+                 else report analyze_superscan.py "$SESSION/superscan.jsonl" "$SESSION" superscan --bands "$SESSION/bands.json"; fi;;
+    hopscan-*) report analyze_hopscan.py "$SESSION/scan_140_150.jsonl" "$SESSION" hopscan;;
+  esac
+  finish "SESSION=$SESSION
+RESULT=reanalyze_$ARC"
+  [ "$ARC" = 0 ] && exit 0 || exit 1
+fi
+
 # ---- Homebrew 0.8-ABI stack. `brew upgrade` moves /opt/homebrew/opt/soapysdr to 0.9 (Python 3.15 bindings,
 # modules0.9) but keeps the superseded 0.8 keg until `brew cleanup`. Modules built for 0.8 (SoapyUHD,
 # SoapyBladeRF) name libSoapySDR.0.8 by its opt path; dyld resolves it by leaf name through
@@ -263,24 +309,6 @@ RESULT=overflow_probe_done"
   exit 0
 fi
 
-# ---- report helper: analysis of a hop-scan / superscan session (never changes a scan result; needs numpy+scipy+matplotlib)
-report() {  # report <analyzer.py> <scan.jsonl> <session dir> <tag> [extra args...]
-  local an="$1" src="$2" ses="$3" tag="$4"; shift 4
-  RPY=""; for cand in "$PY" /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
-    MPLBACKEND=Agg "$cand" -c 'import numpy, scipy.ndimage, matplotlib.pyplot' >/dev/null 2>&1 && { RPY="$cand"; break; }; done
-  ARC=skipped; local t1; t1=$(date +%s)
-  if [ -n "$RPY" ] && [ -s "$src" ]; then
-    MPLBACKEND=Agg "$RPY" "$REPO/tools/$an" "$src" "$ses/analysis" --tag "$tag" "$@" > "$ses/analysis.log" 2>&1; ARC=$?
-  fi
-  echo "${tag}_report exit=$ARC via=${RPY:-none} files=$(ls "$ses/analysis" 2>/dev/null | wc -l | tr -d ' ') seconds=$(( $(date +%s) - t1 ))" | tee -a "$ses/result.txt"
-}
-
-report_set() {
-  local ses="$1"
-  MPLBACKEND=Agg "$PY" "$REPO/tools/analyze_scan_set.py" "$ses/analysis" "$ses" > "$ses/analysis.log" 2>&1; ARC=$?
-  echo "superscan_report exit=$ARC" | tee -a "$ses/result.txt"
-}
-
 # ---- satellite database (SatNOGS transmitters + TLEs) for superscan identification; no SDR use.
 satdb_refresh() {  # satdb_refresh [max_age_hours]: refresh $OUTDIR/satdb when missing or older than max_age_hours
   local age=${1:-0} meta="$OUTDIR/satdb/meta.json"
@@ -296,21 +324,6 @@ if [ "$(req_field satdb_refresh)" = 1 ]; then
   finish "SESSION=$OUTDIR/satdb
 RESULT=satdb_refresh_$SRC"
   exit "$SRC"
-fi
-
-# ---- 3a. reanalyze (request key, string session name): rerun the report of an existing session, no SDR use.
-REAN="$(req_field reanalyze)"
-if [ -n "$REAN" ]; then
-  case "$REAN" in
-    hopscan-*)   SESSION="$OUTDIR/$REAN"; report analyze_hopscan.py "$SESSION/scan_140_150.jsonl" "$SESSION" hopscan;;
-    superscan-*) SESSION="$OUTDIR/$REAN";
-                 if [ -f "$SESSION/captures.json" ]; then report_set "$SESSION"
-                 else report analyze_superscan.py "$SESSION/superscan.jsonl" "$SESSION" superscan --bands "$SESSION/bands.json"; fi;;
-    *) ARC=bad_name;;
-  esac
-  finish "SESSION=$OUTDIR/$REAN
-RESULT=reanalyze_$ARC"
-  [ "$ARC" = 0 ] && exit 0 || exit 1
 fi
 
 # ---- 3d. superscan (request key, integer 1): interleaved satellite-band scan, all bands revisited every sweep.

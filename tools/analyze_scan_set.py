@@ -89,8 +89,12 @@ def diagnostics(all_rows, parts, output):
 
 
 def rejected_iq(sessions, output):
+    """Inspect retained evidence without assuming acquisition or headroom completed."""
     import numpy as np
+    import matplotlib;matplotlib.use('Agg')
     import matplotlib.pyplot as plt
+    from soapypower.receiver_quality import headroom_metrics
+    from superscan_run import classify_failure
     results=[]
     for session in sessions:
         for metadata in sorted(Path(session).glob('rejected-main-*/*.json')):
@@ -100,18 +104,55 @@ def rejected_iq(sessions, output):
             p=(metadata.parent/r['iq_file']).resolve()
             if p.parent!=metadata.parent.resolve():raise ValueError('invalid rejected IQ path')
             if hashlib.sha256(p.read_bytes()).hexdigest()!=r['iq_sha256']:raise ValueError('rejected IQ hash mismatch')
-            z=np.load(p,allow_pickle=False)['iq'];component=np.maximum(abs(z.real),abs(z.imag));ix=np.flatnonzero(component>=.5)
-            rate=float(r['context']['sample_rate']);block=4096;count=len(z)//block
-            maximum=component[:count*block].reshape(count,block).max(1);rms=np.sqrt(np.mean(abs(z[:count*block].reshape(count,block))**2,axis=1));t=(np.arange(count)*block+block/2)/rate
-            item=dict(metadata=str(metadata),iq_sha256=r['iq_sha256'],samples=len(z),sample_rate_hz=rate,metrics=r['metrics'],above_05_samples=int(len(ix)),above_095_samples=int((component>=.95).sum()),above_05_sample_indices=ix.tolist(),phase_scope='Unreferenced phase of retained rejected IQ only; no coherent reference, no phase reconstructed from PSD')
+            with np.load(p,allow_pickle=False) as archive:z=archive['iq']
+            if z.ndim!=1 or z.dtype.kind!='c':raise ValueError('retained IQ must be a one-dimensional complex array')
+            if r.get('samples') is not None and r['samples']!=len(z):raise ValueError('retained IQ sample count mismatch')
+            integrity=r.get('integrity') or {};reason=str(r.get('reason') or 'unspecified acquisition failure')
+            kind='headroom_rejection' if reason=='headroom_rejected' else ('transport_failure' if classify_failure(2,reason)=='transport' else 'acquisition_failure')
+            rate=None
+            for context in (r.get('context'),r.get('observed_context_at_failure')):
+                candidate=context.get('sample_rate') if isinstance(context,dict) else None
+                if isinstance(candidate,(int,float)) and not isinstance(candidate,bool) and math.isfinite(candidate) and candidate>0:
+                    rate=float(candidate);break
+            finite=np.isfinite(z);usable=bool(len(z) and finite.all());metrics=None;warning=None;component=None;ix=None
+            if usable:
+                component=np.maximum(abs(z.real),abs(z.imag));ix=np.flatnonzero(component>=.5)
+                with np.errstate(over='ignore',invalid='ignore'):computed=headroom_metrics(z)
+                if all(math.isfinite(v) for v in computed.values()):metrics=computed
+                else:warning='Retained finite IQ overflows derived statistics; metrics unavailable.'
+            else:warning='No IQ samples were retained.' if not len(z) else 'Non-finite IQ retained; phase and amplitude diagnostics are unavailable.'
+            scope='complete retained acquisition (not accepted)' if integrity.get('measurement_status')=='complete' else 'retained prefix of failed acquisition; completeness/continuity unqualified'
+            phase_scope='Unreferenced phase of retained IQ only; no coherent reference, no phase reconstructed from PSD' if usable else 'Phase unavailable: no valid finite retained IQ'
+            item=dict(metadata=str(metadata),iq_sha256=r['iq_sha256'],samples=len(z),sample_rate_hz=rate,rejection_reason=reason,evidence_class=kind,acquisition_stage=r.get('acquisition_stage'),measurement_status=integrity.get('measurement_status'),continuity=integrity.get('continuity'),sample_scope=scope,usable_iq=usable,nonfinite_samples=int((~finite).sum()),recorded_metrics=r.get('metrics'),metrics=metrics,metrics_origin='recomputed from retained samples only' if metrics is not None else 'unavailable',above_05_samples=int(len(ix)) if ix is not None else None,above_095_samples=int((component>=.95).sum()) if component is not None else None,above_05_sample_indices=ix.tolist() if ix is not None else [],phase_scope=phase_scope,diagnostic_warning=warning)
             results.append(item);fig,axs=plt.subplots(2,2,figsize=(16,10),layout='constrained')
-            axs[0,0].plot(t,maximum,label='Block maximum');axs[0,0].plot(t,rms,label='Block complex RMS');axs[0,0].axhline(.5,ls='--',color='orange');axs[0,0].set(xlabel='Seconds within rejected acquisition',ylabel='Digital amplitude',title='All IQ samples aggregated into 4096-sample blocks');axs[0,0].legend()
-            axs[0,1].hist(component,bins=200,log=True);axs[0,1].axvline(.5,color='orange');axs[0,1].set(title='Component magnitude distribution',xlabel='max(|I|, |Q|)',ylabel='Samples (log)')
-            sample=z[::max(1,len(z)//30000)];axs[1,0].plot(sample.real,sample.imag,'.',ms=.6,alpha=.4);axs[1,0].set(title='Uniformly subsampled IQ constellation (not demodulated)',xlabel='I',ylabel='Q',aspect='equal')
-            hist,edges=np.histogram(np.angle(z),bins=72,range=(-np.pi,np.pi));axs[1,1].stairs(hist/len(z),np.degrees(edges));axs[1,1].set(title='Unreferenced phase histogram: all retained samples',xlabel='Phase (degrees)',ylabel='Fraction per 5-degree bin')
-            fig.suptitle('Rejected acquisition: guard evidence and phase diagnostics',fontsize=18)
+            if usable:
+                # reduceat includes every sample, even a short prefix or final partial block.
+                starts=np.arange(0,len(z),4096);counts=np.minimum(4096,len(z)-starts)
+                maximum=np.maximum.reduceat(component,starts)
+                power=z.real.astype(np.float64)**2+z.imag.astype(np.float64)**2
+                rms=np.sqrt(np.add.reduceat(power,starts)/counts);t=starts+(counts-1)/2
+                if rate is not None:t=t/rate
+                axs[0,0].plot(t,maximum,label='Block maximum');axs[0,0].plot(t,rms,label='Block complex RMS');axs[0,0].axhline(.5,ls='--',color='orange');axs[0,0].set(xlabel='Seconds within retained IQ' if rate else 'Retained sample index (rate unknown)',ylabel='Digital amplitude',title='All retained samples; nonoverlapping blocks including tail');axs[0,0].legend()
+                axs[0,1].hist(component,bins=200,log=True);axs[0,1].axvline(.5,color='orange');axs[0,1].set(title='Component magnitude; 0.5 diagnostic reference',xlabel='max(|I|, |Q|)',ylabel='Samples (log)')
+                sample=z[::max(1,len(z)//30000)];axs[1,0].plot(sample.real,sample.imag,'.',ms=.6,alpha=.4);axs[1,0].set(title='Uniformly subsampled IQ (not demodulated)',xlabel='I',ylabel='Q',aspect='equal')
+                hist,edges=np.histogram(np.angle(z),bins=72,range=(-np.pi,np.pi));axs[1,1].stairs(hist/len(z),np.degrees(edges));axs[1,1].set(title='Unreferenced phase histogram: all retained samples',xlabel='Phase (degrees)',ylabel='Fraction per 5-degree bin')
+            else:
+                for ax in axs.flat:ax.axis('off')
+                axs[0,0].text(.05,.7,warning+'\n'+reason,transform=axs[0,0].transAxes,wrap=True,va='top')
+            fig.suptitle('Retained IQ: '+kind.replace('_',' ')+'; diagnostics do not establish acceptance',fontsize=16)
             name=f'rejected-iq-{len(results)}.png';fig.savefig(output/name,dpi=220);plt.close(fig);item['plot']=name
     return results
+
+
+def evidence_findings(supervision, rejected):
+    """Describe observed source evidence; never import a different run's root cause."""
+    attempts=[a for session in supervision for a in session['attempts']]
+    transport=sum(a.get('failure_class')=='transport' for a in attempts)
+    headroom=sum(r['evidence_class']=='headroom_rejection' for r in rejected)
+    retained_transport=sum(r['evidence_class']=='transport_failure' for r in rejected)
+    return [f'Observed source evidence: {len(supervision)} supervisor manifests, {len(attempts)} attempts, {transport} transport-failure attempts in those manifests; {len(rejected)} retained evidence acquisitions ({retained_transport} transport, {headroom} headroom). Original reasons and sample qualification are retained in the evidence appendix. A timeout alone does not establish host sleep, physical disconnect or bandwidth overload.',
+            'Recovery policy: scan-scoped sleep prevention, bounded retries for recognized transport failures, a file-growth watchdog and bounded gain backoff only after hash-verified headroom evidence. Automatic gain selection supports a 12 dB pilot reserve; a manually selected gain does not imply this calibration was performed.',
+            'Duration accounting: setup, inter-attempt downtime and within-attempt gaps above five seconds do not consume the scan budget. Qualified sequential scan span includes normal retune gaps; summed RF dwell is reported separately.']
 
 
 def cover_pdf(report, output):
@@ -128,7 +169,7 @@ def cover_pdf(report, output):
     table=[['Part','Records','Rate MS/s','Gain dB','Scan span s','RF dwell s']]
     for n,p in enumerate(report['parts']):table.append([str(n+1),str(p['records']),f"{p['sample_rate_hz']/1e6:g}",str(p['gain']),f"{p['credited_scan_s']:.2f}",f"{p['rf_dwell_s']:.2f}"])
     tb=Table(table,colWidths=[35,70,80,140,110,110]);tb.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#14243a')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),.4,colors.lightgrey),('BOTTOMPADDING',(0,0),(-1,-1),9),('TOPPADDING',(0,0),(-1,-1),9)]));story.append(tb);story.append(Spacer(1,16))
-    para('Failure analysis and corrected behavior','Heading2')
+    para('Observed acquisition outcomes and recovery policy','Heading2')
     for text in report['findings']:para(text)
     story.append(PageBreak());para('All-record telemetry','Heading1');story.append(Image(str(output/'telemetry.png'),width=(height-160)*18/13,height=height-160));story.append(PageBreak())
     para('Signal findings and scientific limits','Heading1')
@@ -138,7 +179,7 @@ def cover_pdf(report, output):
         for item in ids:para(f"Candidate: {item.get('name')} at {item.get('f_mhz')} MHz; {item.get('confidence')}; decoded identity = false.")
     for text in report['limits']:para(text)
     for r in report['rejected_iq']:
-        story.append(PageBreak());para('Retained rejected IQ and phase','Heading1');para(f"Hash verified. {r['samples']:,} complex samples; {r['above_05_samples']} samples at or above 0.5, {r['above_095_samples']} at or above 0.95. {r['phase_scope']}.");story.append(Image(str(output/r['plot']),width=(height-190)*16/10,height=height-190))
+        story.append(PageBreak());para('Retained rejected IQ and phase','Heading1');para(f"Hash verified. {r['samples']:,} retained complex samples. Evidence: {r['evidence_class']}; reason: {r['rejection_reason']}. {r['sample_scope']}. Metrics: {r['metrics_origin']}. Counts above 0.5 / 0.95: {r['above_05_samples'] if r['above_05_samples'] is not None else 'unavailable'} / {r['above_095_samples'] if r['above_095_samples'] is not None else 'unavailable'}. {r['phase_scope']}.");story.append(Image(str(output/r['plot']),width=(height-190)*16/10,height=height-190))
     SimpleDocTemplate(str(output/'overview.pdf'),pagesize=landscape(A4),leftMargin=38,rightMargin=38,topMargin=30,bottomMargin=30).build(story)
     from pypdf import PdfReader,PdfWriter
     w=PdfWriter()
@@ -150,9 +191,11 @@ def cover_pdf(report, output):
 
 
 def generate(output, sessions, *, render_pdf=True):
-    inputs=list(HERE.glob('*.py'));paths=[]
+    inputs=list(HERE.glob('*.py'));paths=[];supervision=[]
     for session in sessions:
-        session=Path(session).resolve();paths.extend(sources(session))
+        session=Path(session).resolve();paths.extend(sources(session));inputs.extend(sorted(session.glob('rejected-main-*')))
+        if (session/'captures.json').exists():
+            m=json.loads((session/'captures.json').read_text());supervision.append(dict(session=session.name,status=m.get('status'),requested_seconds=m.get('requested_seconds'),credited_seconds=m.get('credited_seconds'),remaining_seconds=m.get('remaining_seconds'),attempts=m.get('attempts',[])))
         for name in ('bands.json','gaincal.json','gaincal.png','reference','captures.json','result.txt','scan.log'):
             if (session/name).exists():inputs.append(session/name)
     if not paths:raise ValueError('no accepted captures to analyze')
@@ -172,7 +215,7 @@ def generate(output, sessions, *, render_pdf=True):
                     raise RuntimeError(f'Partition {n+1} failed (exit {child.returncode}):\n{detail}')
                 verify(dest);part['report_dir']=dest.name;part['analysis']=json.loads((dest/'superscan_summary.json').read_text());parts.append(part)
         diagnostics(all_rows,parts,stage);rejected=rejected_iq(sessions,stage)
-        report=dict(version=1,created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),records=sum(p['records'] for p in parts),spectral_bins=sum(p['spectral_bins'] for p in parts),credited_scan_s=sum(p['credited_scan_s'] for p in parts),rf_dwell_s=sum(p['rf_dwell_s'] for p in parts),parts=parts,rejected_iq=rejected,findings=['Headroom rejection: conservative threshold exceeded by rare IQ peaks; retained evidence does not demonstrate digital rail clipping. Pilot-only gain qualification now reserves 12 dB by default; live rejection triggers bounded gain backoff into a new partition.','USB abort: host idle sleep/wake coincided with device loss. The supervisor holds scan-scoped sleep assertions, recognizes specific transport failures, bounds reopen retries and detects stalled output. Unknown crashes remain fatal.','Duration: setup, outage gaps above five seconds, and inter-attempt downtime do not consume the acquisition budget. Every attempt and accepted partition is retained with hashes.'],limits=['Antenna measurements cannot establish absolute power, noise figure, analog compression or calibrated sensitivity.','PSD Doppler matches and off-curve controls do not establish decoded identity or a calibrated global false-discovery probability.','PSD contains no recoverable waveform phase. Phase diagnostics are limited to retained rejected IQ without a coherent RF reference.','Sequential LO comparisons are conditional on the changing RF environment and receiver state. No candidate-origin label automatically removes data.','The configured 12 dB burst reserve and five-second gap policy are engineering choices, not universal statistical guarantees.'])
+        report=dict(version=1,created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),records=sum(p['records'] for p in parts),spectral_bins=sum(p['spectral_bins'] for p in parts),credited_scan_s=sum(p['credited_scan_s'] for p in parts),rf_dwell_s=sum(p['rf_dwell_s'] for p in parts),parts=parts,rejected_iq=rejected,supervision=supervision,findings=evidence_findings(supervision,rejected),limits=['Antenna measurements cannot establish absolute power, noise figure, analog compression or calibrated sensitivity.','PSD Doppler matches and off-curve controls do not establish decoded identity or a calibrated global false-discovery probability.','PSD contains no recoverable waveform phase. Phase diagnostics are limited to retained rejected IQ without a coherent RF reference.','Sequential LO comparisons are conditional on the changing RF environment and receiver state. No candidate-origin label automatically removes data.','The configured 12 dB burst reserve and five-second gap policy are engineering choices, not universal statistical guarantees.'])
         def finite_json(value):
             if isinstance(value,float) and not math.isfinite(value):return None
             if isinstance(value,dict):return {k:finite_json(v) for k,v in value.items()}
@@ -185,7 +228,7 @@ def generate(output, sessions, *, render_pdf=True):
         for n,p in enumerate(parts):
             s=p['analysis'];folder=p['report_dir'];links=''.join(f'<li><a href="{folder}/{x.name}">{esc(x.name)}</a></li>' for x in sorted((stage/folder).glob('*.html')))
             sections+=f'<section><h2>Part {n+1}: {p["sample_rate_hz"]/1e6:g} MS/s / {esc(str(p["gain"]))}</h2><p>{p["records"]:,} records; {p["credited_scan_s"]:.2f} s credited scan time; {p["rf_dwell_s"]:.2f} s summed dwell. SHA-256 <code>{p["sha256"]}</code></p><p><a href="{folder}/superscan_analysis.pdf">Full partition PDF</a> · <a href="{folder}/superscan_summary.json">Complete signal/pass inventory</a> · <a href="{folder}/superscan_tracks.csv">Tracks CSV</a> · <a href="{folder}/superscan_lines.csv">Lines CSV</a> · <a href="{folder}/superscan_events.csv">Events CSV</a></p><img loading="lazy" src="{folder}/superscan_p1_summary.png"><details><summary>Native-resolution interactive waterfalls</summary><ul>{links}</ul></details></section>'
-        (stage/'index.html').write_text('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Full partitioned SDR analysis</title><style>body{max-width:1280px;margin:auto;padding:32px;background:#0b1422;color:#e4eefc;font:16px/1.6 system-ui}h1{font-size:42px}h2{color:#70ddce}a{color:#7bd8ff}section{margin:25px 0;padding:22px;background:#14243a}img{width:100%}code{overflow-wrap:anywhere;font-size:12px}p,li{color:#c0d0e4}summary{cursor:pointer}</style>'+f'<h1>Complete partitioned SDR scan analysis</h1><p>{report["records"]:,} accepted records · {report["spectral_bins"]:,} recorded spectral bins processed · {report["credited_scan_s"]/60:.3f} minutes credited sequential scan time · {report["rf_dwell_s"]/60:.3f} minutes summed RF dwell.</p><p>Gain/rate contexts and interruptions are preserved. Levels remain relative. All accepted records are processed; graphical pixel grids and thumbnails are display representations.</p><p><a href="full-analysis.pdf">Multipage full analysis</a> · <a href="summary.json">Complete analysis JSON</a> · <a href="telemetry.csv">Every-record telemetry CSV</a> · <a href="bundle-manifest.json">Input/output hashes</a></p><img src="telemetry.png"><section><h2>Failure findings and fixes</h2><ul>'+''.join('<li>'+esc(x)+'</li>' for x in report['findings'])+'</ul></section>'+sections+''.join(f'<section><h2>Retained rejected IQ / phase</h2><p>{esc(r["phase_scope"])}</p><img src="{r["plot"]}"></section>' for r in rejected)+'<section><h2>Limits</h2><ul>'+''.join('<li>'+esc(x)+'</li>' for x in report['limits'])+'</ul></section>')
+        (stage/'index.html').write_text('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Full partitioned SDR analysis</title><style>body{max-width:1280px;margin:auto;padding:32px;background:#0b1422;color:#e4eefc;font:16px/1.6 system-ui}h1{font-size:42px}h2{color:#70ddce}a{color:#7bd8ff}section{margin:25px 0;padding:22px;background:#14243a}img{width:100%}code{overflow-wrap:anywhere;font-size:12px}p,li{color:#c0d0e4}summary{cursor:pointer}</style>'+f'<h1>Complete partitioned SDR scan analysis</h1><p>{report["records"]:,} accepted records · {report["spectral_bins"]:,} recorded spectral bins processed · {report["credited_scan_s"]/60:.3f} minutes credited sequential scan time · {report["rf_dwell_s"]/60:.3f} minutes summed RF dwell.</p><p>Gain/rate contexts and interruptions are preserved. Levels remain relative. All accepted records are processed; graphical pixel grids and thumbnails are display representations.</p><p><a href="full-analysis.pdf">Multipage full analysis</a> · <a href="summary.json">Complete analysis JSON</a> · <a href="telemetry.csv">Every-record telemetry CSV</a> · <a href="bundle-manifest.json">Input/output hashes</a></p><img src="telemetry.png"><section><h2>Failure findings and fixes</h2><ul>'+''.join('<li>'+esc(x)+'</li>' for x in report['findings'])+'</ul></section>'+sections+''.join(f'<section><h2>Retained rejected IQ / phase</h2><p>{esc(r["evidence_class"])}: {esc(r["rejection_reason"])}. {esc(r["sample_scope"])}. Metrics: {esc(r["metrics_origin"])}. {esc(r["phase_scope"])}</p><img src="{r["plot"]}"></section>' for r in rejected)+'<section><h2>Limits</h2><ul>'+''.join('<li>'+esc(x)+'</li>' for x in report['limits'])+'</ul></section>')
     return report
 
 

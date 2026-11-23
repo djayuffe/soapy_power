@@ -130,3 +130,28 @@ class MacosRunnerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_auto_reanalysis_dispatches_before_sdr_discovery(tmp_path):
+    import json
+    root=tmp_path/'repo';sessions=root/'sessions';venv=sessions/'.venv/bin';binpath=tmp_path/'bin'
+    for p in (venv,binpath,root/'tools'):p.mkdir(parents=True,exist_ok=True)
+    plutil=binpath/'plutil';plutil.write_text(FAKE_PLUTIL.format(python=sys.executable));plutil.chmod(0o755)
+    python=venv/'python';python.write_text('#!'+sys.executable+'\n'+'''import os,sys,json
+from pathlib import Path
+if sys.argv[1]=='-c':
+ assert 'SoapySDR' not in sys.argv[2], 'reanalysis attempted SDR discovery'
+ sys.exit(0)
+assert sys.argv[1].endswith('analyze_scan_set.py'),sys.argv
+Path(os.environ['REANALYSIS_SEEN']).write_text(json.dumps(sys.argv[1:]))
+''');python.chmod(0o755)
+    (root/'tools/analyze_scan_set.py').write_text('# simulated report entrypoint\n')
+    name='superscan-20261123-093131';session=sessions/name;session.mkdir();capture=session/'captures.json';capture.write_text('{"captures":[]}')
+    request=tmp_path/'request.plist';request.write_bytes(plistlib.dumps(dict(reanalyze=name)))
+    seen=tmp_path/'seen.json';env=dict(os.environ,PATH=str(binpath)+':'+os.environ['PATH'],MODE='scan',INPUT='antenna',SPR_REPO=str(root),SPR_SESSIONS=str(sessions),REQUEST_FILE=str(request),REANALYSIS_SEEN=str(seen))
+    done=subprocess.run(['bash',str(RUNNER/'run_session.sh')],env=env,capture_output=True,text=True,timeout=30)
+    assert done.returncode==0,done.stdout+done.stderr
+    assert json.loads(seen.read_text())[1:]==[str(session/'analysis'),str(session)]
+    assert 'device:' not in done.stdout and 'SoapySDR' not in done.stdout
+    assert 'RESULT=reanalyze_0' in (sessions/'last-run.env').read_text()
+    assert capture.read_text()=='{"captures":[]}'
