@@ -23,7 +23,8 @@ ENBW_BLACKMAN_50 = 0.1661   # Blackman, 50 % overlap: adjacent-segment power cor
 
 
 def load(path):
-    R = [json.loads(l) for l in open(path) if l.strip()]
+    with open(path, encoding='utf-8') as fh:
+        R = [json.loads(line) for line in fh if line.strip()]
     if not R:
         raise SystemExit('no records')
     cs = np.array([r['metadata']['tuned_center_hz'] for r in R])
@@ -102,7 +103,6 @@ def analyse(path, out, tag):
     cand = []
     for a, b in runs(np.where(ctr, 0, mres) >= 0.5):
         seg_ = slice(a, b + 1); j = a + int(np.nanargmax(mres[seg_]))
-        band = 10 * np.log10(np.nanmean(10 ** (Res[:, seg_] / 10), 1))
         cand.append(dict(f_mhz=float(f[j]), width_khz=float((b - a + 1) * step / 1e3), peak_excess_db=float(mres[j]),
                          maxhold_excess_db=float(np.nanmax(Res[:, j])), sweeps_detected_pct=float(100 * np.mean(Res[:, j] > 3 * sd_t)),
                          level_sd_db=float(np.nanstd(Res[:, j])), z_mean=float(mres[j] / (sd_t / np.sqrt(nsw))),
@@ -129,7 +129,6 @@ def analyse(path, out, tag):
     def cross(drop):
         below = np.flatnonzero(side - ref < -drop)
         return round(float(ax_off[below[0]]), 2) if len(below) else None
-    win = slice(int(n / 2 - 0.25 * n / 4 * 4 / 4), int(n / 2 + 0.25 * n / 4 * 4 / 4))
     quiet = (abs(kk) > 0.25 * n / 2) & (abs(kk) < 0.5 * n / 2)
     mh = np.nanmedian(P[:, :, quiet], 2)
     first_dev = mh[0] - np.nanmedian(mh[3:], 0) if nsw > 4 else np.zeros(nh)
@@ -171,7 +170,7 @@ def fmt_ax(ax, xl=None, yl=None):
 
 def make_pdf(A, out, tag):
     s = A['summary']; f = A['f']; S = A['S']; centers = A['centers'] / 1e6; nsw = A['nsw']
-    pdf = PdfPages(out / f'{tag}_analysis.pdf'); pngs = {}
+    pdf = PdfPages(out / f'{tag}_analysis.pdf')
     def done(fig, name):
         fig.savefig(out / f'{tag}_{name}.png', dpi=110); pdf.savefig(fig); plt.close(fig)
     # ---- 1 summary
@@ -186,7 +185,7 @@ def make_pdf(A, out, tag):
     top = s['candidates'][:3]; ev = (A.get('W') or {}).get('events', [])
     lines = [
         (('1. Receiver-noise-limited floor; ' + (f"{len(ev)} intermittent emission(s) and weak persistent lines." if ev else 'the content is weak narrowband lines only.')),
-         (f"Intermittent: " + '; '.join(f"{e['f_mhz']:.4f} MHz {e['peak_db']:+.1f} dB at {e['t_start_s']:.0f}–{e['t_end_s']:.0f} s ({e['width_khz']:.1f} kHz)" for e in ev[:3]) + '. ' if ev else '') +
+         ("Intermittent: " + '; '.join(f"{e['f_mhz']:.4f} MHz {e['peak_db']:+.1f} dB at {e['t_start_s']:.0f}–{e['t_end_s']:.0f} s ({e['width_khz']:.1f} kHz)" for e in ev[:3]) + '. ' if ev else '') +
          f"Largest single-bin residual {s['max_residual_bin_db']:+.1f} dB; {s['channels_with_occupancy']} of {s['channels']} 12.5 kHz channels ever above 5σ (max {s['max_channel_excess_db']:+.2f} dB). {len(s['candidates'])} persistent lines ≥ 0.5 dB above floor in the 10-min mean ({s['faint_lines_ge_0p25db']} at ≥ 0.25 dB)."),
         ('2. The raw maxima are an artifact, not signals.', f"The strongest raw bin ({s['max_raw_peak_mhz']:.4f} MHz, {s['max_raw_peak_db']:.1f} dB) lies next to a hop centre. Every hop shows the same skirt ({s['dc_artifact_db']['12']:+.1f} dB at 12 kHz, {s['dc_artifact_db']['49']:+.1f} dB at 49 kHz, {s['dc_artifact_db']['200']:+.1f} dB at 200 kHz; hop-to-hop spread {s['dc_artifact_hop_spread_db']:.2f} dB)."),
         ('3. Weak persistent lines remain.', ('; '.join(f"{c['f_mhz']:.4f} MHz (+{c['peak_excess_db']:.2f} dB, {c['sweeps_detected_pct']:.0f}% of sweeps)" for c in top) or 'none') + '. Unverified: could be real carriers or receiver spurs.'),
@@ -229,7 +228,7 @@ def make_pdf(A, out, tag):
     # ---- 4 artifact
     fig = page(pdf, 'Receiver artifact at every hop centre', 'identical in all hops → deterministic receiver DC / low-frequency skirt, not RF content')
     k = A['k']; ax = fig.add_axes([0.06, 0.12, 0.52, 0.72]); sel = k > 0
-    for h in range(nh := A['nh']):
+    for h in range(A['nh']):
         ax.semilogx(k[sel] * s['step_hz'] / 1e3, A['hop_prof'][h][sel], lw=1, label=f'{centers[h]:.2f} MHz')
         ax.semilogx(-k[~sel][::-1] * s['step_hz'] / 1e3, A['hop_prof'][h][~sel][::-1], lw=.6, alpha=.5, color='#8fa0bd')
     ax.set_xlabel('offset from hop centre (kHz)'); ax.set_ylabel('dB above baseline'); ax.legend(ncol=2, frameon=False, fontsize=8); ax.set_title('Median level per hop vs offset (+ side coloured, − side grey)')

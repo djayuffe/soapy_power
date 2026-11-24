@@ -19,7 +19,6 @@ usage: report_modulation.py SESSION [--out PNG] [--raster-out PNG]
 """
 import argparse
 import json
-import re
 import sys
 import textwrap
 import warnings
@@ -36,7 +35,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec  # noqa: E402
 from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
-from matplotlib.patches import Rectangle, FancyArrowPatch  # noqa: E402
 
 warnings.filterwarnings('ignore', category=RuntimeWarning)
 
@@ -838,7 +836,6 @@ def _band_panel(ax, data, key, tag, lo, hi, title, highlights=(),
     p25 = m['p25'][sel] - floor
     p75 = m['p75'][sel] - floor
     if recs:
-        met0 = max((r['met'] for r in recs), key=lambda q: q['peak'])
         yb = 0.0
     else:
         yb = 0.0
@@ -1511,9 +1508,7 @@ def _spanstr(w):
 
 def write_markdown(path, blocks, controls, narrow, meta, session_name):
     by = {r['win']['label']: r for r in blocks}
-    ctrl = {(c['label'], c['tag']): c for c in controls}
     n900 = next(n for n in narrow if n[0] == 'gsm900')
-    n1800 = next(n for n in narrow if n[0] == 'mhz1800')
     L = []
     add = L.append
 

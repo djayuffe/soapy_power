@@ -1,6 +1,5 @@
 """Selected-interval and isolated-tone diagnostics, without protocol decoding."""
 import math
-from pathlib import Path
 import numpy as np
 from soapypower.numerics import finite, integer
 from soapypower.calibration_workflows import _sha256

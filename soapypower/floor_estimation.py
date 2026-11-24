@@ -250,7 +250,6 @@ def classify_lo_slope(lo_hz, if_hz, orders=(1, 3, 5, 7), resolution_hz=None):
         return {'status': 'unidentifiable', 'reason': 'LO span below four bins'}
     laws = [(1, -1)] + [(n, s) for n in orders for s in (-1, 1) if (n, s) != (1, -1)]
     sigma = max(res, 1e-9) / math.sqrt(12.0) if res else 1e-9
-    best = None
     scores = []
     for n, s in laws:
         slope = -s * n  # law (n, s): IF = s*(f - n*LO), so d(IF)/d(LO) = -s*n

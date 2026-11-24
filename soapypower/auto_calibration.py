@@ -362,7 +362,7 @@ def run_session(config_path, directory, controller=None, factory=None):
     try:
         sdr,context,controls,capabilities=prepare(c,factory)
         _compare(readiness['context'],context,'preflight vs acquisition context')
-        a,r=c['acquisition'],c['receiver'];rate=finite(sdr.device.sample_rate,'actual sample rate',positive=True)
+        a,r=c['acquisition'],c['receiver'];finite(sdr.device.sample_rate,'actual sample rate',positive=True)  # validates the actual rate
         needed=a['fft_bins']+(a['segments']-1)*(a['fft_bins']-math.floor(a['fft_bins']*a['fft_overlap']))
         repeats=(needed+a['fft_bins']-1)//a['fft_bins']
         def capture(rf,bb,name,level=None):

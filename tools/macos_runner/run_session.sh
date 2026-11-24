@@ -43,7 +43,7 @@ case "$ANTENNA" in RX2|TX/RX) ;; *) echo "FEIL: ANTENNA må være RX2 eller TX/R
 case "$INPUT" in antenna|terminated) ;; *) echo "FEIL: INPUT må være antenna eller terminated"; exit 2;; esac
 case "$PROCEDURE" in suite|baseline|fullrange) ;; *) echo "FEIL: PROCEDURE må være suite, baseline eller fullrange"; exit 2;; esac
 PLAN_ARGS="${PLAN_ARGS:-$(req_field plan_args)}"   # extra `experiments plan` flags, e.g. --no-telemetry
-case "$PLAN_ARGS" in *[!A-Za-z0-9\ .=_-]*) echo "FEIL: plan_args har ulovlige tegn"; exit 2;; esac
+case "$PLAN_ARGS" in *[!A-Za-z0-9\ .=_-]*) echo "ERROR: plan_args contains characters outside [A-Za-z0-9 .=_-]"; exit 2;; esac
 DEVICE_KIND="${DEVICE_KIND:-$(req_field device)}"; DEVICE_KIND="${DEVICE_KIND:-b200}"
 BLADERF_JOB="${BLADERF_JOB:-$(req_field bladerf_job)}"; BLADERF_JOB="${BLADERF_JOB:-dense-dc+survey}"
 case "$DEVICE_KIND" in b200|bladerf) ;; *) echo "FEIL: device må være b200 eller bladerf"; exit 2;; esac
@@ -208,7 +208,7 @@ PYEOF
     fi
   fi
   finish "SESSION=$SESSION
-RESULT=$([ $RC -eq 0 ] && echo done || echo failed_$RC)"
+RESULT=$([ $RC -eq 0 ] && echo "done" || echo failed_$RC)"
   echo "== ferdig: $SESSION"
   exit $RC
 fi
@@ -330,18 +330,26 @@ RESULT=satdb_refresh_$SRC"
 fi
 
 # ---- 3d. superscan (request key, integer 1): interleaved satellite-band scan, all bands revisited every sweep.
-#   superscan_plan  sat | sat-full | sat-s (default sat-full)     tools/satplan.py: DC >= 100 kHz outside every band
-#   superscan_rate  8 | 4 | 2 MS/s (default 8)                    sat-full: 5 / 11 / 20 hops, bins 4096 x rate (244 Hz)
-#   superscan_gain  auto (default) | dB
-#   superscan_dither kHz (default 0): second hop grid shifted by kHz, every band frequency seen from two LOs
-# Rate pilot: 30 s at the planned rate; a failed measurement or > 3 settle overflows halves the rate (8 -> 4 -> 2) and re-plans. Analog bandwidth
-# -w = 1.25 x rate keeps out-of-band energy off the ADC at high gain; UHD ring num_recv_frames = 256 x rate, capped at
-# 1024 (2048 fails on macOS with "usb rx6 submit failed: LIBUSB_ERROR_OTHER", seen 2026-11-22); at 8 MS/s the frames
-# are enlarged to 16360 B instead so the ring still holds 0.5 s.
-# Gain auto: one sweep per gain 30..76 dB with the raw-IQ headroom guard (stops at the first overload); gaincal.py picks
-# the smallest gain within 1 dB of the best input-referred noise with max |I|,|Q| < 0.5 and p99.9 < 0.2 of full scale.
-# Main scan resumes after an overflow (up to 20 segments) until SCAN_SECONDS of scanning are done.
-# Before acquisition: refresh and freeze satellite/QTH references. Reports use that immutable snapshot.
+# Full description: docs/SUPERSCAN.md.
+#   superscan_plan   sat | sat-full | sat-s (default sat-full)    tools/satplan.py: DC >= 100 kHz outside every band
+#   superscan_rate   8 | 4 | 2 MS/s (default 8)                   sat-full: 5 / 11 / 20 hops (14 / 26 / 44 with a 300 kHz
+#                                                                 dither), bins 4096 x rate (244 Hz)
+#   superscan_gain   auto (default) | dB (0-76)
+#   superscan_dither kHz (default 0): second hop grid shifted by kHz so every band frequency is seen from two LOs
+#                    (doubles the hop count; separates RF lines from LO-relative spurs)
+# 1. Plan + reference: satplan.py writes bands.json; the SatNOGS/TLE cache is refreshed when older than 24 h and frozen
+#    with the observer position into $SESSION/reference (immutable snapshot used by every later analysis).
+# 2. Rate pilot: 30 s at 50 dB; a failed measurement or > 3 settle overflows halves the rate (8 -> 4 -> 2) and re-plans.
+#    Analog bandwidth -w = 1.25 x rate; UHD ring num_recv_frames = 256 x rate capped at 1024 (2048 fails on macOS with
+#    "usb rx6 submit failed: LIBUSB_ERROR_OTHER"); at 8 MS/s recv_frame_size=16360 keeps 0.5 s of ring.
+# 3. Gain auto: one guarded sweep per gain 30..76 dB with the raw-IQ headroom guard. A USB overflow/timeout is measured
+#    again (3 tries); the first real headroom rejection ends the sweep. gaincal.py picks the smallest gain within 1 dB of
+#    the best input-referred noise whose max |I|,|Q| and p99.9 stay below 0.5 / 0.2 of full scale with a 12 dB burst reserve.
+# 4. Acquisition: superscan_run.py supervises attempts until SCAN_SECONDS are credited (setup, outages and gaps > 5 s are
+#    not credited): transport faults retry with backoff (at most 4 consecutive retries without new records, 20 automatic
+#    attempts), a file-growth watchdog kills a stalled child after 60 s, and a hash-verified headroom rejection lowers
+#    the gain by 6 dB (not below 20 dB) in a new partition. Pause/resume/retry/abort come from the GUI (docs/GUI.md).
+# 5. Report: analyze_scan_set.py analyses every capture partition separately into $SESSION/analysis (atomic bundle).
 if [ "${SUPERSCAN:-$(req_field superscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; then
   SESSION="$OUTDIR/superscan-$STAMP"; mkdir -p "$SESSION"; save_request
   OUT="$SESSION/superscan.jsonl"; ERR="$SESSION/scan.log"; : > "$SESSION/result.txt"
@@ -457,7 +465,7 @@ if [ "$PROCEDURE" = baseline ]; then
       printf '%s"%s":"%s"' "$SEP" "$(basename "$F")" "$(shasum -a 256 "$F" | awk '{print $1}')"; SEP=","; done
     printf '}}\n'
   } > "$SESSION/manifest.json"
-  RESULT=done; [ -n "$FAILED" ] && RESULT="partial:$FAILED"
+  RESULT="done"; [ -n "$FAILED" ] && RESULT="partial:$FAILED"
   finish "SESSION=$SESSION
 RESULT=$RESULT"
   echo "== ferdig: $SESSION ($RESULT)"
@@ -488,7 +496,7 @@ if [ "$PROCEDURE" = fullrange ]; then
     if [ -n "$RPY" ]; then "$RPY" "$REPO/tools/report_auto.py" "$SESSION" > "$SESSION/report.log" 2>&1; echo "== report exit $? via $RPY ($(tail -n 1 "$SESSION/report.log" 2>/dev/null))"
     else echo "== report hoppet over: ingen python med numpy+matplotlib (pip install matplotlib pypdf packaging)"; fi
   fi
-  RESULT=done; [ -n "$FAILED" ] && RESULT="partial:$FAILED"
+  RESULT="done"; [ -n "$FAILED" ] && RESULT="partial:$FAILED"
   finish "SESSION=$SESSION
 RESULT=$RESULT"
   [ -z "$FAILED" ]; exit $?
@@ -505,6 +513,6 @@ if [ $RUN -eq 0 ]; then "$PY" -m soapypower.experiments analyze "$SESSION"; ANAL
 finish "SESSION=$SESSION
 RUN_EXIT=$RUN
 ANALYZE_EXIT=$ANALYZE
-RESULT=$([ $RUN -eq 0 ] && echo done || echo run_failed)"
+RESULT=$([ $RUN -eq 0 ] && echo "done" || echo run_failed)"
 echo "== ferdig: $SESSION   logg: $LOG"
 [ $RUN -eq 0 ]

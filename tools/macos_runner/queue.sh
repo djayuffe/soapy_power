@@ -33,7 +33,8 @@ case "$PROC" in suite|baseline|fullrange) ;; *) echo "--procedure: suite, baseli
 case "$DEV" in b200|bladerf) ;; *) echo "--device: b200 or bladerf" >&2; exit 2;; esac
 case "$JOB" in dense-dc|survey|survey-anchor|dense-dc+survey) ;; *) echo "--bladerf-job: dense-dc, survey, survey-anchor or dense-dc+survey" >&2; exit 2;; esac
 [[ "$WAIT" =~ ^[0-9]+$ ]] || { echo "--wait: seconds" >&2; exit 2; }
-[ -z "$SGAIN" ] || [[ "$SGAIN" =~ ^(auto|[0-9]{1,2}(\.[0-9])?)$ ]] || { echo "--superscan-gain: auto or 0-76 dB" >&2; exit 2; }
+case "$PLANARGS" in *[!A-Za-z0-9\ .=_-]*) echo "--plan-args: letters, digits, space and . = _ - only" >&2; exit 2;; esac
+[ -z "$SGAIN" ] || [ "$SGAIN" = auto ] || { [[ "$SGAIN" =~ ^[0-9]{1,2}(\.[0-9])?$ ]] && awk -v g="$SGAIN" 'BEGIN{exit !(g<=76)}'; } || { echo "--superscan-gain: auto or 0-76 dB" >&2; exit 2; }
 [ -z "$SDITH" ] || [[ "$SDITH" =~ ^[0-9]{1,4}$ ]] || { echo "--superscan-dither: kHz" >&2; exit 2; }
 [ -z "$SRATE" ] || [[ "$SRATE" =~ ^(2|4|8)$ ]] || { echo "--superscan-rate: 2 | 4 | 8" >&2; exit 2; }
 [ -z "$SPLAN" ] || [[ "$SPLAN" =~ ^(sat|sat-full|sat-s)$ ]] || { echo "--superscan-plan: sat | sat-full | sat-s" >&2; exit 2; }

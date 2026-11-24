@@ -25,11 +25,11 @@ import hopscan_waterfall as hw                    # noqa: E402  viewer template,
 import superscan_id as sid                       # noqa: E402  identification (SatNOGS + SGP4) and signal format
 import matplotlib.pyplot as plt                   # noqa: E402
 from matplotlib.backends.backend_pdf import PdfPages   # noqa: E402
-from matplotlib.ticker import MultipleLocator, AutoMinorLocator   # noqa: E402
 from scipy.ndimage import percentile_filter, uniform_filter, label, find_objects   # noqa: E402
-from scipy.optimize import curve_fit              # noqa: E402
+from scipy.optimize import curve_fit, OptimizeWarning   # noqa: E402
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore', category=RuntimeWarning)   # NaN gaps (masked DC, missing hops) are expected
+warnings.filterwarnings('ignore', category=OptimizeWarning)  # singular covariance of a rejected track model
 C_LIGHT = 299792458.0
 V_LEO = 7.6e3                  # m/s, used only for the indicative minimum-range figure
 R_MIN = 300e3                  # m, closest plausible LEO slant range (bounds the Doppler rate)
@@ -52,7 +52,7 @@ def fit_heading(fig, x, y, text, **kwargs):
 
 # ---------------------------------------------------------------------------------------------- loading
 def load(path):
-    order, hop, sweep, recs, io = [], [], [], [], []; meta0 = None; statuses = set(); conts = set(); last_h = None; sw = 0
+    order, recs, io = [], [], []; meta0 = None; capture_signature = None; statuses = set(); conts = set(); last_h = None; sw = 0
     with open(path) as fh:
         for line in fh:
             if not line.strip():
@@ -67,7 +67,7 @@ def load(path):
             if not np.isfinite(first) or not math.isclose(first,c-(n//2)*step,abs_tol=max(1e-3,step*1e-6),rel_tol=0):
                 raise ValueError('unsupported superscan RF/IF frequency mapping')
             signature=(n,step,m.get('sample_rate_hz'),m.get('window'),m.get('segment_count'),r['unit'],json.dumps(m.get('context') or {},sort_keys=True,allow_nan=False))
-            if meta0 is not None and signature!=capture_signature:raise ValueError('superscan receiver/grid state changed')
+            if capture_signature is not None and signature!=capture_signature:raise ValueError('superscan receiver/grid state changed')
             capture_signature=signature
             for field in ('time_start','time_stop'):
                 dt=datetime.datetime.fromisoformat(r[field])
@@ -451,7 +451,7 @@ def slug(name):
 
 def waterfall(ax, X, S, t_ref, vmin, vmax, cmap='inferno', target_px=3400):
     """Per hop block of the band, rows at that hop's own measured times; columns pooled (max) to whole pixels."""
-    f = S['f'] / 1e6; cell_step=S.get('step_hz',(S['f'][1]-S['f'][0]) if len(f)>1 else 1.0)/1e6; cm = plt.get_cmap(cmap).copy(); cm.set_bad(hw.MASKED); ax.set_facecolor(hw.MASKED); m = None
+    f = S['f'] / 1e6; cell_step=S.get('step_hz',(S['f'][1]-S['f'][0]) if len(f)>1 else 1.0)/1e6; cm = plt.get_cmap(cmap).with_extremes(bad=hw.MASKED); ax.set_facecolor(hw.MASKED); m = None
     p = max(1, int(math.ceil(len(f) / target_px)))
     k = 0
     while k < len(f):
@@ -463,7 +463,6 @@ def waterfall(ax, X, S, t_ref, vmin, vmax, cmap='inferno', target_px=3400):
         cols = np.arange(k, e, p); Z = np.stack([np.nanmax(X[:, c:min(c + p, e)], 1) for c in cols], 1)
         xe = np.append(f[cols] - cell_step / 2, f[e - 1] + cell_step / 2)
         hi = list(S['hops']).index(h); ts = S['T0'][:, hi] - t_ref
-        ok = np.isfinite(ts)
         ye,paint=dwell_mesh(Z,ts,S['T1'][:,hi]-t_ref)
         if not len(ye):
             k=e;continue
@@ -487,7 +486,6 @@ def band_figure(A, Bd, out, tag):
     ax0.set_xlim(f[0], f[-1]); ax0.tick_params(labelbottom=False); ax0.set_ylabel('dB, run\nmean', fontsize=12)
     ax0.set_ylim(-0.4, max(2.0, np.nanpercentile(Bd['mres'], 99.99) + 0.6))
     ax = fig.add_axes([0.05, 0.075, 0.895, 0.655])
-    stats = {}
     D = S['D']; m0, s0 = mad(D)
     mm = waterfall(ax, D, S, t_ref, m0 - 1 * s0, m0 + max(14 * s0, 1.5))
     for tr in Bd['tracks']:
@@ -552,7 +550,7 @@ def doppler_figure(A, out, tag):
         sel = np.flatnonzero(np.abs(S['fsrc'] - ref) <= half)
         if len(sel) > 1:
             Z = S['B'][:, sel]; hi_ = list(S['hops']).index(S['hop'][sel[len(sel) // 2]]); ts = S['T0'][:, hi_] - A['t_ref']
-            ok = np.isfinite(ts); cm = plt.get_cmap('inferno').copy(); cm.set_bad(hw.MASKED); sg = tr['_Bd']['sig']
+            ok = np.isfinite(ts); cm = plt.get_cmap('inferno').with_extremes(bad=hw.MASKED); sg = tr['_Bd']['sig']
             xs = (S['fsrc'][sel] - ref) / 1e3; dx = (xs[1] - xs[0]) / 2
             ax.pcolormesh(np.append(xs - dx, xs[-1] + dx), np.append(ts[ok], ts[ok][-1] + A['timing']['sweep_period_s']), np.ma.masked_invalid(Z[ok]),
                           cmap=cm, vmin=-2 * sg, vmax=max(10 * sg, tr['mean_level_db']), shading='flat', rasterized=True)
@@ -616,7 +614,7 @@ def summary_page(A, pdf, out, tag):
         if cand:
             cn = collections.Counter(f"{x['name']} {x['f_tx_hz'] / 1e6:.3f}" for x in cand)
             body += ['frequency-only: ' + ', '.join(f"{k}{f' ×{n}' if n > 1 else ''}" for k, n in cn.most_common(4))]
-        body += [f"not heard: " + ', '.join(f"{p['name']} (max {p['max_el']:.0f}°)" for p in nh[:6])] if nh else []
+        body += ["not heard: " + ', '.join(f"{p['name']} (max {p['max_el']:.0f}°)" for p in nh[:6])] if nh else []
         fit_heading(fig, 0.04, y, head, fontsize=12.5, fontweight='bold', va='top', color=C_PRED)
         fig.text(0.04, y - 0.028, '\n'.join(textwrap.wrap(' · '.join(body) or 'no observed signal matched a predicted downlink', wrapw)[:5]), fontsize=9.5, va='top', color='#c9d4e6')
         y -= dy + 0.03
@@ -788,7 +786,7 @@ def _generate(output_override=None):
     if gcp.exists():
         A['gaincal'] = json.loads(gcp.read_text()); A['gaincal_png'] = str(src.parent / 'gaincal.png')
     allt = [t for Bd in A['bands'] for t in Bd['tracks']]
-    A['summary'] = s = dict(tag=tag, file=str(src), start=A['start'], **{k: v for k, v in A['info'].items()}, timing=A['timing'],
+    A['summary'] = s = dict(tag=tag, file=src.name, start=A['start'], **{k: v for k, v in A['info'].items()}, timing=A['timing'],
                             doppler_tracks=sum(t['kind'] == 'doppler' for t in allt), drift_tracks=sum(t['kind'] in ('drift', 'common-mode drift') for t in allt),
                             stable_tracks=sum(t['kind'] == 'stable' for t in allt), persistent_lines=sum(len(Bd['lines']) for Bd in A['bands']),
                             events=sum(len(Bd['events']) for Bd in A['bands']), wideband=sum(len(Bd['wideband']) for Bd in A['bands']),

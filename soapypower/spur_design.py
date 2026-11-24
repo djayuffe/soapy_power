@@ -69,7 +69,6 @@ def d_optimal_offsets(center_hz, candidates_hz, count=3, sigma_hz=None,
         order = np.argsort(np.abs(candidates - center_hz))[::-1]
         chosen = list(candidates[order[:count]])
         if np.ptp(chosen) < min_span_hz:
-            idx = np.argsort(candidates)
             chosen = list(candidates[np.linspace(0, candidates.size - 1, count).astype(int)])
         chosen = list(np.unique(chosen))
         while len(chosen) < count:
@@ -187,7 +186,6 @@ def filter_for_rf(filter_bank, rf_hz):
 
 def lab_matrix():
     """The T1-T5 controlled tests from the plan, with explicit predictions."""
-    lo = 260e6
     return {
         'T1': {
             'name': '50 ohm termination, no external RF',

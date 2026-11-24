@@ -1,14 +1,12 @@
 """Inventory hardware telemetry and build/apply explicitly reference-validated models."""
 import argparse
 import copy
-import hashlib
 import io
 import json
-from pathlib import Path
 import numpy as np
 from soapypower.files import load_json,loads_json,write_json,_atomic_write,EvidenceSnapshot
 from soapypower.telemetry import TelemetryMonitor,TelemetryPolicy,digest,optional_call
-from soapypower.telemetry_models import fit_thermal,fit_settling,ThermalModel,evaluate_settling
+from soapypower.telemetry_models import fit_thermal,fit_settling,ThermalModel
 from soapypower.filter_model import digital_response
 
 

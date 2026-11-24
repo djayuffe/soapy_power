@@ -7,7 +7,6 @@ identify(A, satdb_dir, qth) adds to A:
 Matching: observed f(t) vs predicted f_tx*(1 - range_rate/c) of every in-band transmitter of every
 satellite above the horizon, allowing a constant transmitter offset (see satdb.match_track)."""
 import json, math
-import warnings
 from pathlib import Path
 import numpy as np
 import satdb as sd
@@ -105,7 +104,7 @@ def stacked(A, p, tx, shift=0.0, min_el=5.0):
         b = Bd['band']
         if not (b['lo_hz'] <= f_tx <= b['hi_hz']):
             continue
-        c = _band_cache(Bd); D = c['D']
+        c = _band_cache(Bd)
         offs = np.arange(-GUIDE_HZ, GUIDE_HZ + c['step'] / 2, c['step'])
         samples, times, predictions, row_ids, group_ids = [], [], [], [], []
         for gi, (cols, t) in enumerate(c['groups']):
@@ -163,7 +162,7 @@ def guided(A, p, tx, shift=0.0, k_sigma=5.0):
         b = Bd['band']
         if not (b['lo_hz'] <= f_tx <= b['hi_hz']):
             continue
-        S = Bd['S']; c = _band_cache(Bd); D = c['D']; m0, s0 = c['thr_base']; thr = m0 + k_sigma * s0
+        c = _band_cache(Bd); D = c['D']; m0, s0 = c['thr_base']; thr = m0 + k_sigma * s0
         best = {}
         for cols, t in c['groups']:
             ok = np.isfinite(t) & (t >= p['t'][0]) & (t <= p['t'][-1])
@@ -227,6 +226,14 @@ def doppler_discriminates(g, step):
     return bool(np.ptp(fo - off) >= 2 * step and np.std(off) <= 0.6 * np.std(fo))
 
 
+def public_manifest(manifest):
+    """Reference provenance safe to publish: file names instead of local absolute paths, and no hash of the
+    observer position (a short, structured file; its digest would allow confirming a guessed location)."""
+    def clean(entries):
+        return {Path(k).name: ('withheld (observer position)' if Path(k).name == 'qth.json' else v) for k, v in (entries or {}).items()}
+    return dict(manifest, inputs=clean(manifest.get('inputs')), files=clean(manifest.get('files')))
+
+
 def identify(A, satdb_dir=None, qth_path=None):
     step = A['info']['step_hz']; period = A['timing']['sweep_period_s']; t_ref = A['t_ref']
     # observed format for every non-trivial track and event (works without a database)
@@ -269,13 +276,13 @@ def identify(A, satdb_dir=None, qth_path=None):
         res['reference_basis'] = 'capture-time snapshot' if created <= t0 else 'retrospective snapshot'
         res['observer_frozen'] = Path(qth_path).resolve() == (reference/'qth.json').resolve()
         if not res['observer_frozen']: res['reference_basis'] = 'observer override; satellite database frozen separately'
-        res['reference_manifest'] = manifest
+        res['reference_manifest'] = public_manifest(manifest)
     else:
         res['reference_basis'] = 'retrospective mutable cache; not frozen before capture'
     res['tle_policy'] = dict(max_age_days=max_age, engineering_age_gate=True, guarantees_orbit_accuracy=False)
-    res['excluded_elements'] = [dict(norad=x['norad'], **sd.tle_eligibility(x['l1'],x['l2'],t0,t1,max_age)) for x in tles
-                               if not sd.tle_eligibility(x['l1'],x['l2'],t0,t1,max_age)['eligible']]
-    tles = [x for x in tles if sd.tle_eligibility(x['l1'],x['l2'],t0,t1,max_age)['eligible']]
+    eligibility = [(x, sd.tle_eligibility(x['l1'], x['l2'], t0, t1, max_age)) for x in tles]
+    res['excluded_elements'] = [dict(norad=x['norad'], **e) for x, e in eligibility if not e['eligible']]
+    tles = [x for x, e in eligibility if e['eligible']]
     preds = sd.predict(db, qth, t0, t1, bands, max_tle_age_days=max_age)
     res['available'] = True; res['qth_source'] = qth.get('source', '')
     used = set()

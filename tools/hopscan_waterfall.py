@@ -122,7 +122,7 @@ def draw(ax, A, W, Z, how, vmin, vmax, cmap=CMAP, target_px=5400):
     """Staircase waterfall: hop h's rows span its own measured start times."""
     keep, nh, f, step_mhz = W['keep'], A['nh'], A['f'], A['step'] / 1e6
     p = _pfactor(keep, nh, target_px)
-    cm = colormaps[cmap].copy(); cm.set_bad(MASKED)
+    cm = colormaps[cmap].with_extremes(bad=MASKED)
     ax.set_facecolor(MASKED)
     m = None
     blocks = pool(Z, keep, nh, p, how)
@@ -186,7 +186,7 @@ def hero(A, W, out, tag):
     m, p = draw(ax, A, W, W['E'], 'max', lo_, hi_, target_px=px)
     ax.set_xlabel('MHz', fontsize=14); ax.set_ylabel('seconds since start', fontsize=14); ax.tick_params(labelsize=12)
     ax.xaxis.set_major_locator(MultipleLocator(0.5)); ax.xaxis.set_minor_locator(MultipleLocator(0.1))
-    tmax = W['te'][-1].max(); pad = 0.012 * (f[-1] - f[0])
+    pad = 0.012 * (f[-1] - f[0])
     for q, e in enumerate(sorted(W['events'], key=lambda e: e['f_mhz'])):
         ax.add_patch(plt.Rectangle((e['f_lo_mhz'] - pad, e['t_start_s'] - 2), e['f_hi_mhz'] - e['f_lo_mhz'] + 2 * pad, e['t_end_s'] - e['t_start_s'] + 4,
                                    fill=False, ec=ah.C1, lw=1.3, zorder=6))
@@ -242,7 +242,7 @@ def zoom(A, W, out, tag, n=8, n_ev=4, half_khz=15.0):
              fontsize=24, fontweight='bold', va='top')
     fig.text(0.03, 1 - 0.85 / (6.2 * rows + 1.6), f"residual, no smoothing, colour −2σ…+6σ (emissions: −2σ…+20σ) (σ = {W['sig']:.3f} dB) · right: level of the ±2 bins around the line per sweep "
              f"(thin) and its 5-sweep mean (thick); dashed = +3σ of a 5-bin average", fontsize=12, color='#8fa0bd', va='top')
-    cm = colormaps[CMAP].copy(); cm.set_bad(MASKED)
+    cm = colormaps[CMAP].with_extremes(bad=MASKED)
     H = 6.2 * rows + 1.6; top = 1 - 1.5 / H; cellh = (top - 0.05) / rows
     if evs and len(evs) % cols:                       # persistent lines start on a fresh row
         cands = evs + [None] * (cols - len(evs) % cols) + cands[len(evs):]

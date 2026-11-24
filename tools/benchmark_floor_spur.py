@@ -64,7 +64,6 @@ def detection(trials=40, bins=20000, dof=8, strengths=(4.0, 8.0, 12.0)):
 
 def classification(trials=60):
     rng = np.random.default_rng(11)
-    names = list(st.scenarios())
     agg = {'legacy': {'tp': 0, 'fp': 0, 'missed': 0, 'kind_errors': 0}, 'new': {'tp': 0, 'fp': 0, 'missed': 0, 'kind_errors': 0}}
     per = {}
     for name, sc in st.scenarios().items():

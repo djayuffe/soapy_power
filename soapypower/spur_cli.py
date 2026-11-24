@@ -18,7 +18,6 @@ import sys
 import numpy as np
 
 from soapypower import spur_design as sd
-from soapypower import spur_inference as si
 from soapypower import spur_pipeline as sp
 from soapypower import spur_twin as st
 from soapypower.floor_estimation import floor_temperature_kalman

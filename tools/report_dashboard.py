@@ -1,9 +1,16 @@
+"""One-off figure script for the 2026-11-17/18 full-range features-on/off reports (docs/results/fullrange-*).
+
+Inputs: SESSIONS/fullrange-combined/{compare,waterfall}.json and SESSIONS/dash_suite.json plus the floor/spur benchmark JSON;
+SESSIONS = $SPR_SESSIONS (default ./sessions); benchmark = $SPR_BENCH_JSON (default /tmp/bench_full.json).
+Writes PNG/PDF files into the current directory.
+"""
+import os
 import json, numpy as np, matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-U='/mnt/user-data/uploads/soapy_power/sessions/'
-c=json.load(open(U+'fullrange-combined/compare.json')); s=json.load(open(U+'dash_suite.json')); b=json.load(open('/tmp/bench_full.json'))
+U=os.environ.get('SPR_SESSIONS','sessions').rstrip('/')+'/'
+c=json.load(open(U+'fullrange-combined/compare.json')); s=json.load(open(U+'dash_suite.json')); b=json.load(open(os.environ.get('SPR_BENCH_JSON','/tmp/bench_full.json')))
 on,off=c['variants']['features-on'],c['variants']['features-off']
 BL,OR,GR,RD,GY='#0072B2','#E69F00','#009E73','#D55E00','#6b7280'
 plt.rcParams.update({'font.size':9,'axes.spines.top':False,'axes.spines.right':False,'axes.grid':True,'grid.alpha':.25,'axes.titlesize':10.5,'axes.titleweight':'bold','axes.titlelocation':'left'})

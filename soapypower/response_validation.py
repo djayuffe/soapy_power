@@ -4,7 +4,6 @@ import json
 import math
 from pathlib import Path
 
-from soapypower.calibration import PowerCalibration
 from soapypower.calibration_workflows import _sha256, _check_coordinates, average_capture, band_summary
 from soapypower.files import load_json
 from soapypower.numerics import finite, integer

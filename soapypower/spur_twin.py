@@ -64,7 +64,6 @@ def _candidates(power, floor, dof, method, alpha):
 def analyze(twin, lo_list, tones=(), imd=(), alpha=0.001, dc_mask_hz=0.5e6, tol_bins=1):
     """Floor + FDR peaks + LO-diversity classification over captures at lo_list (first = reference)."""
     caps = [twin.capture(lo, tones=tones, imd=imd) for lo in lo_list]
-    ref = caps[0]
     masks = []
     for c in caps:
         keep = np.abs(twin.if_hz) >= dc_mask_hz

@@ -10,7 +10,7 @@ Doppler: f_rx = f_tx * (1 - range_rate / c). Identification compares an observed
 predicted in-band curve, allowing a constant transmitter offset; the residual must follow the curve.
 Format: the transmitter's mode/baud gives an expected occupied bandwidth that is compared with the observed one
 (PSD only: modulation is inferred from spectral shape and timing, nothing is demodulated or decoded)."""
-import datetime, json, math, sys, time, urllib.request
+import datetime, json, math, sys, urllib.request
 from pathlib import Path
 import numpy as np
 from report_bundle import bundle, verify

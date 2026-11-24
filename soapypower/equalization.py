@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from soapypower.calibration import PowerCalibration, require_fixed_gain
+from soapypower.calibration import require_fixed_gain
 from soapypower.calibration_workflows import _sha256
 from soapypower.files import write_json_lines
 from soapypower.numerics import finite, integer, numeric_array

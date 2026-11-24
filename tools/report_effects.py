@@ -1,8 +1,15 @@
+"""One-off figure script for the 2026-11-17/18 full-range features-on/off reports (docs/results/fullrange-*).
+
+Inputs: SESSIONS/fullrange-combined/{compare,waterfall}.json and SESSIONS/dash_suite.json;
+SESSIONS = $SPR_SESSIONS (default ./sessions).
+Writes PNG/PDF files into the current directory.
+"""
+import os
 import json, numpy as np, matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-U='/mnt/user-data/uploads/soapy_power/sessions/'
+U=os.environ.get('SPR_SESSIONS','sessions').rstrip('/')+'/'
 c=json.load(open(U+'fullrange-combined/compare.json')); S=json.load(open(U+'dash_suite.json'))
 on,off=c['variants']['features-on'],c['variants']['features-off']; A,B=S['telemetry_on'],S['telemetry_off']
 BL,OR,GR,RD,GY,PU='#0072B2','#E69F00','#009E73','#D55E00','#6b7280','#CC79A7'

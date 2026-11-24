@@ -612,12 +612,9 @@ def waterfall_panel(ax, b, mat, t, floor, peak, narrows, ok=None, max_cols=900):
         step = int(np.ceil(n / max_cols))
         m = (n // step) * step
         pooled = np.nanmedian(mat[:, :m].reshape(mat.shape[0], -1, step), axis=2)
-        f = b['b0'] + (np.arange(m // step) + .5) * step * res
     else:
         pooled = mat
-        f = b['b0'] + (np.arange(n) + .5) * res
-    cmap = plt.get_cmap('turbo').copy()
-    cmap.set_bad(BG)
+    cmap = plt.get_cmap('turbo').with_extremes(bad=BG)
     vmin = floor
     vmax = floor + min(45.0, max(6.0, peak - floor + 2.0))
     dt = np.median(np.diff(t)) if len(t) > 1 else 1.0
@@ -1046,7 +1043,6 @@ def zoom_panel(ax, b, m_on, m_off, lo, hi, title, marks=(), spans=(),
             ax.axvline(x, color=GOLD, lw=.7, ls=':', alpha=.8)
             ax.text(x, .985, lab, transform=ax.get_xaxis_transform(), color=GOLD,
                     fontsize=6.2, rotation=90, ha='right', va='top')
-    vis = sel & np.isfinite(m_on['med'])
     vlo = min(m_on['floor'], np.nanmin(m_on['p10'][sel & np.isfinite(m_on['p10'])])) - 1.5
     hi_candidates = [m_on['floor'] + BLOCK_SEED_DB + 2]
     for m in (m_on, m_off):
@@ -1278,7 +1274,6 @@ def write_markdown(path, meta, summ, rows_all):
     lte = [r for r in rows_all if r['band'] == 'lte800']
     g900 = [r for r in rows_all if r['band'] == 'gsm900']
     g18 = [r for r in rows_all if r['band'] == 'mhz1800']
-    l21 = [r for r in rows_all if r['band'] == 'lte2100']
     n900 = summ['gsm900']['narrow_on']
     n18 = summ['mhz1800']['narrow_on']
     n947 = [c for c in n900 if abs(c['f'] - 947.81) < .1][0]
@@ -1291,9 +1286,7 @@ def write_markdown(path, meta, summ, rows_all):
     d_lte1 = fmt_delta(lte[1]['on_med'] - lte[1]['off_med'])
     floor_lte = abs(summ['lte800']['on']['floor'] - summ['lte800']['off']['floor'])
     n1840 = [c for c in n18 if abs(c['f'] - 1840.89) < .1][0]
-    b930 = [r for r in g900 if r['on_span'] and r['on_span'][0] < 945][0]
     b954 = [r for r in g900 if r['on_span'] and r['on_span'][0] > 950][0]
-    b1840 = [r for r in g18 if r['on_span'] and r['on_span'][0] < 1845][0]
     b1862 = [r for r in g18 if r['on_span'] and r['on_span'][0] > 1860][0]
     own954 = b954['on_med'] - b954['off_med']
     own1862 = b1862['on_med'] - b1862['off_med']

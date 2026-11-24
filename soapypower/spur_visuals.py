@@ -4,7 +4,6 @@ Matplotlib is an optional dependency.  Every public function imports it lazily
 and raises a clear ``RuntimeError`` if it is unavailable, so the analysis and
 its tests remain usable on a headless machine or in a minimal virtualenv.
 """
-import math
 from pathlib import Path
 
 import numpy as np

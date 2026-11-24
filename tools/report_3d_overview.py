@@ -1,9 +1,16 @@
+"""One-off figure script for the 2026-11-17/18 full-range features-on/off reports (docs/results/fullrange-*).
+
+Inputs: SESSIONS/fullrange-combined/{compare,waterfall}.json and SESSIONS/dash_suite.json;
+SESSIONS = $SPR_SESSIONS (default ./sessions).
+Writes PNG/PDF files into the current directory.
+"""
+import os
 import json, numpy as np, matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib import cm, colors
-from mpl_toolkits.mplot3d import Axes3D
-U='/mnt/user-data/uploads/soapy_power/sessions/'
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  registers the 3d projection on older matplotlib
+U=os.environ.get('SPR_SESSIONS','sessions').rstrip('/')+'/'
 W=json.load(open(U+'fullrange-combined/waterfall.json')); S=json.load(open(U+'dash_suite.json'))['telemetry_on']
 f=W['start_mhz']+W['cell_mhz']*(np.arange(2965)+.5)
 G={k:np.array([[np.nan if x is None else x for x in r] for r in W[k]['grid']],float) for k in ('features-on','features-off')}
@@ -47,7 +54,6 @@ def onoff():
     def prof(z):
         m=np.nanmedian(z,0); ix=np.digitize(f,eb); return np.array([np.nanmax(m[ix==k]) if (ix==k).any() else np.nan for k in range(1,len(eb))])
     on,off=prof(G['features-on']),prof(G['features-off']); x=eb[:-1]+5
-    dz=np.nan_to_num(on-off)
     for yy,pr,col in ((0,on,'#00d1ff'),(1,off,'#ffb000')):
         xs=sq(x[np.isfinite(pr)]); zs=pr[np.isfinite(pr)]
         ax.bar(xs,np.full_like(xs,.55),zs+136,zdir='z',color=col,alpha=.0)  # placeholder to set limits

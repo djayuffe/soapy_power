@@ -5,13 +5,12 @@ import json
 import sys
 from pathlib import Path
 import numpy as np
-from soapypower import floor_estimation as fe
 
 CELL_HZ = 1e6
 
 
 def load(path, usable=0.35, dc_hz=0.5e6, start_hz=70e6, stop_hz=6e9):
-    cells, vals, hops, times, temps, rejected = [], [], set(), [], 0, 0
+    cells, vals, hops, times, temps = [], [], set(), [], 0
     tseries, rseries = [], []
     records = 0
     with open(path) as f:
@@ -75,7 +74,6 @@ def summarize(name, d):
     lv = levels(d)
     cells = np.array(sorted(lv))
     db = np.array([lv[c] for c in cells])
-    est = fe.floor_estimate_db(db - db.max(), dof=None) if db.size > 20 else None
     from datetime import datetime
     secs = None
     if d['time_first']:

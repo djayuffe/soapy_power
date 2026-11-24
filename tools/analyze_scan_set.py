@@ -14,7 +14,6 @@ import html
 import json
 import math
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import traceback
@@ -43,7 +42,7 @@ def telemetry(source, writer):
     counts=collections.Counter();centers=collections.Counter();records=[];h=hashlib.sha256();fixed=None;previous=None;credit=dwell=excluded=0.;spectral_bins=masked=0
     with source.open('rb') as f:
         for i,line in enumerate(f):
-            h.update(line);r=json.loads(line);m=r['metadata'];ctx=m.get('context',{});rf=m.get('rf_state',{}).get('after',{});hr=m.get('headroom',{});sensors=rf.get('telemetry',{});validity=rf.get('validity',{});io=m.get('host_io',{});ts=m.get('telemetry_statistics',{})
+            h.update(line);r=json.loads(line);m=r['metadata'];ctx=m.get('context',{});rf=m.get('rf_state',{}).get('after',{});hr=m.get('headroom',{});sensors=rf.get('telemetry',{});validity=rf.get('validity',{});ts=m.get('telemetry_statistics',{})
             identity=(json.dumps(ctx,sort_keys=True),m.get('sample_rate_hz'),len(r['power']),r['step_hz'],r.get('unit'))
             if fixed is None:fixed=identity
             if identity!=fixed:raise ValueError('mixed gain/rate/receiver contexts; split source before analysis')
@@ -63,7 +62,7 @@ def telemetry(source, writer):
             row=dict(source=source.parent.name+'/'+source.name,record=i,start_unix=a,stop_unix=b,center_mhz=center/1e6,gain_db=sum(ctx.get('gains',{}).values()),sample_rate_hz=m.get('sample_rate_hz'),temperature_c=validity.get('temperature_c'),max_component=hr.get('max_component'),p999_component=hr.get('p999_component'),sensor_latency_p95_ms=ts.get('sensor_latency_p95_ms'),native_chain_status=rf.get('chain',{}).get('status'),lo_locked=sensors.get('rx:lo_locked',{}).get('value'),reference_locked=sensors.get('device:ref_locked',{}).get('value'),reference_lock_required=validity.get('reference_lock_required'),rssi_db=sensors.get('rx:rssi',{}).get('value'),headroom_pass=hr.get('accepted'),rf_validity_pass=validity.get('passed'))
             writer.writerow(row);records.append(row)
     if not records:raise ValueError('empty capture')
-    return dict(source=str(source),sha256=h.hexdigest(),records=len(records),spectral_bins=spectral_bins,masked_or_estimated_bins=masked,record_span_s=records[-1]['stop_unix']-records[0]['start_unix'],credited_scan_s=credit,rf_dwell_s=dwell,excluded_gap_s=excluded,first_unix=records[0]['start_unix'],last_unix=records[-1]['stop_unix'],gain=json.loads(fixed[0]).get('gains'),sample_rate_hz=fixed[1],fft_bins=fixed[2],step_hz=fixed[3],counts=dict(counts),centers_mhz={str(k/1e6):v for k,v in centers.items()}),records
+    return dict(source=source.parent.name+'/'+source.name,sha256=h.hexdigest(),records=len(records),spectral_bins=spectral_bins,masked_or_estimated_bins=masked,record_span_s=records[-1]['stop_unix']-records[0]['start_unix'],credited_scan_s=credit,rf_dwell_s=dwell,excluded_gap_s=excluded,first_unix=records[0]['start_unix'],last_unix=records[-1]['stop_unix'],gain=json.loads(fixed[0]).get('gains'),sample_rate_hz=fixed[1],fft_bins=fixed[2],step_hz=fixed[3],counts=dict(counts),centers_mhz={str(k/1e6):v for k,v in centers.items()}),records
 
 
 FIELDS=('source','record','start_unix','stop_unix','center_mhz','gain_db','sample_rate_hz','temperature_c','max_component','p999_component','sensor_latency_p95_ms','native_chain_status','lo_locked','reference_locked','reference_lock_required','rssi_db','headroom_pass','rf_validity_pass')
@@ -160,7 +159,6 @@ def cover_pdf(report, output):
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import landscape,A4
-    from reportlab.lib.units import inch
     style=getSampleStyleSheet();story=[];width,height=landscape(A4)
     def para(text,kind='BodyText'):story.append(Paragraph(html.escape(text),style[kind]));story.append(Spacer(1,8))
     para('Complete partitioned SDR scan analysis','Title')
@@ -226,7 +224,7 @@ def generate(output, sessions, *, render_pdf=True):
         if render_pdf:cover_pdf(report,stage)
         esc=html.escape;sections=''
         for n,p in enumerate(parts):
-            s=p['analysis'];folder=p['report_dir'];links=''.join(f'<li><a href="{folder}/{x.name}">{esc(x.name)}</a></li>' for x in sorted((stage/folder).glob('*.html')))
+            folder=p['report_dir'];links=''.join(f'<li><a href="{folder}/{x.name}">{esc(x.name)}</a></li>' for x in sorted((stage/folder).glob('*.html')))
             sections+=f'<section><h2>Part {n+1}: {p["sample_rate_hz"]/1e6:g} MS/s / {esc(str(p["gain"]))}</h2><p>{p["records"]:,} records; {p["credited_scan_s"]:.2f} s credited scan time; {p["rf_dwell_s"]:.2f} s summed dwell. SHA-256 <code>{p["sha256"]}</code></p><p><a href="{folder}/superscan_analysis.pdf">Full partition PDF</a> · <a href="{folder}/superscan_summary.json">Complete signal/pass inventory</a> · <a href="{folder}/superscan_tracks.csv">Tracks CSV</a> · <a href="{folder}/superscan_lines.csv">Lines CSV</a> · <a href="{folder}/superscan_events.csv">Events CSV</a></p><img loading="lazy" src="{folder}/superscan_p1_summary.png"><details><summary>Native-resolution interactive waterfalls</summary><ul>{links}</ul></details></section>'
         (stage/'index.html').write_text('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Full partitioned SDR analysis</title><style>body{max-width:1280px;margin:auto;padding:32px;background:#0b1422;color:#e4eefc;font:16px/1.6 system-ui}h1{font-size:42px}h2{color:#70ddce}a{color:#7bd8ff}section{margin:25px 0;padding:22px;background:#14243a}img{width:100%}code{overflow-wrap:anywhere;font-size:12px}p,li{color:#c0d0e4}summary{cursor:pointer}</style>'+f'<h1>Complete partitioned SDR scan analysis</h1><p>{report["records"]:,} accepted records · {report["spectral_bins"]:,} recorded spectral bins processed · {report["credited_scan_s"]/60:.3f} minutes credited sequential scan time · {report["rf_dwell_s"]/60:.3f} minutes summed RF dwell.</p><p>Gain/rate contexts and interruptions are preserved. Levels remain relative. All accepted records are processed; graphical pixel grids and thumbnails are display representations.</p><p><a href="full-analysis.pdf">Multipage full analysis</a> · <a href="summary.json">Complete analysis JSON</a> · <a href="telemetry.csv">Every-record telemetry CSV</a> · <a href="bundle-manifest.json">Input/output hashes</a></p><img src="telemetry.png"><section><h2>Failure findings and fixes</h2><ul>'+''.join('<li>'+esc(x)+'</li>' for x in report['findings'])+'</ul></section>'+sections+''.join(f'<section><h2>Retained rejected IQ / phase</h2><p>{esc(r["evidence_class"])}: {esc(r["rejection_reason"])}. {esc(r["sample_scope"])}. Metrics: {esc(r["metrics_origin"])}. {esc(r["phase_scope"])}</p><img src="{r["plot"]}"></section>' for r in rejected)+'<section><h2>Limits</h2><ul>'+''.join('<li>'+esc(x)+'</li>' for x in report['limits'])+'</ul></section>')
     return report

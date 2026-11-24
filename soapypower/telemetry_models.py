@@ -7,7 +7,7 @@ import copy
 import math
 import numpy as np
 from soapypower.files import load_json
-from soapypower.numerics import finite,integer
+from soapypower.numerics import finite
 from soapypower.telemetry import digest
 
 

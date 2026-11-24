@@ -1,7 +1,14 @@
+"""One-off figure script for the 2026-11-17/18 full-range features-on/off reports (docs/results/fullrange-*).
+
+Inputs: SESSIONS/fullrange-combined/{compare,waterfall}.json and SESSIONS/dash_suite.json;
+SESSIONS = $SPR_SESSIONS (default ./sessions).
+Writes PNG/PDF files into the current directory.
+"""
+import os
 import json, numpy as np, matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-W=json.load(open('/mnt/user-data/uploads/soapy_power/sessions/fullrange-combined/waterfall.json'))
+W=json.load(open(os.environ.get('SPR_SESSIONS','sessions').rstrip('/')+'/fullrange-combined/waterfall.json'))
 f=70+2*(np.arange(2965)+.5)
 BG='#070b14';FG='#c9d4e6'
 plt.rcParams.update({'figure.facecolor':BG,'axes.facecolor':'#0b1222','text.color':FG,'axes.labelcolor':FG,'xtick.color':FG,'ytick.color':FG,'axes.edgecolor':'#2b3a55','axes.grid':True,'grid.color':'#24324f','grid.alpha':.5,'axes.spines.top':False,'axes.spines.right':False,'axes.titleweight':'bold','axes.titlelocation':'left'})
