@@ -52,9 +52,9 @@ def build(metadata, textures):
     info['planned_centers_mhz'] = [45.4931640625 + i * 6.986328125 for i in range(854)]
     payload = json.dumps(dict(info=info, textures=textures), separators=(',', ':'), allow_nan=False).replace('<', '\\u003c')
     here = Path(__file__).resolve().parent
-    result = (here/'explorer.html').read_text()
-    for marker, value in (('__ANALYSIS_JS__', (here/'heatmap_analysis.js').read_text()),
-                          ('__EXPLORER_JS__', (here/'explorer.js').read_text()),
+    result = (here/'explorer.html').read_text(encoding='utf-8')
+    for marker, value in (('__ANALYSIS_JS__', (here/'heatmap_analysis.js').read_text(encoding='utf-8')),
+                          ('__EXPLORER_JS__', (here/'explorer.js').read_text(encoding='utf-8')),
                           ('__PAYLOAD__', payload)):
         result = result.replace(marker, value)
     return result
@@ -66,8 +66,8 @@ def main():
     parser.add_argument('textures', type=Path, help='hires-textures.json')
     parser.add_argument('-o', '--output', type=Path, required=True)
     args = parser.parse_args()
-    html = build(json.loads(args.metadata.read_text()), json.loads(args.textures.read_text()))
-    args.output.write_text(html)
+    html = build(json.loads(args.metadata.read_text(encoding='utf-8')), json.loads(args.textures.read_text(encoding='utf-8')))
+    args.output.write_text(html, encoding='utf-8')
     print('Wrote {} ({:,} bytes)'.format(args.output, len(html.encode())))
 
 

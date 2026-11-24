@@ -132,6 +132,7 @@ if __name__ == '__main__':
     unittest.main()
 
 
+@unittest.skipIf(os.name == 'nt' or shutil.which('bash') is None, 'POSIX bash scripts')
 def test_auto_reanalysis_dispatches_before_sdr_discovery(tmp_path):
     import json
     root=tmp_path/'repo';sessions=root/'sessions';venv=sessions/'.venv/bin';binpath=tmp_path/'bin'

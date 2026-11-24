@@ -29,7 +29,7 @@ ASSETS = Path(__file__).with_name('web')
 def json_file(path, default=None):
     try:
         if path.stat().st_size > 12*1024*1024: return default
-        value=json.loads(path.read_text())
+        value=json.loads(path.read_text(encoding='utf-8'))
         return value if isinstance(value,dict) else default
     except (OSError, ValueError): return default
 
@@ -315,7 +315,7 @@ class Handler(BaseHTTPRequestHandler):
         url=urlsplit(self.path);control=self.server.control
         try:
             if url.path=='/':
-                body=(ASSETS/'index.html').read_text().replace('__TOKEN__',control.token)
+                body=(ASSETS/'index.html').read_text(encoding='utf-8').replace('__TOKEN__',control.token)
                 self.send(200,body,'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'"})
             elif url.path in ('/app.js','/style.css'):
                 p=ASSETS/url.path[1:];self.send(200,p.read_bytes(),'text/javascript' if p.suffix=='.js' else 'text/css')
