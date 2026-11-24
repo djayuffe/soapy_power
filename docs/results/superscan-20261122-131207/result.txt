@@ -1,2 +1,2 @@
 superscan exit=0 records=1413 settle_overflow_warnings=0 measurement_overflow=0 seconds=904 of=900
-superscan_report exit=0 via=/Users/ulfbertilsson/src/soapy_power/sessions/.venv/bin/python files=14 seconds=9
+superscan_report exit=0 via=sessions/.venv/bin/python files=14 seconds=9

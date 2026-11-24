@@ -1,5 +1,5 @@
 {
- "session": "/Users/ulfbertilsson/src/soapy_power/sessions/fullrange-20261118-111658",
+ "session": "sessions/fullrange-20261118-111658",
  "input": "antenna",
  "scope": "relative uncalibrated levels; 1 MHz cells, hop edges and DC excluded",
  "variants": {

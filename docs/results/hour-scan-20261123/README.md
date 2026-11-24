@@ -46,7 +46,7 @@ python -m pip install numpy scipy matplotlib sgp4 pypdf reportlab
 python tools/analyze_scan_set.py OUTPUT SESSION_1 SESSION_2 SESSION_3
 ```
 
-Raw JSONL and IQ remain in local acquisition sessions and are not committed here. Source digests are in the analysis JSON. Local path prefixes have been removed from the public JSON export. Do not concatenate the raw contexts into one homogeneous file.
+Raw JSONL and IQ remain in local acquisition sessions and are not committed here. Source digests are in the analysis JSON. Local path prefixes have been removed from the public JSON export. The SHA-256 of the private observer-position file (`qth.json`) is withheld in the reference provenance (redacted 2026-11-24; `sha256.json` updated for the four affected summaries and this file). Do not concatenate the raw contexts into one homogeneous file.
 
 Antenna measurements do not establish absolute power, noise figure, analog compression or calibrated sensitivity. PSD cannot recover waveform phase; phase diagnostics use only the retained rejected IQ, without a coherent reference. LO-origin labels remain diagnostic hypotheses, and off-curve controls do not provide a calibrated global false-discovery probability.
 

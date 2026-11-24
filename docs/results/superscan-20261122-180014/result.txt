@@ -6,4 +6,4 @@ superscan gain auto -> 76 dB (60 s calibration)
 superscan segment=1 exit=0 left_before=1800s
 superscan plan=sat-full rate=4M gain=76 exit=0 segments=1 records=2894 settle_overflow_warnings=0 measurement_overflow=0 seconds=1805 of=1800
 satdb fresh (< 24 h)
-superscan_report exit=0 via=/Users/ulfbertilsson/src/soapy_power/sessions/.venv/bin/python files=20 seconds=29
+superscan_report exit=0 via=sessions/.venv/bin/python files=20 seconds=29

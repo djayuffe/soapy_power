@@ -5,4 +5,4 @@ superscan segment=1 exit=2 left_before=1800s
 superscan segment=2 exit=2 left_before=1525s
 superscan plan=sat-full rate=8M gain=76 exit=2 segments=2 records=830 settle_overflow_warnings=3 measurement_overflow=1 seconds=527 of=1800
 satdb fresh (< 24 h)
-superscan_report exit=0 via=/Users/ulfbertilsson/src/soapy_power/sessions/.venv/bin/python files=20 seconds=23
+superscan_report exit=0 via=sessions/.venv/bin/python files=20 seconds=23

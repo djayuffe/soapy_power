@@ -2941,11 +2941,11 @@
         "sessions/satdb/satellites.json": "9a2c09c6147ce0ca4e11901bacfa0d6468cde0a7a54375d140a74e93ecd437e2",
         "sessions/satdb/transmitters.json": "eacae147c6136d1fa4899628b5cec159f25c5abcc223b7038f19aa833df99d0a",
         "sessions/satdb/meta.json": "75435704ba4d64cf7144a20799eb4b39527f7f3ea913cb35378a2def8fe443b5",
-        "sessions/qth.json": "0c761ca6181634498268287a60316c95649288c786c8fa16c62cddbaf5a1bf6f"
+        "sessions/qth.json": "withheld (observer position)"
       },
       "files": {
         "policy.json": "15f7003c86c0a269c91ab968392bc0fd7218a35a360e98d81c5193abc7be2dda",
-        "qth.json": "0c761ca6181634498268287a60316c95649288c786c8fa16c62cddbaf5a1bf6f",
+        "qth.json": "withheld (observer position)",
         "satdb/meta.json": "75435704ba4d64cf7144a20799eb4b39527f7f3ea913cb35378a2def8fe443b5",
         "satdb/satellites.json": "9a2c09c6147ce0ca4e11901bacfa0d6468cde0a7a54375d140a74e93ecd437e2",
         "satdb/tle.json": "527fdcdb297f8fdbee6f24eaa8ffe9e8b2c16f19d49f24e239477a6f2e618074",

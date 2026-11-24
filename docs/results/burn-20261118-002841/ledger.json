@@ -115,7 +115,7 @@
       "attempts": [
         {
           "argv": [
-            "/Users/ulfbertilsson/src/soapy_power/sessions/.soapy_power-20261118-002841",
+            "sessions/.soapy_power-20261118-002841",
             "-d",
             "driver=uhd,type=b200,serial=30B2A32,recv_frame_size=16360,num_recv_frames=1024",
             "-A",
@@ -127,7 +127,7 @@
             "-e",
             "300",
             "-O",
-            "/Users/ulfbertilsson/src/soapy_power/sessions/okt-20261118-002841/grid-a-fit.jsonl",
+            "sessions/okt-20261118-002841/grid-a-fit.jsonl",
             "-F",
             "json",
             "-r",
@@ -166,7 +166,7 @@
             "4",
             "--skip-driver-teardown",
             "--telemetry-policy",
-            "/Users/ulfbertilsson/src/soapy_power/sessions/okt-20261118-002841/telemetry-policy.json"
+            "sessions/okt-20261118-002841/telemetry-policy.json"
           ],
           "file": "grid-a-fit.jsonl",
           "finished_utc": "2026-11-17T23:34:14.846363+00:00",
@@ -190,7 +190,7 @@
       "attempts": [
         {
           "argv": [
-            "/Users/ulfbertilsson/src/soapy_power/sessions/.soapy_power-20261118-002841",
+            "sessions/.soapy_power-20261118-002841",
             "-d",
             "driver=uhd,type=b200,serial=30B2A32,recv_frame_size=16360,num_recv_frames=1024",
             "-A",
@@ -202,7 +202,7 @@
             "-e",
             "300",
             "-O",
-            "/Users/ulfbertilsson/src/soapy_power/sessions/okt-20261118-002841/grid-b-fit.jsonl",
+            "sessions/okt-20261118-002841/grid-b-fit.jsonl",
             "-F",
             "json",
             "-r",
@@ -241,7 +241,7 @@
             "4",
             "--skip-driver-teardown",
             "--telemetry-policy",
-            "/Users/ulfbertilsson/src/soapy_power/sessions/okt-20261118-002841/telemetry-policy.json"
+            "sessions/okt-20261118-002841/telemetry-policy.json"
           ],
           "file": "grid-b-fit.jsonl",
           "finished_utc": "2026-11-17T23:39:44.644524+00:00",
@@ -265,7 +265,7 @@
       "attempts": [
         {
           "argv": [
-            "/Users/ulfbertilsson/src/soapy_power/sessions/.soapy_power-20261118-002841",
+            "sessions/.soapy_power-20261118-002841",
             "-d",
             "driver=uhd,type=b200,serial=30B2A32,recv_frame_size=16360,num_recv_frames=1024",
             "-A",
@@ -277,7 +277,7 @@
             "-e",
             "300",
             "-O",
-            "/Users/ulfbertilsson/src/soapy_power/sessions/okt-20261118-002841/grid-a-holdout.jsonl",
+            "sessions/okt-20261118-002841/grid-a-holdout.jsonl",
             "-F",
             "json",
             "-r",
@@ -316,7 +316,7 @@
             "4",
             "--skip-driver-teardown",
             "--telemetry-policy",
-            "/Users/ulfbertilsson/src/soapy_power/sessions/okt-20261118-002841/telemetry-policy.json"
+            "sessions/okt-20261118-002841/telemetry-policy.json"
           ],
           "file": "grid-a-holdout.jsonl",
           "finished_utc": "2026-11-17T23:45:17.004477+00:00",
@@ -340,7 +340,7 @@
       "attempts": [
         {
           "argv": [
-            "/Users/ulfbertilsson/src/soapy_power/sessions/.soapy_power-20261118-002841",
+            "sessions/.soapy_power-20261118-002841",
             "-d",
             "driver=uhd,type=b200,serial=30B2A32,recv_frame_size=16360,num_recv_frames=1024",
             "-A",
@@ -352,7 +352,7 @@
             "-e",
             "300",
             "-O",
-            "/Users/ulfbertilsson/src/soapy_power/sessions/okt-20261118-002841/grid-b-holdout.jsonl",
+            "sessions/okt-20261118-002841/grid-b-holdout.jsonl",
             "-F",
             "json",
             "-r",
@@ -391,7 +391,7 @@
             "4",
             "--skip-driver-teardown",
             "--telemetry-policy",
-            "/Users/ulfbertilsson/src/soapy_power/sessions/okt-20261118-002841/telemetry-policy.json"
+            "sessions/okt-20261118-002841/telemetry-policy.json"
           ],
           "file": "grid-b-holdout.jsonl",
           "finished_utc": "2026-11-17T23:50:47.018158+00:00",

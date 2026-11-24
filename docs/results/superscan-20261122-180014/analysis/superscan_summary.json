@@ -1,6 +1,6 @@
 {
  "tag": "superscan",
- "file": "/Users/ulfbertilsson/src/soapy_power/sessions/superscan-20261122-180014/superscan.jsonl",
+ "file": "sessions/superscan-20261122-180014/superscan.jsonl",
  "start": "2026-11-22 17:01:52 UTC",
  "step_hz": 244.140625,
  "bins": 16384,
