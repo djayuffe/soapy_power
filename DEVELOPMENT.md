@@ -77,7 +77,9 @@ they are not coefficients for a physical device. The receiver entry point needs
 separately installed SoapySDR bindings/driver for actual acquisition.
 
 Review the diff and run `git diff --check`, `ruff check --select E9,F soapypower tools tests`
-and `shellcheck -S warning tools/macos_runner/*.sh`. Update README/help when flags change,
+and `shellcheck -S warning tools/macos_runner/*.sh`. The GUI, the scan supervisor and the report
+publication modules are kept in `ruff format` style (settings in `pyproject.toml`; CI checks the list in
+`.github/workflows/tests.yml`); format a file you add to that list instead of the whole tree. Update README/help when flags change,
 RADIO_THEORY.md when numerical or hardware contracts change, OPERATIONS.md for
 procedures and AUDIT.md with actual test environments and known limitations.
 Keep legacy binary/CSV compatibility explicit; JSON has a versioned record and

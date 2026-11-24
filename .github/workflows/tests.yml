@@ -42,8 +42,10 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - run: python -m pip install ruff
+      - run: python -m pip install ruff==0.16.9
       # Errors that change behaviour: syntax, undefined names, unused imports/variables, placeholder-less f-strings.
       - run: ruff check --select E9,F soapypower tools tests
+      # Modules kept in ruff format (pyproject.toml settings); extend this list as files are reformatted.
+      - run: ruff format --check soapypower/gui.py tools/superscan_run.py tools/analyze_scan_set.py tools/report_bundle.py tools/waterfall_geometry.py
       - run: shellcheck -S warning tools/macos_runner/*.sh examples/ettus/scan.sh
       - run: node --check soapypower/web/app.js
