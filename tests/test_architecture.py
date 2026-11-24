@@ -163,7 +163,7 @@ class CalibrationTests(unittest.TestCase):
                 mock.patch.object(simplespectral, 'use_pyfftw', True), \
                 mock.patch.object(simplespectral, 'fft', side_effect=fft):
             for threads in (1, 2):
-                psd = PSD(64, 1024, max_threads=1, fft_threads=threads)
+                psd = PSD(64, 1024, max_threads=1, fft_threads=threads, input_format='real')
                 try:
                     psd.update(psd.set_center_freq(0), np.ones(64))
                 finally:
@@ -236,7 +236,7 @@ class DcArchitectureTests(unittest.TestCase):
                 PSD(**params)
 
     def test_nyquist_exclusion_wraps_the_fft_boundary(self):
-        psd = PSD(64, 1024, dc_offset=512, dc_mask_width=32, max_threads=1, log_scale=False)
+        psd = PSD(64, 1024, dc_offset=512, dc_mask_width=32, max_threads=1, log_scale=False, input_format='real')
         try:
             state = psd.set_center_freq(0)
             psd.update(state, np.ones(64))

@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 from matplotlib import colors
 from matplotlib.collections import PolyCollection
 from matplotlib.colors import LightSource
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from waterfall_geometry import nan_gaps_expected   # noqa: E402
 
 ZMIN, ZMAX, ZFLOOR, TMAX = -136.0, -100.0, -142.0, 300.0
 BANDS = [(70, 6000, 'fullrange'), (70, 300, '70-300MHz'), (300, 1000, '300-1000MHz'), (1000, 3000, '1-3GHz'), (3000, 6000, '3-6GHz')]
@@ -51,6 +53,7 @@ def peaks(x, mx, k=6, sep=0.02):
     return out
 
 
+@nan_gaps_expected
 def build(f, g, t, lo, hi, title, nm, suite=None, step=1):
     m = (f >= lo) & (f <= hi); x = f[m][::step]; z = np.clip(g[:, m][:, ::step], ZMIN, ZMAX); zf = np.where(np.isfinite(z), z, ZMIN)
     X, Y = np.meshgrid(x, t)

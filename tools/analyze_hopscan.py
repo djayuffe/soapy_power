@@ -19,6 +19,7 @@ plt.rcParams.update({'figure.facecolor': BG, 'axes.facecolor': PANEL, 'text.colo
                      'grid.color': GRID, 'grid.alpha': .5, 'axes.spines.top': False, 'axes.spines.right': False,
                      'axes.titleweight': 'bold', 'axes.titlelocation': 'left', 'font.size': 10, 'savefig.facecolor': BG})
 warnings.filterwarnings('ignore', category=RuntimeWarning)   # all-NaN slices at masked DC bins are expected
+from waterfall_geometry import nan_gaps_expected   # noqa: E402
 ENBW_BLACKMAN_50 = 0.1661   # Blackman, 50 % overlap: adjacent-segment power correlation (Harris 1978)
 
 
@@ -85,6 +86,7 @@ def runs(mask, gap=2):
     out.append((a, b)); return out
 
 
+@nan_gaps_expected
 def analyse(path, out, tag):
     P, T0, T1, centers, io, info = load(path)
     S, f, lo, hi = stitch(P, centers, info['step_hz'])
@@ -168,6 +170,7 @@ def fmt_ax(ax, xl=None, yl=None):
     if yl: ax.set_ylabel(yl)
 
 
+@nan_gaps_expected
 def make_pdf(A, out, tag):
     s = A['summary']; f = A['f']; S = A['S']; centers = A['centers'] / 1e6; nsw = A['nsw']
     pdf = PdfPages(out / f'{tag}_analysis.pdf')
@@ -355,6 +358,7 @@ def _generate(output_override=None):
     return 0
 
 
+@nan_gaps_expected
 def main():
     from report_bundle import bundle
     if len(sys.argv) < 3: print(__doc__); return 2

@@ -110,8 +110,8 @@ class SpectrumTests(unittest.TestCase):
             release.wait(5)
             raise RuntimeError('FFT backend failed')
         with mock.patch('soapypower.psd.simplespectral.fft', side_effect=failed_fft):
-            psd.update_async(state, np.zeros(128))
-            psd.update_async(state, np.zeros(128))
+            psd.update_async(state, np.zeros(128, complex))
+            psd.update_async(state, np.zeros(128, complex))
             future = psd.result_async(state)
             release.set()
             with self.assertRaisesRegex(RuntimeError, 'FFT backend failed'):

@@ -19,7 +19,7 @@ import collections, csv, datetime, json, math, sys, textwrap, warnings
 from pathlib import Path
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from waterfall_geometry import dwell_mesh
+from waterfall_geometry import dwell_mesh, nan_gaps_expected
 import analyze_hopscan as ah                      # noqa: E402  style + Agg backend
 import hopscan_waterfall as hw                    # noqa: E402  viewer template, quantiser, colormaps
 import superscan_id as sid                       # noqa: E402  identification (SatNOGS + SGP4) and signal format
@@ -410,6 +410,7 @@ def line_origin(lines, Rr, centers, step, dc, usable):
 
 
 # ------------------------------------------------------------------------------------------------ analysis
+@nan_gaps_expected
 def analyse(path, bands_cfg):
     P, T0, T1, centers, io, info = load(path)
     step = info['step_hz']; dc = bands_cfg.get('dc_exclude_hz', 1e5); usable = bands_cfg.get('usable_halfwidth_hz', 8.5e5)
@@ -760,6 +761,7 @@ def viewer(A, Bd, out, tag):
     name = f'{tag}_waterfall_{slug(Bd["band"]["name"])}.html'; (out / name).write_text(html, encoding='utf-8'); return name
 
 
+@nan_gaps_expected
 def _generate(output_override=None):
     a = [x for x in sys.argv[1:] if not x.startswith('--')]
     tag = sys.argv[sys.argv.index('--tag') + 1] if '--tag' in sys.argv else 'superscan'

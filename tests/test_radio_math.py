@@ -5,6 +5,7 @@ import os
 import tempfile
 import threading
 import unittest
+import warnings
 from unittest import mock
 
 import numpy as np
@@ -61,7 +62,7 @@ class RadioMathTests(unittest.TestCase):
         for signal, expected in ((np.exp(2j * np.pi * 11 * n / 64), 1),
                                  (np.exp(-2j * np.pi * 11 * n / 64), 1),
                                  (np.cos(2 * np.pi * 11 * n / 64), 0.5)):
-            psd = self.psd(fft_window='boxcar')
+            psd = self.psd(fft_window='boxcar', input_format='complex' if np.iscomplexobj(signal) else 'real')
             state = psd.set_center_freq(0)
             psd.update(state, signal)
             freqs, power = psd.result(state)
@@ -152,24 +153,41 @@ class RadioMathTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.psd(**options)
         psd = self.psd()
-        for bad in ([np.nan] * 64, [np.inf] * 64, ['1'] * 64, np.ones((2, 64))):
+        for bad in (np.full(64, np.nan, complex), np.full(64, np.inf, complex), ['1'] * 64, np.ones((2, 64), complex)):
             with self.assertRaises(ValueError):
                 psd.update(psd.set_center_freq(0), bad)
         state = psd.set_center_freq(0)
-        psd.update_contiguous_async(state, np.ones(64))
+        psd.update_contiguous_async(state, np.ones(64, complex))
         with self.assertRaises(ValueError):
-            psd.update(state, np.ones(64))
+            psd.update(state, np.ones(64, complex))
         psd.wait_for_result(state)
         with self.assertRaises(RuntimeError):
-            psd.update_contiguous_async(state, np.ones(64))
+            psd.update_contiguous_async(state, np.ones(64, complex))
         with self.assertRaises(ValueError):
             psd.set_center_freq(1e30)
+
+    def test_legacy_real_input_still_works_but_warns(self):
+        signal = np.cos(2 * np.pi * 11 * np.arange(256) / 64)
+        results = []
+        for input_format in ('legacy', 'real'):
+            psd = self.psd(fft_window='boxcar', input_format=input_format)
+            state = psd.set_center_freq(0)
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter('always')
+                psd.update(state, signal)
+            results.append(psd.result(state)[1])
+            deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+            self.assertEqual(len(deprecations), 1 if input_format == 'legacy' else 0)
+        np.testing.assert_array_equal(results[0], results[1])
+        with self.assertRaises(ValueError):
+            strict = self.psd(input_format='real')
+            strict.update(strict.set_center_freq(0), np.ones(64, complex))
 
     def test_finished_updates_do_not_accumulate_futures(self):
         psd = self.psd()
         state = psd.set_center_freq(0)
         for _ in range(100):
-            psd.update_contiguous_async(state, np.ones(64)).result(timeout=5)
+            psd.update_contiguous_async(state, np.ones(64, complex)).result(timeout=5)
         psd.wait_for_result(state)
         self.assertEqual(len(state['futures']), 0)
 
@@ -246,7 +264,7 @@ class RadioAcquisitionTests(unittest.TestCase):
             width = (bins - 2 * round(overlap * bins / 2)) * rate / bins
             end = 10000 + width - rate / bins / 4
             center, = self.sdr.freq_plan(10000, end, bins, overlap, quiet=True)
-            psd = PSD(bins, rate, crop_factor=overlap, max_threads=1, log_scale=False)
+            psd = PSD(bins, rate, crop_factor=overlap, max_threads=1, log_scale=False, input_format='real')
             try:
                 state = psd.set_center_freq(center)
                 psd.update(state, np.ones(bins))
