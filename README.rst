@@ -3,6 +3,9 @@ soapy_power
 
 Obtain power spectrum from SoapySDR devices (RTL-SDR, Airspy, SDRplay, HackRF, bladeRF, USRP, LimeSDR, etc.)
 
+The current project overview and control guide is in `README.md <README.md>`_.
+See `the GUI guide <docs/GUI.md>`_ for pause, resume, abort, retry and repeat semantics.
+
 Requirements
 ------------
 

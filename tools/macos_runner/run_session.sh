@@ -27,6 +27,9 @@ REPO="${SPR_REPO:-$(cd "$HERE/../.." && pwd)}"
 OUTDIR="${SPR_SESSIONS:-$REPO/sessions}"
 mkdir -p "$OUTDIR"
 REQ="${REQUEST_FILE:-}"
+# Preserve typed acquisition settings so Repeat scan creates a fresh session.
+save_request() { [ ! -f "${REQ:-}" ] || cp "$REQ" "$SESSION/request.plist"; }
+
 if [ -z "$REQ" ] && [ -n "${SPR_SESSIONS:-}" ]; then REQ="$(ls -t "$OUTDIR"/queue/taken/*.json 2>/dev/null | head -1)"; fi
 req_field() { if [ -n "$REQ" ] && [ -f "$REQ" ]; then plutil -extract "$1" raw -o - "$REQ" 2>/dev/null || true; fi; }
 INPUT="${INPUT:-$(req_field input)}"; INPUT="${INPUT:-antenna}"
@@ -185,7 +188,7 @@ PYEOF
     finish "RESULT=$([ $PROBE -eq 0 ] && echo bladerf_probe_ok || echo bladerf_probe_exit_$PROBE);SERIAL=$SERIAL"
     echo "== bladerf probe exit $PROBE"; exit $PROBE
   fi
-  SESSION="$OUTDIR/bladerf-$STAMP"; mkdir -p "$SESSION"
+  SESSION="$OUTDIR/bladerf-$STAMP"; mkdir -p "$SESSION"; save_request
   TABLE=""; RC=0
   if [ "$BLADERF_JOB" = dense-dc ] || [ "$BLADERF_JOB" = dense-dc+survey ]; then
     "$PY" "$REPO/tools/bladerf/bladerf_dense_dc.py" --device "$BDEV" --profile-dir "$PROF" --output "$SESSION/dense-dc"; RC=$?
@@ -294,7 +297,7 @@ chmod +x "$WRAP"
 # ---- 3b. overflow_probe (request key, integer 1): A/B of the 140-150 MHz hop scan that overflowed with the
 # default UHD USB ring (no frame args) against the same scan with num_recv_frames set in the device string.
 if [ "${OVERFLOW_PROBE:-$(req_field overflow_probe)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; then
-  SESSION="$OUTDIR/overflow-$STAMP"; mkdir -p "$SESSION"; : > "$SESSION/result.txt"
+  SESSION="$OUTDIR/overflow-$STAMP"; mkdir -p "$SESSION"; save_request; : > "$SESSION/result.txt"
   for FR in default 64 512; do
     case "$FR" in default) DEVP="driver=uhd,type=b200,serial=$SERIAL";; *) DEVP="driver=uhd,type=b200,serial=$SERIAL,num_recv_frames=$FR";; esac
     OUT="$SESSION/scan-$FR.jsonl"; ERR="$SESSION/scan-$FR.log"; T0=$(date +%s)
@@ -340,7 +343,7 @@ fi
 # Main scan resumes after an overflow (up to 20 segments) until SCAN_SECONDS of scanning are done.
 # Before acquisition: refresh and freeze satellite/QTH references. Reports use that immutable snapshot.
 if [ "${SUPERSCAN:-$(req_field superscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; then
-  SESSION="$OUTDIR/superscan-$STAMP"; mkdir -p "$SESSION"
+  SESSION="$OUTDIR/superscan-$STAMP"; mkdir -p "$SESSION"; save_request
   OUT="$SESSION/superscan.jsonl"; ERR="$SESSION/scan.log"; : > "$SESSION/result.txt"
   PLAN="$(req_field superscan_plan)"; [ -n "$PLAN" ] || PLAN=sat-full
   RATE="$(req_field superscan_rate)"; case "$RATE" in 2|4|8) ;; *) RATE=8;; esac
@@ -420,7 +423,7 @@ fi
 # ---- 3c. hopscan (request key, integer 1): the 140-150 MHz single-thread hop scan for SCAN_SECONDS with the UHD
 # ring enlarged in the device string (device-open arg), finishing the hop in flight instead of cutting it.
 if [ "${HOPSCAN:-$(req_field hopscan)}" = 1 ] && [ "$DEVICE_KIND" = b200 ]; then
-  SESSION="$OUTDIR/hopscan-$STAMP"; mkdir -p "$SESSION"
+  SESSION="$OUTDIR/hopscan-$STAMP"; mkdir -p "$SESSION"; save_request
   OUT="$SESSION/scan_140_150.jsonl"; ERR="$SESSION/scan.log"; T0=$(date +%s)
   "$WRAP" -d "driver=uhd,type=b200,serial=$SERIAL,num_recv_frames=512" -A "$ANTENNA" -C 0 -f 140M:150M -r 2M -b 8192 -g "$GAIN_DB" -o 25 -t 0.5 \
     -e "$SCAN_SECONDS" --deadline-policy finish-hop --fft-window blackman --dc-mask-width 5000 --tune-delay 0.05 \
@@ -434,7 +437,7 @@ RESULT=hopscan_exit_$RC;REPORT=$ARC"
 fi
 
 if [ "$PROCEDURE" = baseline ]; then
-  SESSION="$OUTDIR/baseline-$STAMP"; mkdir -p "$SESSION"
+  SESSION="$OUTDIR/baseline-$STAMP"; mkdir -p "$SESSION"; save_request
   FAILED=""
   for MHZ in 110 150 190 230 270; do
     OUT="$SESSION/baseline-${MHZ}MHz.jsonl"
@@ -461,7 +464,7 @@ RESULT=$RESULT"
   [ -z "$FAILED" ]; exit $?
 fi
 if [ "$PROCEDURE" = fullrange ]; then
-  SESSION="$OUTDIR/fullrange-$STAMP"; mkdir -p "$SESSION"
+  SESSION="$OUTDIR/fullrange-$STAMP"; mkdir -p "$SESSION"; save_request
   printf '%s\n' '{"version":1,"temperature_interval_s":1.0,"temperature_max_age_s":3.0}' > "$SESSION/telemetry-policy.json"
   FAILED=""
   VARIANTS="features-on features-off"; case " $PLAN_ARGS " in *" --only-on "*) VARIANTS=features-on;; *" --only-off "*) VARIANTS=features-off;; esac
@@ -495,6 +498,7 @@ SESSION="$OUTDIR/okt-$STAMP"
 "$PY" -m soapypower.experiments plan "$DEV" -O "$SUITE" --scan-seconds "$SCAN_SECONDS" --gain "$GAIN_DB" --antenna "$ANTENNA" --input "$INPUT" $PLAN_ARGS || { finish "RESULT=plan_failed"; exit 1; }
 "$PY" -m soapypower.experiments run "$SUITE" "$SESSION" --soapy-power "$WRAP"
 RUN=$?
+[ ! -d "$SESSION" ] || save_request
 echo "== run exit $RUN"
 ANALYZE=skipped
 if [ $RUN -eq 0 ]; then "$PY" -m soapypower.experiments analyze "$SESSION"; ANALYZE=$?; echo "== analyze exit $ANALYZE"; fi

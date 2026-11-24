@@ -30,3 +30,4 @@ include EXPERIMENTS.md
 
 recursive-include soapypower/web *.html *.css *.js
 include docs/GUI.md
+include README.md

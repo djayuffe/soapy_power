@@ -9,6 +9,8 @@ import json
 import math
 import mimetypes
 import os
+import plistlib
+import uuid
 from pathlib import Path
 import re
 import secrets
@@ -148,7 +150,7 @@ class Control:
         return dict(id=folder.name,status=status,requested_s=capture.get('requested_seconds'),credited_s=capture.get('credited_seconds',report.get('credited_scan_s')),records=report.get('records',sum(x.get('records',0) for x in capture.get('captures',[]))) or None,attempts=len(capture.get('attempts',[])),recoveries=sum(x.get('failure_class')=='transport' for x in capture.get('attempts',[])),report_url=link,rate_hz=cfg.get('sample_rate_hz',report.get('sample_rate_hz')),centers=len(cfg.get('centers_hz',[])) or None,modified=folder.stat().st_mtime)
 
     def catalog(self):
-        try:folders=[p for p in self.sessions.iterdir() if p.is_dir() and NAME.fullmatch(p.name) and p.resolve().parent==self.sessions and p.name.startswith(('superscan-','hopscan-','fullrange-','baseline-','bladerf-','suite-'))]
+        try:folders=[p for p in self.sessions.iterdir() if p.is_dir() and NAME.fullmatch(p.name) and p.resolve().parent==self.sessions and p.name.startswith(('superscan-','hopscan-','fullrange-','baseline-','bladerf-','suite-','okt-'))]
         except OSError:return []
         return [self.item(p) for p in sorted(folders,key=lambda x:x.stat().st_mtime,reverse=True)[:60]]
 
@@ -178,14 +180,73 @@ class Control:
                 ident=r.stdout.strip().splitlines()[0]
             self.last_queue=time.monotonic();return {'job_id':ident,'state':'queued'}
 
+    def retry_settings(self, folder):
+        """Reconstruct only typed, supported settings; never replay shell arguments."""
+        paths=[folder/'request.plist']
+        for job in self.jobs():
+            if job.get('mode')!='scan' or not isinstance(job.get('result'),str) or 'SESSION='+str(folder)+';' not in job['result']:continue
+            ident=job.get('id','')
+            if not isinstance(ident,str) or not NAME.fullmatch(ident):continue
+            paths.extend(sorted((self.sessions/'queue/taken').glob(ident+'-*.json')))
+        for path in paths:
+            try:
+                root=folder if path.name=='request.plist' else self.sessions/'queue/taken'
+                if not path.resolve().is_relative_to(root.resolve()) or path.stat().st_size>16384:continue
+                r=plistlib.loads(path.read_bytes())
+                allowed={'mode','scan_seconds','gain_db','antenna','input','procedure','device',
+                         'bladerf_job','superscan','hopscan','superscan_gain','superscan_rate',
+                         'superscan_dither','superscan_plan','reanalyze','plan_args','overflow_probe','satdb_refresh'}
+                if not isinstance(r,dict) or set(r)-allowed or r.get('mode')!='scan':continue
+                if any(r.get(k) for k in ('reanalyze','plan_args','overflow_probe','satdb_refresh')):continue
+                workflow='satellite' if r.get('superscan')==1 else 'hopscan' if r.get('hopscan')==1 else r.get('procedure','suite')
+                payload=dict(duration_s=r.get('scan_seconds',30), device=r.get('device','b200'),
+                             workflow=workflow,antenna=r.get('antenna','RX2'),input=r.get('input','antenna'),
+                             gain=r.get('superscan_gain','auto') if workflow=='satellite' else r.get('gain_db',20),
+                             rate_msps=int(r.get('superscan_rate',8)),plan=r.get('superscan_plan','sat-full'),
+                             dither_khz=int(r.get('superscan_dither',0)),bladerf_job=r.get('bladerf_job','dense-dc+survey'))
+                if isinstance(payload['gain'],bool):continue
+                if payload['gain']!='auto':payload['gain']=float(payload['gain'])
+                scan_arguments(payload)
+                return payload
+            except (OSError,ValueError,TypeError,OverflowError,plistlib.InvalidFileException):continue
+        return None
+
+    def operate(self, name, action):
+        folder=self.session(name)
+        with self.lock:
+            m=json_file(folder/'captures.json',{}) or {};status=m.get('status')
+            if status not in ('running','paused'):raise ValueError('No active supervised capture in this session')
+            if action=='abort':
+                if m.get('supports_stop_request') is not True:raise ValueError('Supervisor does not support abort')
+                path=folder/'stop-request.json'
+                try:
+                    with path.open('x') as f:json.dump({'version':1,'action':'stop'},f)
+                except FileExistsError:pass
+                return {'state':'stop_requested'}
+            if m.get('control_version')!=1:raise ValueError('This supervisor does not support pause/resume/retry')
+            if (folder/'stop-request.json').exists():raise RuntimeError('Abort is already pending')
+            request=json_file(folder/'control-request.json',{}) or {}
+            if request.get('id') and request['id']!=m.get('control_ack'):raise RuntimeError('Waiting for supervisor acknowledgement')
+            if action=='pause' and status!='running':raise ValueError('Capture is already paused')
+            if action=='resume' and status!='paused':raise ValueError('Capture is not paused')
+            if action not in ('pause','resume','retry'):raise ValueError('Unknown capture action')
+            value=dict(version=1,id=uuid.uuid4().hex,action=action)
+            path=folder/'control-request.json';temp=path.with_name('.control-'+value['id']+'.tmp')
+            with temp.open('x') as f:
+                json.dump(value,f);f.flush();os.fsync(f.fileno())
+            os.replace(temp,path)
+            return {'state':action+'_requested','request_id':value['id']}
+
     def stop(self, name):
+        return self.operate(name,'abort')
+
+    def retry(self, name):
         folder=self.session(name);m=json_file(folder/'captures.json',{}) or {}
-        if m.get('status')!='running' or not m.get('current_attempt') or m.get('supports_stop_request') is not True:raise ValueError('No active supervised capture in this session')
-        path=folder/'stop-request.json'
-        try:
-            with path.open('x') as f:json.dump({'version':1,'action':'stop'},f)
-        except FileExistsError:pass
-        return {'state':'stop_requested'}
+        if m.get('status') in ('running','paused'):return self.operate(name,'retry')
+        if self.building(folder):raise RuntimeError('Wait for report generation to finish')
+        payload=self.retry_settings(folder)
+        if payload is None:raise ValueError('Original supported scan settings are unavailable; configure a new scan')
+        return self.enqueue(scan_arguments(payload))
 
     def detail(self, name):
         folder=self.session(name);item=self.item(folder);m=json_file(folder/'captures.json',{}) or {};active=m.get('current_attempt')
@@ -216,7 +277,18 @@ class Control:
         logfile=(active or {}).get('log_file')
         if not logfile and m.get('attempts'):logfile=m['attempts'][-1].get('log_file')
         logpath=self.child(folder,logfile) if logfile else folder/'scan.log'
-        return dict(session=item,live=live,can_stop=m.get('status')=='running' and m.get('supports_stop_request') is True and bool(active),attempts=m.get('attempts',[]),log=tail(logpath) if logpath else '',report_error=tail(folder/'analysis-failure.txt',3000),stop_requested=(folder/'stop-request.json').exists())
+        running=m.get('status') in ('running','paused')
+        request=json_file(folder/'control-request.json',{}) or {}
+        pending=request.get('action') if running and request.get('id')!=m.get('control_ack') else None
+        modern=running and m.get('control_version')==1
+        retry_config=None if running else self.retry_settings(folder)
+        return dict(session=item,live=live,can_stop=running and m.get('supports_stop_request') is True,
+                    can_pause=modern and m.get('status')=='running',can_resume=modern and m.get('status')=='paused',
+                    can_retry=modern or (retry_config is not None and not self.building(folder)),
+                    retry_config=retry_config,pending_control=pending,controls=m.get('controls',[]),
+                    paused_seconds=m.get('paused_seconds'),attempts=m.get('attempts',[]),
+                    log=tail(logpath) if logpath else '',report_error=tail(folder/'analysis-failure.txt',3000),
+                    stop_requested=(folder/'stop-request.json').exists())
 
 
 class Server(ThreadingHTTPServer):
@@ -272,11 +344,15 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path=='/api/probe':
                 if set(data)-{'device'} or data.get('device','b200') not in ('b200','bladerf'):raise ValueError('Invalid probe')
                 result=c.enqueue(['probe','--device',data.get('device','b200')])
-            elif self.path in ('/api/report','/api/stop'):
+            elif self.path in ('/api/report','/api/stop','/api/abort','/api/pause','/api/resume','/api/retry'):
                 if set(data)!={'session'}:raise ValueError('Expected session only')
                 folder=c.session(data['session'])
-                if not re.fullmatch(r'(superscan|hopscan)-\d{8}-\d{6}',folder.name):raise ValueError('This session does not support queued reanalysis')
-                result=c.stop(folder.name) if self.path=='/api/stop' else c.enqueue(['scan','--reanalyze',folder.name])
+                if self.path=='/api/report':
+                    if not re.fullmatch(r'(superscan|hopscan)-\d{8}-\d{6}',folder.name):raise ValueError('This session does not support queued reanalysis')
+                    if (json_file(folder/'captures.json',{}) or {}).get('status') in ('running','paused'):raise RuntimeError('Finish or abort acquisition before generating a report')
+                    result=c.enqueue(['scan','--reanalyze',folder.name])
+                elif self.path=='/api/retry':result=c.retry(folder.name)
+                else:result=c.operate(folder.name,'abort' if self.path in ('/api/stop','/api/abort') else self.path.rsplit('/',1)[-1])
             else:self.send(404,{'error':'Unknown action'});return
             self.send(200,result)
         except (ValueError,KeyError,TypeError) as e:self.send(400,{'error':str(e)})

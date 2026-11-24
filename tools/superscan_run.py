@@ -48,14 +48,46 @@ def awake():
             process.terminate();process.wait(timeout=5)
 
 
-def run_child(command, log_path, data_path, stall_s, poll_s=.25, cancel_file=None):
+class CaptureControl(Exception):
+    """An acknowledged operator action, distinct from a receiver failure."""
+    def __init__(self, request):
+        self.request = request
+        super().__init__(request['action'])
+
+
+def control_request(path, acknowledged=None):
+    if path is None:
+        return None
+    try:
+        if Path(path).stat().st_size > 4096:
+            return None
+        value = json.loads(Path(path).read_text())
+        if (isinstance(value, dict) and value.get('version') == 1
+                and value.get('action') in ('pause', 'resume', 'retry')
+                and isinstance(value.get('id'), str)
+                and re.fullmatch(r'[a-f0-9]{32}', value['id'])
+                and value['id'] != acknowledged):
+            return value
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def run_child(command, log_path, data_path, stall_s, poll_s=.25, cancel_file=None, control_file=None, acknowledged=None):
     """Kill a stalled process group, retaining stdout evidence and accepted prefix."""
+    def check_control():
+        if cancel_file is not None and Path(cancel_file).exists():raise KeyboardInterrupt()
+        request = control_request(control_file, acknowledged)
+        if request and request['action'] in ('pause', 'retry'):
+            raise CaptureControl(request)
+
     with log_path.open('wb') as log:
+        check_control()  # Do not open a receiver for a request already pending.
         child = subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
         last_progress=time.monotonic();size=0;stalled=False
         try:
             while child.poll() is None:
-                if cancel_file is not None and Path(cancel_file).exists():raise KeyboardInterrupt()
+                check_control()
                 current=data_path.stat().st_size if data_path.exists() else 0
                 if current>size:size=current;last_progress=time.monotonic()
                 if time.monotonic()-last_progress>stall_s:
@@ -115,39 +147,92 @@ def supervise(session, command, seconds, gain, *, min_gain=20., gain_step=6., ma
     session=Path(session);session.mkdir(parents=True,exist_ok=True);manifest=session/'captures.json'
     if manifest.exists():raise ValueError('fresh supervisor session required; refusing to overwrite evidence')
     if not command or not all(math.isfinite(x) for x in (seconds,gain,min_gain,gain_step,stall_s,backoff_s,max_gap_s)) or seconds<=0 or not 0<=min_gain<=gain<=76 or gain_step<=0 or stall_s<=0 or backoff_s<0 or max_gap_s<0 or max_attempts<1 or transport_retries<0:raise ValueError('invalid supervision policy')
-    state=dict(version=1,supports_stop_request=True,status='running',requested_seconds=seconds,credited_seconds=0.,rf_dwell_seconds=0.,policy=dict(min_gain=min_gain,gain_step_db=gain_step,max_attempts=max_attempts,transport_retries=transport_retries,stall_s=stall_s,max_gap_s=max_gap_s),captures=[],attempts=[])
-    failures=0;last_class='fatal';result=2
+    state=dict(version=1, control_version=1, supports_stop_request=True,
+               supervisor_pid=os.getpid(), status='running', requested_seconds=seconds,
+               credited_seconds=0., rf_dwell_seconds=0., paused_seconds=0.,
+               controls=[], control_ack=None,
+               policy=dict(min_gain=min_gain,gain_step_db=gain_step,max_attempts=max_attempts,
+                           transport_retries=transport_retries,stall_s=stall_s,max_gap_s=max_gap_s),
+               captures=[],attempts=[])
+    failures=0;last_class='fatal';result=2;attempt=0;automatic_attempts=0
+    control_file=session/'control-request.json'
+
+    def acknowledge(request):
+        state['control_ack']=request['id']
+        state['controls'].append(dict(id=request['id'], action=request['action'],
+            acknowledged_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            credited_seconds=state['credited_seconds']))
+
+    def wait_if_paused():
+        if state['status']!='paused':return
+        started=time.monotonic()
+        try:
+            while state['status']=='paused':
+                if (session/'stop-request.json').exists():raise KeyboardInterrupt()
+                request=control_request(control_file,state['control_ack'])
+                if request:
+                    acknowledge(request)
+                    if request['action'] in ('resume','retry'):state['status']='running'
+                    publish(manifest,state)
+                if state['status']=='paused':sleep(.1)
+        finally:
+            state['paused_seconds']+=time.monotonic()-started
+            publish(manifest,state)
+
     try:
-        for attempt in range(1,max_attempts+1):
+        while automatic_attempts<max_attempts:
             if (session/'stop-request.json').exists():
+                state['status']='cancelled';result=130;last_class='cancelled';break
+            request=control_request(control_file,state['control_ack'])
+            if request:
+                acknowledge(request)
+                if request['action']=='pause':state['status']='paused'
+                publish(manifest,state)
+            try:wait_if_paused()
+            except KeyboardInterrupt:
                 state['status']='cancelled';result=130;last_class='cancelled';break
             left=seconds-state['credited_seconds']
             if left<=0:result=0;break
+            attempt+=1
             raw=session/f'attempt-{attempt:03d}.jsonl';accepted=session/f'capture-{attempt:03d}.jsonl';log=session/f'attempt-{attempt:03d}.log';rejected=session/f'rejected-main-{attempt}'
             args=list(command)+['-g',str(gain),'-e',str(math.ceil(left)),'--deadline-policy','finish-hop','--rejection-evidence',str(rejected),'-F','json','-O',str(raw)]
             state['current_attempt']=dict(number=attempt,gain_db=gain,raw_file=raw.name,log_file=log.name,started_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
             publish(manifest,state)
-            cancelled=False
+            cancelled=False;operator=None
             try:
-                if execute is run_child:code,stalled=execute(args,log,raw,stall_s,cancel_file=session/'stop-request.json')
+                if execute is run_child:
+                    code,stalled=execute(args,log,raw,stall_s,cancel_file=session/'stop-request.json',
+                                        control_file=control_file,acknowledged=state['control_ack'])
                 else:code,stalled=execute(args,log,raw,stall_s)
+            except CaptureControl as e:
+                code,stalled,operator=-signal.SIGTERM,False,e.request
             except KeyboardInterrupt:
                 code,stalled,cancelled=-signal.SIGTERM,False,True
             metrics=accepted_prefix(raw,accepted,gain,max_gap_s)
             text=log.read_text(errors='replace')
-            kind='cancelled' if cancelled else 'transport' if stalled else classify_failure(code,text)
+            kind=('cancelled' if cancelled else 'paused' if operator and operator['action']=='pause'
+                  else 'manual_retry' if operator else 'transport' if stalled else classify_failure(code,text))
             record=dict(attempt=attempt,gain_db=gain,exit=code,failure_class=kind,watchdog_stalled=stalled,raw_file=raw.name,accepted_file=accepted.name,log_file=log.name,**metrics)
             state['attempts'].append(record)
             state['credited_seconds']+=metrics['credited_seconds'];state['rf_dwell_seconds']+=metrics['rf_dwell_seconds']
             if metrics['records']:state['captures'].append(dict(file=accepted.name,gain_db=gain,**metrics))
+            state['current_attempt']=None
+            if operator:
+                acknowledge(operator)
+                state['status']='paused' if operator['action']=='pause' else 'running'
             publish(manifest,state)
             if cancelled:
                 state['status']='cancelled';last_class='cancelled';result=130;break
+            if operator:
+                # Manual boundaries do not spend the automatic recovery budget.
+                # Retained complete records are credited, partial trailing records are not.
+                last_class=kind
+                continue
+            automatic_attempts+=1
             if kind=='fatal':last_class=kind;break
             if state['credited_seconds']>=seconds:result=0;break
             last_class=kind
             if kind=='headroom':
-                # Lower gain only with durable evidence of this specific rejection.
                 index=json.loads((rejected/'index.json').read_text())
                 if not index.get('records'):raise ValueError('headroom failure without retained IQ evidence')
                 for entry in index['records']:
@@ -160,13 +245,22 @@ def supervise(session, command, seconds, gain, *, min_gain=20., gain_step=6., ma
             elif kind=='transport':
                 failures=0 if metrics['records'] else failures+1
                 if failures>transport_retries:break
-            elif kind=='finished' and metrics['credited_seconds']>0:
-                failures=0  # A short child is credited by evidence, never by its requested duration.
+            elif kind=='finished' and metrics['credited_seconds']>0:failures=0
             else:break
-            sleep(min(30.,backoff_s*2**min(failures,4)))
+            # Keep controls responsive even during exponential retry backoff.
+            delay=min(30.,backoff_s*2**min(failures,4))
+            while delay>0:
+                if (session/'stop-request.json').exists() or control_request(control_file,state['control_ack']):break
+                step=min(.1,delay);sleep(step);delay-=step
+
     except BaseException as e:
         state['error']=str(e);state['status']='cancelled' if isinstance(e,(KeyboardInterrupt,SystemExit)) else 'failed';raise
     finally:
+        if state['status']=='cancelled':
+            state['controls'].append(dict(id=None,action='abort',
+                acknowledged_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                credited_seconds=state['credited_seconds'],
+                source='stop_request' if (session/'stop-request.json').exists() else 'interrupt'))
         if state['status']=='running':state['status']='completed' if result==0 else 'incomplete'
         state['current_attempt']=None
         state['remaining_seconds']=max(0.,seconds-state['credited_seconds']);state['last_failure_class']=last_class

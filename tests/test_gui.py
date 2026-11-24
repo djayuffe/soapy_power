@@ -113,3 +113,31 @@ def test_stale_lock_and_history_context(control):
 def test_invalid_json_mapping_is_unknown(tmp_path):
     path=tmp_path/'status.json';path.write_text('[]')
     assert gui.json_file(path,{})=={}
+
+
+def test_http_control_transitions_and_abort_priority(http):
+    c,folder,url=http
+    (folder/'captures.json').write_text(json.dumps(dict(status='running',control_version=1,supports_stop_request=True,control_ack=None)))
+    headers={'Content-Type':'application/json','X-CSRF-Token':c.token}
+    data={'session':folder.name}
+    with pytest.raises(urllib.error.HTTPError) as e:request(url+'/api/resume',data,headers)
+    assert e.value.code==400
+    assert json.load(request(url+'/api/pause',data,headers))['state']=='pause_requested'
+    with pytest.raises(urllib.error.HTTPError) as e:request(url+'/api/retry',data,headers)
+    assert e.value.code==409
+    assert json.load(request(url+'/api/abort',data,headers))['state']=='stop_requested'
+    assert not c.queued
+
+
+def test_http_repeat_queues_original_settings(http):
+    import plistlib
+    c,folder,url=http
+    (folder/'request.plist').write_bytes(plistlib.dumps(dict(mode='scan',superscan=1,scan_seconds=600,superscan_rate='2',superscan_gain='50')))
+    headers={'Content-Type':'application/json','X-CSRF-Token':c.token}
+    assert json.load(request(url+'/api/retry',{'session':folder.name},headers))['state']=='queued'
+    assert c.queued[0][c.queued[0].index('--superscan-gain')+1]=='50.0'
+    assert json_file_for_test(folder/'captures.json')['status']=='completed'
+
+
+def json_file_for_test(path):
+    return json.loads(path.read_text())
