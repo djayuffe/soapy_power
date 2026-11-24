@@ -96,7 +96,7 @@ def test_report_containment(http,tmp_path):
 def test_stop_preserves_accepted_prefix(tmp_path):
     spec=importlib.util.spec_from_file_location('gui_supervisor',ROOT/'tools/superscan_run.py');run=importlib.util.module_from_spec(spec);spec.loader.exec_module(run)
     def execute(args,log,raw,stall):
-        row=dict(power=[-100]*16,step_hz=250,unit='dB(input power/Hz)',time_start='2026-11-23T12:00:00+00:00',time_stop='2026-11-23T12:00:00.5+00:00',metadata=dict(measurement_status='complete',continuity='verified',sample_rate_hz=4000,context=dict(gains=dict(PGA=60)),headroom=dict(accepted=True),rf_state=dict(after=dict(validity=dict(passed=True)))))
+        row=dict(power=[-100]*16,step_hz=250,unit='dB(input power/Hz)',time_start='2026-11-23T12:00:00+00:00',time_stop='2026-11-23T12:00:00.500000+00:00',metadata=dict(measurement_status='complete',continuity='verified',sample_rate_hz=4000,context=dict(gains=dict(PGA=60)),headroom=dict(accepted=True),rf_state=dict(after=dict(validity=dict(passed=True)))))
         raw.write_text(json.dumps(row)+'\n');log.write_text('');raise KeyboardInterrupt()
     assert run.supervise(tmp_path,['fake'],10,60,execute=execute)==130
     m=json.loads((tmp_path/'captures.json').read_text())
