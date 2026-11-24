@@ -353,6 +353,9 @@ warmup/validity gates, native filter phase, and the isolated SoapyUHD extension.
 
 ### Superscan evidence and publication
 
+The complete workflow, request keys, outputs and identification rules are in
+[docs/SUPERSCAN.md](../../docs/SUPERSCAN.md).
+
 The macOS superscan runner keeps raw-IQ headroom checks, RX LO-lock checks,
 verified timestamps, RF state and fresh native telemetry enabled during the main
 capture. The 8 MS/s `sat-full --dither 300` plan uses 14 centers to guarantee
@@ -380,7 +383,9 @@ Analysis outputs are built in a private generation and published through an
 atomic symlink replacement after all stages and input hashes pass. A failed
 render returns nonzero and retains the previous complete report. Resolve the
 output symlink once before reading a group of files; `bundle-manifest.json`
-records input/output SHA-256 hashes. Old generations remain available for audit.
+records input/output SHA-256 hashes. Old generations remain available for audit;
+`python tools/report_bundle.py prune DEST --keep 2` removes older ones and
+`python tools/report_bundle.py verify DEST` rechecks a published bundle.
 A first migration of a real output directory archives it intact and has a brief
 name-availability gap. Keep raw JSONL outside the analysis destination.
 

@@ -6,11 +6,12 @@ include RADIO_THEORY.md
 include OPERATIONS.md
 include DEVELOPMENT.md
 include pyproject.toml
-recursive-include tools *.py *.sh *.md *.patch
+recursive-include tools *.py *.sh *.md
+recursive-include patches *.patch
 recursive-include .github/workflows *.yml
 include CALIBRATION.md
 include REMEDIATION.md
-recursive-include examples *.json
+recursive-include examples *.json *.md *.py *.sh
 include BLADERF.md
 include ETTUS.md
 include NOISE_CALIBRATION_AUDIT.md
@@ -27,7 +28,10 @@ recursive-include examples/ettus *.sh *.py *.md
 include MEASUREMENT_ROADMAP.md
 recursive-include examples/ettus/results *.png
 include EXPERIMENTS.md
+include SPURS.md
+include IMPLEMENTATION_GAPS.md
 
 recursive-include soapypower/web *.html *.css *.js
 include docs/GUI.md
+include docs/SUPERSCAN.md
 include README.md

@@ -20,6 +20,8 @@ The spectrum is a max-pooled relative PSD preview of the latest saved LO visit. 
 
 Confirmed credited time and records come from saved manifests/reports. During acquisition a separate live span estimate may be shown; it is not yet qualified and may contain outages. Abort is offered only for supervisors that advertise stop-request support. An abort request terminates the child capture, validates and preserves its accepted prefix, and lets the runner generate a partial report. Aborting does not imply the requested duration was completed. Other workflow versions must finish through their existing controls.
 
+The satellite workflow behind the scan dialog (band plans, rate pilot, gain selection, supervision, analysis and identification rules) is described in [SUPERSCAN.md](SUPERSCAN.md).
+
 Keep the GUI local. Its actions use typed validation, a per-process request token and local Host/Origin checks; report HTML runs in a sandbox. No transmit or firmware-writing controls are provided. Close the server with Ctrl-C; this does not terminate independently queued runner jobs.
 
 ## Pause, resume, abort and retry

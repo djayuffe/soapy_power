@@ -10,7 +10,9 @@ and CLI code.
 ```sh
 python -m venv .venv
 # Activate .venv using the platform's normal shell command.
-python -m pip install numpy scipy pyfftw simplespectral build twine
+python -m pip install numpy scipy pyfftw simplespectral build twine pytest
+# optional satellite/report tooling; its tests skip when these are missing:
+python -m pip install matplotlib sgp4 reportlab pypdf
 python -m pip install --no-deps -e .
 python tools/validate.py --report validation.json
 python -m pip freeze > validation-dependencies.txt
@@ -20,12 +22,19 @@ The routine starts a fresh process for each installed FFT backend. Missing
 optional backends are reported as unavailable. To **require** a backend use
 `--backend numpy`, `--backend scipy` or `--backend fftw`; absence or a test
 failure gives a nonzero exit. A report path must be new. A backend-specific test
-may skip when another backend is selected; inspect the test log. To run the
-suite directly: `python -m unittest discover -s tests -v`.
+may skip when another backend is selected; inspect the test log. The suite mixes
+unittest classes and pytest-style modules: run it directly with
+`python -m pytest -q tests`. Without pytest, `validate.py` falls back to the
+unittest classes and says so; `python -m unittest discover` alone does not run the
+pytest modules. Tests that need matplotlib/scipy/sgp4/reportlab/pypdf, or POSIX
+(fcntl locks, symlink publication, process groups), skip with a reason (`-rs`).
 
-The GitHub workflow runs required NumPy, SciPy and FFTW checks on Linux, macOS
-and Windows with Python 3.9 and 3.12. It also builds and checks distributions and
-CLI help without SDR bindings. A configured CI matrix is not evidence that
+The GitHub workflow runs required NumPy, SciPy and FFTW checks on Ubuntu 24.04,
+macOS and Windows with Python 3.9 and 3.12 (Ubuntu 26.04 images have no Python 3.9),
+with the optional analysis tooling installed. It also builds and checks distributions,
+runs every console entry point's `--help` without SDR bindings, and has a static job:
+`ruff check --select E9,F`, `shellcheck -S warning` on the runner scripts and
+`node --check` on the GUI script. Run the same static checks locally before pushing. A configured CI matrix is not evidence that
 those platforms have passed until the workflow actually runs. Python >=3.6
 remains the declared source language minimum; these older versions require
 compatible dependency releases and are not in the validation matrix.
@@ -67,7 +76,8 @@ release. The tests contain clearly synthetic fixtures for mathematical checks;
 they are not coefficients for a physical device. The receiver entry point needs
 separately installed SoapySDR bindings/driver for actual acquisition.
 
-Review the diff and run `git diff --check`. Update README/help when flags change,
+Review the diff and run `git diff --check`, `ruff check --select E9,F soapypower tools tests`
+and `shellcheck -S warning tools/macos_runner/*.sh`. Update README/help when flags change,
 RADIO_THEORY.md when numerical or hardware contracts change, OPERATIONS.md for
 procedures and AUDIT.md with actual test environments and known limitations.
 Keep legacy binary/CSV compatibility explicit; JSON has a versioned record and

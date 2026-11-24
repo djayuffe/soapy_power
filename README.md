@@ -74,6 +74,7 @@ Consult [the original CLI reference](README.rst) and [device guide](SDR_DEVICE_G
 
 | Topic | Documentation |
 | --- | --- |
+| Satellite-band survey, Doppler tracking and identification | [Superscan](docs/SUPERSCAN.md), [GUI](docs/GUI.md) |
 | Capability discovery and guided calibration | [Automatic calibration](AUTO_CALIBRATION.md), [measurement steps](CALIBRATION_STEPS.md) |
 | RF limits, gain and device architecture | [Device guide](SDR_DEVICE_GUIDE.md), [Ettus](ETTUS.md), [bladeRF](BLADERF.md) |
 | Terminations, hot/cold and measured references | [Calibration](CALIBRATION.md), [noise audit](NOISE_CALIBRATION_AUDIT.md) |
@@ -86,11 +87,12 @@ Consult [the original CLI reference](README.rst) and [device guide](SDR_DEVICE_G
 ## Validation
 
 ```sh
+python -m pip install pytest matplotlib sgp4 reportlab pypdf   # analysis/report tests skip without them
 python -m pytest -q tests
 # Focused GUI/control and recovery fault injection; no SDR is opened:
 python -m pytest -q tests/test_gui.py tests/test_superscan_recovery.py tests/test_scan_controls.py tests/test_scan_supervisor_controls.py
 ```
 
-HTTP tests need permission to bind a loopback socket. Recovery tests use synthetic records and fake receiver processes. They validate software behavior; they do not substitute for RF calibration or hardware qualification.
+`python tools/validate.py` repeats the suite once per installed FFT backend (NumPy, SciPy, pyFFTW), as CI does. HTTP tests need permission to bind a loopback socket. Runner, supervisor and report-publication tests are POSIX-only and skip on Windows. Recovery tests use synthetic records and fake receiver processes. They validate software behavior; they do not substitute for RF calibration or hardware qualification.
 
 MIT licensed. Original project: [xmikos/soapy_power](https://github.com/xmikos/soapy_power). Fork: [djayuffe/soapy_power](https://github.com/djayuffe/soapy_power).

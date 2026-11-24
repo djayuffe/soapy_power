@@ -4,7 +4,9 @@ soapy_power
 Obtain power spectrum from SoapySDR devices (RTL-SDR, Airspy, SDRplay, HackRF, bladeRF, USRP, LimeSDR, etc.)
 
 The current project overview and control guide is in `README.md <README.md>`_.
-See `the GUI guide <docs/GUI.md>`_ for pause, resume, abort, retry and repeat semantics.
+See `the GUI guide <docs/GUI.md>`_ for pause, resume, abort, retry and repeat semantics, and
+`the satellite superscan guide <docs/SUPERSCAN.md>`_ for the B200 satellite-band survey,
+Doppler tracking and identification.
 
 Requirements
 ------------
@@ -73,11 +75,11 @@ Usage
 
     usage: soapy_power [-h] [-f Hz|Hz:Hz] [-O FILE | --output-fd NUM]
                        [-F {json,rtl_power,rtl_power_fftw,soapy_power_bin,soapy_power_bin_v3}]
-                       [-q] [--debug] [--detect] [--info] [--version]
-                       [-b BINS | -B Hz] [-n REPEATS | -t SECONDS | -T SECONDS]
-                       [-c | -u RUNS | -e SECONDS] [-d DEVICE] [-C CHANNEL]
-                       [-A ANTENNA] [-r Hz] [-w Hz] [-p PPM]
-                       [-g dB | -G STRING | -a] [--lnb-lo Hz] [--lnb-high-side]
+                       [-q] [--debug] [--detect] [--info] [--version] [-b BINS |
+                       -B Hz] [-n REPEATS | -t SECONDS | -T SECONDS] [-c |
+                       -u RUNS | -e SECONDS] [-d DEVICE] [-C CHANNEL] [-A ANTENNA]
+                       [-r Hz] [-w Hz] [-p PPM] [-g dB | -G STRING | -a]
+                       [--lnb-lo Hz] [--lnb-high-side]
                        [--dc-correction {default,on,off}]
                        [--iq-correction {default,on,off}]
                        [--clock-source CLOCK_SOURCE] [--time-source TIME_SOURCE]
@@ -85,11 +87,14 @@ Usage
                        [--manual-correction-tolerance MANUAL_CORRECTION_TOLERANCE]
                        [--manual-dc I,Q] [--manual-iq GAIN,PHASE]
                        [--tune-args KEY=VALUE,...] [--device-settings STRING]
-                       [--force-rate] [--force-bandwidth] [--tune-delay SECONDS]
-                       [--reset-stream] [-o PERCENT | -k PERCENT] [-s BUFFER_SIZE]
-                       [-S MAX_BUFFER_SIZE] [--even | --pow2] [--max-threads NUM]
-                       [--max-queue-size NUM] [--fft-threads FFT_THREADS]
-                       [--no-pyfftw] [--partial-policy {emit,reject,legacy}]
+                       [--stream-args KEY=VALUE,...] [--force-rate]
+                       [--force-bandwidth] [--tune-delay SECONDS] [--reset-stream]
+                       [--reopen-stream]
+                       [--deadline-policy {interrupt,finish-hop}] [-o PERCENT |
+                       -k PERCENT] [-s BUFFER_SIZE] [-S MAX_BUFFER_SIZE] [--even |
+                       --pow2] [--max-threads NUM] [--max-queue-size NUM]
+                       [--fft-threads FFT_THREADS] [--no-pyfftw]
+                       [--partial-policy {emit,reject,legacy}]
                        [--acquisition-rounding {exact,block}]
                        [--settle-samples SETTLE_SAMPLES]
                        [--lock-sensor LOCK_SENSOR]
@@ -99,27 +104,34 @@ Usage
                        [--require-timestamps]
                        [--workspace-budget WORKSPACE_BUDGET]
                        [--allow-estimated-dc] [--skip-driver-teardown]
-                       [--calibration JSON]
-                       [--dc-mask-width HZ] [--dc-offset HZ]
+                       [--calibration JSON] [--dc-mask-width HZ] [--dc-offset HZ]
                        [--precision {single,double}] [--iq-conjugate] [-l] [-R]
                        [-D {none,constant}]
                        [--fft-window {boxcar,hann,hamming,blackman,bartlett,kaiser,tukey}]
                        [--fft-window-param FLOAT] [--fft-overlap PERCENT]
+                       [--telemetry-policy TELEMETRY_POLICY]
+                       [--settling-model SETTLING_MODEL] [--rf-state]
+                       [--centers HZ,HZ,...] [--ensure-coverage]
+                       [--usable-halfwidth USABLE_HALFWIDTH] [--headroom]
+                       [--headroom-max HEADROOM_MAX]
+                       [--headroom-p999 HEADROOM_P999]
+                       [--headroom-retries HEADROOM_RETRIES]
+                       [--headroom-workspace HEADROOM_WORKSPACE]
+                       [--rejection-evidence REJECTION_EVIDENCE]
+                       [--receiver-profile RECEIVER_PROFILE]
 
     Obtain a power spectrum from SoapySDR devices
 
     Main options:
       -h, --help            show this help message and exit
-      -f Hz|Hz:Hz, --freq Hz|Hz:Hz
-                            center frequency or frequency range to scan, number
+      -f, --freq Hz|Hz:Hz   center frequency or frequency range to scan, number
                             can be followed by a k, M or G multiplier (default:
                             1420405752)
-      -O FILE, --output FILE
-                            output to file (incompatible with --output-fd, default
+      -O, --output FILE     output to file (incompatible with --output-fd, default
                             is stdout)
       --output-fd NUM       output to existing file descriptor (incompatible with
                             -O)
-      -F {json,rtl_power,rtl_power_fftw,soapy_power_bin,soapy_power_bin_v3}, --format {json,rtl_power,rtl_power_fftw,soapy_power_bin,soapy_power_bin_v3}
+      -F, --format {json,rtl_power,rtl_power_fftw,soapy_power_bin,soapy_power_bin_v3}
                             output format (default: rtl_power)
       -q, --quiet           limit verbosity
       --debug               detailed debugging messages
@@ -128,43 +140,40 @@ Usage
       --version             show program's version number and exit
 
     FFT bins:
-      -b BINS, --bins BINS  number of FFT bins (incompatible with -B, default:
+      -b, --bins BINS       number of FFT bins (incompatible with -B, default:
                             512)
-      -B Hz, --bin-size Hz  bin size in Hz (incompatible with -b)
+      -B, --bin-size Hz     bin size in Hz (incompatible with -b)
 
     Averaging:
-      -n REPEATS, --repeats REPEATS
+      -n, --repeats REPEATS
                             integration length in FFT-sized sample blocks
                             (incompatible with -t and -T, default: 1600)
-      -t SECONDS, --time SECONDS
-                            integration time (incompatible with -T and -n)
-      -T SECONDS, --total-time SECONDS
+      -t, --time SECONDS    integration time (incompatible with -T and -n)
+      -T, --total-time SECONDS
                             total integration time of all hops (incompatible with
                             -t and -n)
 
     Measurements:
       -c, --continue        repeat the measurement endlessly (incompatible with -u
                             and -e)
-      -u RUNS, --runs RUNS  number of measurements (incompatible with -c and -e,
+      -u, --runs RUNS       number of measurements (incompatible with -c and -e,
                             default: 1)
-      -e SECONDS, --elapsed SECONDS
+      -e, --elapsed SECONDS
                             scan session duration (time limit in seconds,
                             incompatible with -c and -u)
 
     Device settings:
-      -d DEVICE, --device DEVICE
-                            SoapySDR device to use
-      -C CHANNEL, --channel CHANNEL
+      -d, --device DEVICE   SoapySDR device to use
+      -C, --channel CHANNEL
                             SoapySDR RX channel (default: 0)
-      -A ANTENNA, --antenna ANTENNA
+      -A, --antenna ANTENNA
                             SoapySDR selected antenna
-      -r Hz, --rate Hz      sample rate (default: 2000000.0)
-      -w Hz, --bandwidth Hz
-                            filter bandwidth (default: 0)
-      -p PPM, --ppm PPM     frequency correction in ppm
-      -g dB, --gain dB      total gain (incompatible with -G and -a, default:
+      -r, --rate Hz         sample rate (default: 2000000.0)
+      -w, --bandwidth Hz    filter bandwidth (default: 0)
+      -p, --ppm PPM         frequency correction in ppm
+      -g, --gain dB         total gain (incompatible with -G and -a, default:
                             37.2)
-      -G STRING, --specific-gains STRING
+      -G, --specific-gains STRING
                             specific gains of individual amplification elements
                             (incompatible with -g and -a, example:
                             LNA=28,VGA=12,AMP=0
@@ -198,6 +207,12 @@ Usage
                             (driver dependent)
       --device-settings STRING
                             SoapySDR device settings (example: biastee=true)
+      --stream-args KEY=VALUE,...
+                            SoapySDR RX stream arguments (example:
+                            buffers=128,buflen=65536,transfers=16). UHD USB ring
+                            sizing (num_recv_frames, recv_frame_size) is NOT a
+                            stream argument: use -d
+                            "driver=uhd,...,num_recv_frames=N"
       --force-rate          ignore list of sample rates provided by device and
                             allow any value
       --force-bandwidth     ignore list of filter bandwidths provided by device
@@ -206,20 +221,24 @@ Usage
                             avoid artifacts)
       --reset-stream        reset streaming after changing frequency (to avoid
                             artifacts)
+      --reopen-stream       close and reopen the RX stream for every hop,
+                            including repeated tunes
+      --deadline-policy {interrupt,finish-hop}
+                            time limit behavior: interrupt acquisition or finish
+                            the current hop; signals still interrupt
 
     Crop:
-      -o PERCENT, --overlap PERCENT
+      -o, --overlap PERCENT
                             percent of overlap when frequency hopping
                             (incompatible with -k)
-      -k PERCENT, --crop PERCENT
-                            percent of crop when frequency hopping (incompatible
+      -k, --crop PERCENT    percent of crop when frequency hopping (incompatible
                             with -o)
 
     Performance options:
-      -s BUFFER_SIZE, --buffer-size BUFFER_SIZE
+      -s, --buffer-size BUFFER_SIZE
                             base buffer size (number of samples, 0 = auto,
                             default: 0)
-      -S MAX_BUFFER_SIZE, --max-buffer-size MAX_BUFFER_SIZE
+      -S, --max-buffer-size MAX_BUFFER_SIZE
                             maximum buffer size (number of samples, -1 =
                             unlimited, 0 = auto, default: 0)
       --even                use only even numbers of FFT bins
@@ -252,10 +271,10 @@ Usage
                             driver/input queues and backend cache
       --allow-estimated-dc
       --skip-driver-teardown
-                            after the measurement and output are closed, exit
-                            with the measurement status without running SDR
-                            driver destructors (UHD on macOS can abort in USB
-                            teardown after a complete run)
+                            after the measurement and output are closed, exit with
+                            the measurement status without running SDR driver
+                            destructors (UHD on macOS can abort in USB teardown
+                            after a complete run)
       --calibration JSON    measured, settings-matched power calibration profile;
                             output dBm/Hz or mW/Hz
       --dc-mask-width HZ    exclude this baseband DC/spur bandwidth as NaN
@@ -268,7 +287,7 @@ Usage
       -l, --linear          linear power values instead of logarithmic
       -R, --remove-dc       interpolate the central PSD bin (requires boxcar;
                             estimates rather than measures its power)
-      -D {none,constant}, --detrend {none,constant}
+      -D, --detrend {none,constant}
                             remove mean value from data to cancel DC bias
                             (default: none)
       --fft-window {boxcar,hann,hamming,blackman,bartlett,kaiser,tukey}
@@ -278,6 +297,33 @@ Usage
                             kaiser and tukey windows)
       --fft-overlap PERCENT
                             Welch's method overlap between segments (default: 50)
+
+    Receiver quality and measured controls:
+      --telemetry-policy TELEMETRY_POLICY
+                            Typed telemetry polling/validity policy JSON
+      --settling-model SETTLING_MODEL
+                            Reference-validated settling model; unmatched steps
+                            use configured delay
+      --rf-state            Record advertised RF/BB tuning and sensor snapshots
+                            before/after each hop
+      --centers HZ,HZ,...   Explicit hop centres (RF), visited in this order every
+                            run; replaces the -f hop plan. Use for interleaved
+                            multi-band scans with the DC spike kept out of the
+                            bands of interest
+      --ensure-coverage     Plan overlapping positive-weight coverage outside the
+                            DC exclusion
+      --usable-halfwidth USABLE_HALFWIDTH
+                            Trusted IF halfwidth for coverage planning (Hz)
+      --headroom            Reject unsafe raw IQ before publishing a hop
+      --headroom-max HEADROOM_MAX
+      --headroom-p999 HEADROOM_P999
+      --headroom-retries HEADROOM_RETRIES
+                            Bounded retries using an explicit profile backoff
+      --headroom-workspace HEADROOM_WORKSPACE
+      --rejection-evidence REJECTION_EVIDENCE
+                            Fresh directory for durable rejected/partial IQ
+      --receiver-profile RECEIVER_PROFILE
+                            Measured state-bound receiver scan profile JSON
 
 Numerical accuracy and tuning
 -----------------------------
@@ -320,9 +366,13 @@ reject truncated records, unsupported versions and invalid payload alignment.
 Writers drain on shutdown and report background failures. Supplied output file
 descriptors and streams remain owned by the caller.
 
-Run hardware-free regression tests with::
+Run the hardware-free regression suite (unittest and pytest tests) with::
 
-    python -m unittest discover -s tests -v
+    python -m pip install pytest
+    python -m pytest -q tests
+
+The satellite/report tooling tests also use matplotlib, sgp4, reportlab and pypdf and
+skip themselves when those are missing. See `DEVELOPMENT.md <DEVELOPMENT.md>`_.
 
 SciPy enables an additional reference comparison. Real device tuning, gain
 calibration, driver behavior and sustained acquisition require hardware testing.
@@ -507,7 +557,7 @@ The driver-accepted 42–6008 MHz experiments extend beyond Ettus's published
 outer frequencies. See the roadmap's primary-source references and scope notes.
 
 Receiver quality and comparison algorithms
------------------------------------------
+------------------------------------------
 
 The main scanner supports optional raw headroom gates, durable rejected-IQ
 evidence, state-bound gain/DC profiles, RF readback snapshots and mask-aware
