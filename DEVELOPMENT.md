@@ -29,14 +29,15 @@ unittest classes and says so; `python -m unittest discover` alone does not run t
 pytest modules. Tests that need matplotlib/scipy/sgp4/reportlab/pypdf, or POSIX
 (fcntl locks, symlink publication, process groups), skip with a reason (`-rs`).
 
-The GitHub workflow runs required NumPy, SciPy and FFTW checks on Ubuntu 24.04,
-Windows and macOS arm64 with Python 3.9 and 3.12 (Ubuntu 26.04 images have no
-Python 3.9), plus macOS Intel (`macos-15-intel`) with Python 3.12 and the NumPy and
-SciPy backends only, all with the optional analysis tooling installed. The pyFFTW
-0.15.1 macOS x86_64 wheel segfaults on import there, and `simplespectral` imports
-pyFFTW whenever it is installed: do not install the `[fftw]` extra on Intel Macs. Hosted macOS arm64 jobs have repeatedly not
-been acquired for lack of capacity, so they are allowed to fail without failing the
-workflow; check that they actually ran before treating arm64 as validated. The
+The GitHub workflow runs required NumPy, SciPy and FFTW checks on Ubuntu 24.04 and
+Windows with Python 3.9 and 3.12 (Ubuntu 26.04 images have no Python 3.9), on macOS
+arm64 with Python 3.13 (the runner host's version), and on macOS Intel
+(`macos-15-intel`) with Python 3.12 and the NumPy and SciPy backends only, all with
+the optional analysis tooling installed. The pyFFTW 0.15.1 macOS x86_64 wheel
+segfaults on import there, and `simplespectral` imports pyFFTW whenever it is
+installed: do not install the `[fftw]` extra on Intel Macs. Hosted macOS arm64
+capacity is short; a job that is not acquired within 15 minutes fails without
+running and must be re-run before arm64 counts as validated. The
 workflow also builds and checks distributions, runs every console entry point's
 `--help` without SDR bindings, and has a static job: `ruff check --select E9,F`,
 `ruff format --check` on the formatted modules, `shellcheck -S warning` on the
