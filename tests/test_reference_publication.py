@@ -6,10 +6,18 @@ from pathlib import Path
 from unittest.mock import patch
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason='POSIX-only runner tooling: fcntl locks, symlink publication, process groups')
+
+
+def needs(*modules):
+    """Skip a test whose optional analysis/report dependencies are not installed."""
+    for name in modules:
+        pytest.importorskip(name)
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 import satdb as sd
 import superscan_id as sid
-from report_bundle import bundle, verify
+from report_bundle import bundle, prune, verify
 
 
 def test_bundle_failed_build_preserves_published_generation(tmp_path):
@@ -25,6 +33,40 @@ def test_bundle_failed_build_preserves_published_generation(tmp_path):
     with bundle(out) as stage: (stage/'new.csv').write_text('new')
     assert not (out/'plot.png').exists() and (old/'plot.png').read_bytes()==b'old'
     verify(out)
+
+
+def test_bundle_keeps_every_generation_until_pruned(tmp_path):
+    out=tmp_path/'report';gens=tmp_path/'.report-generations'
+    published=[]
+    for n in range(4):
+        with bundle(out) as stage:(stage/'n.txt').write_text(str(n))
+        published.append(out.resolve())
+    assert len(list(gens.glob('generation-*')))==4          # audit trail: nothing removed by publication
+    (gens/'generation-orphan').mkdir()                     # left behind by a killed build
+    removed=prune(out,keep=2)
+    left=sorted(p.name for p in gens.iterdir())
+    assert left==sorted([published[-1].name,published[-2].name]) and len(removed)==3
+    assert (published[-2]/'n.txt').read_text()=='2' and (out/'n.txt').read_text()=='3'
+    verify(out)
+    with pytest.raises(ValueError):prune(out,keep=0)
+
+
+def test_manifest_records_relative_inputs_and_withholds_observer_digest(tmp_path):
+    session=tmp_path/'session';session.mkdir();raw=session/'scan.jsonl';raw.write_text('{}');qth=session/'qth.json';qth.write_text('{"lat_deg":1}')
+    with bundle(session/'analysis',[raw,qth]) as stage:(stage/'x').write_text('1')
+    inputs=json.loads((session/'analysis'/'bundle-manifest.json').read_text())['inputs']
+    assert set(inputs)=={'scan.jsonl','qth.json'} and inputs['qth.json']=='withheld (private input)' and len(inputs['scan.jsonl'])==64
+    assert str(tmp_path) not in (session/'analysis'/'bundle-manifest.json').read_text()
+    verify(session/'analysis')
+
+
+def test_prune_never_removes_archived_legacy_directory(tmp_path):
+    out=tmp_path/'report';out.mkdir();(out/'legacy').write_text('kept')
+    for n in range(3):
+        with bundle(out) as stage:(stage/'n').write_text(str(n))
+    prune(out,keep=1)
+    assert [p.read_text() for p in (tmp_path/'.report-generations').glob('legacy-*/legacy')]==['kept']
+    assert len(list((tmp_path/'.report-generations').glob('generation-*')))==1 and (out/'n').read_text()=='2'
 
 
 def test_source_changed_during_render_refuses_publication(tmp_path):
@@ -66,6 +108,7 @@ def test_reference_snapshot_copies_qth_and_pins_hashes(tmp_path):
 
 
 def test_tle_age_gate_covers_entire_capture_and_alpha5():
+    needs('sgp4')
     from test_analyze_superscan import _tle
     epoch=datetime.datetime(2026,11,22,tzinfo=datetime.timezone.utc).timestamp()
     a,b=_tle(99001,epoch,97.5,40.,15.2)
@@ -141,6 +184,7 @@ def test_checksum_mismatch_and_dead_orbit_are_ineligible():
 
 
 def test_report_pass_timeline_uses_capture_window_only(tmp_path):
+    needs('matplotlib', 'scipy')
     import analyze_superscan as an
     from matplotlib.figure import Figure
     from unittest.mock import Mock
@@ -155,6 +199,7 @@ def test_report_pass_timeline_uses_capture_window_only(tmp_path):
 
 
 def test_long_report_heading_fits_inside_page():
+    needs('matplotlib', 'scipy')
     import analyze_superscan as an
     import matplotlib.pyplot as plt
     fig=plt.figure(figsize=(16,9))

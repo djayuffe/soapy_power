@@ -2,9 +2,7 @@
 import concurrent.futures
 import datetime
 import io
-import os
 import signal
-import struct
 import subprocess
 import sys
 import threading
@@ -224,7 +222,7 @@ class PoolTests(unittest.TestCase):
         pool = ThreadPoolExecutor(max_workers=1, max_queue_size=1)
         gate = threading.Event()
         try:
-            first = pool.submit(gate.wait, 2)
+            pool.submit(gate.wait, 2)
             second = pool.submit(lambda: 2)
             submitted = threading.Event()
             def producer():

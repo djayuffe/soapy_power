@@ -1,5 +1,4 @@
 """Passive references are relative, identifiable, stable and independently checked."""
-import copy
 import io
 import json
 import math
@@ -8,7 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 import numpy as np
-from soapypower.passive_response import _solve,build_overlap,RelativeIFCalibration,load_response_profile
+from soapypower.passive_response import _solve,build_overlap,load_response_profile
 from soapypower.passive_iq import tone_audit,interval_audit
 from soapypower.gain_comparison import compare_gain_states
 from soapypower.calibration import PowerCalibration

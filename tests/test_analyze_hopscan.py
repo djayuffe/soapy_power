@@ -1,16 +1,16 @@
-import json, sys, tempfile, unittest
+import json, os, sys, tempfile, unittest
 from pathlib import Path
 import numpy as np
 
 try:
     import matplotlib, scipy  # noqa
-    HAVE = True
+    HAVE = os.name == 'posix'          # reports are published through POSIX locks + symlinks
 except Exception:
     HAVE = False
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 
 
-@unittest.skipUnless(HAVE, 'needs matplotlib and scipy')
+@unittest.skipUnless(HAVE, 'needs matplotlib, scipy and POSIX')
 class AnalyzeHopscanTests(unittest.TestCase):
     def synthetic(self, path, sweeps=8, line_offset_bins=410):
         rng = np.random.default_rng(1); n = 8192; step = 244.140625; k = np.arange(n) - n // 2

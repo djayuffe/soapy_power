@@ -3,10 +3,16 @@ import copy,datetime,json,sys,tempfile,unittest
 from pathlib import Path
 import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
-import analyze_superscan as an,hopscan_waterfall as hw,satdb as sd,superscan_id as sid
+import satdb as sd
+try:
+    import analyze_superscan as an        # needs matplotlib + scipy
+    HAVE_ANALYSIS = sys.platform != 'win32'   # reports are published through POSIX locks + symlinks
+except ImportError:
+    an = None; HAVE_ANALYSIS = False
 from waterfall_geometry import dwell_mesh
 from soapypower import floor_estimation as fe,spur_inference as si,spur_pipeline as sp
 
+@unittest.skipUnless(HAVE_ANALYSIS, 'needs matplotlib and scipy')
 class AuditTests(unittest.TestCase):
  def test_dwell_geometry_masks_the_revisit_gap_and_keeps_actual_duration(self):
   edges,data=dwell_mesh([[1,2],[3,4]],[0,10],[.5,10.5])
@@ -75,6 +81,7 @@ class GainEvidenceTests(unittest.TestCase):
     r=gc.choose(d,fallback=10);self.assertEqual(r['chosen_gain_db'],10);self.assertFalse(r['rows'][0]['safe'])
 
 
+@unittest.skipUnless(HAVE_ANALYSIS, 'needs matplotlib and scipy')
 class ReportingContracts(unittest.TestCase):
  def test_runner_retains_guards_after_gain_selection(self):
   s=(Path(__file__).resolve().parents[1]/'tools/macos_runner/run_session.sh').read_text();body=s[s.index('  ss_args()'):s.index('  ss_plan ||')]

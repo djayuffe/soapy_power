@@ -5,6 +5,14 @@ from pathlib import Path
 import sys
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason='POSIX-only runner tooling: fcntl locks, symlink publication, process groups')
+
+
+def needs(*modules):
+    """Skip a test whose optional analysis/report dependencies are not installed."""
+    for name in modules:
+        pytest.importorskip(name)
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 from analyze_scan_set import rejected_iq,evidence_findings
 
@@ -19,6 +27,7 @@ def evidence(tmp_path,z,*,reason='RuntimeError: SDR read failed or timed out: -1
 
 
 def test_short_transport_prefix_with_null_integrity_and_missing_metrics(tmp_path):
+    needs('matplotlib')
     s,out,p=evidence(tmp_path,np.array([.01+.02j,.02+.03j,.03+.04j],np.complex64),context=dict(sample_rate=2e6))
     digest=hashlib.sha256(p.read_bytes()).hexdigest();r=rejected_iq([s],out)[0]
     assert r['evidence_class']=='transport_failure' and r['recorded_metrics'] is None
@@ -31,6 +40,7 @@ def test_short_transport_prefix_with_null_integrity_and_missing_metrics(tmp_path
 
 @pytest.mark.parametrize('z',[np.array([],np.complex64),np.array([complex(float('nan'),0)],np.complex64)])
 def test_empty_or_nonfinite_prefix_is_reported_unavailable(tmp_path,z):
+    needs('matplotlib')
     s,out,_=evidence(tmp_path,z)
     r=rejected_iq([s],out)[0]
     assert not r['usable_iq'] and r['metrics'] is None and r['sample_rate_hz'] is None
@@ -39,6 +49,7 @@ def test_empty_or_nonfinite_prefix_is_reported_unavailable(tmp_path,z):
 
 
 def test_headroom_diagnostics_include_the_final_partial_block(tmp_path):
+    needs('matplotlib')
     from matplotlib.axes import Axes
     from unittest.mock import patch
     z=np.full(8193,.01+.02j,np.complex64);z[-1]=.8
@@ -53,12 +64,14 @@ def test_headroom_diagnostics_include_the_final_partial_block(tmp_path):
 
 
 def test_valid_prefix_without_rate_uses_sample_index(tmp_path):
+    needs('matplotlib')
     s,out,_=evidence(tmp_path,np.array([.01+.02j,.02+.03j],np.complex64))
     r=rejected_iq([s],out)[0]
     assert r['usable_iq'] and r['sample_rate_hz'] is None and r['metrics'] is not None
 
 
 def test_hash_mismatch_still_refuses_evidence(tmp_path):
+    needs('matplotlib')
     s,out,p=evidence(tmp_path,np.ones(4,np.complex64))
     p.write_bytes(p.read_bytes()+b'changed')
     with pytest.raises(ValueError,match='hash mismatch'):rejected_iq([s],out)
@@ -71,6 +84,7 @@ def test_run_findings_do_not_invent_headroom_or_sleep_causes():
 
 
 def test_complete_pdf_report_accepts_transport_evidence_without_metrics(tmp_path):
+    needs('matplotlib', 'scipy', 'reportlab', 'pypdf')
     from test_analyze_superscan import synth,BANDS
     from analyze_scan_set import generate
     from report_bundle import verify

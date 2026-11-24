@@ -1,9 +1,7 @@
 """Independent DSP invariants and radio acquisition failure cases."""
-import concurrent.futures
 import io
 import math
 import os
-import struct
 import tempfile
 import threading
 import unittest

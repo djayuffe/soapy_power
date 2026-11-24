@@ -2,6 +2,8 @@ import json, subprocess, sys
 from pathlib import Path
 import pytest
 
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason='POSIX-only runner tooling: fcntl locks, symlink publication, process groups')
+
 pytest.importorskip('matplotlib')
 
 

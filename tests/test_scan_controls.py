@@ -1,5 +1,4 @@
 """Regressions for USB stream lifecycle and complete-hop elapsed deadlines."""
-import json
 import unittest
 from unittest import mock
 import test_audit as audit

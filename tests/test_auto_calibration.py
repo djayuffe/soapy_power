@@ -1,5 +1,4 @@
 """Real DSP and simulated SDR/source boundaries for guided automation."""
-import copy
 import io
 import json
 from pathlib import Path

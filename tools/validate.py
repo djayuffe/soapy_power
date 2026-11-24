@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Run the mathematical and simulated-device suite per installed FFT backend."""
+"""Run the mathematical and simulated-device suite per installed FFT backend.
+
+The suite mixes unittest classes and pytest-style tests; pytest runs both. Without pytest only the
+unittest classes run and the pytest modules are reported as not collected (install pytest for the full suite).
+Tests that need optional tools (matplotlib, sgp4, reportlab, pypdf) or POSIX skip themselves when unavailable.
+"""
 import argparse
 import importlib.util
 import json
@@ -27,7 +32,16 @@ def worker(backend):
         if importlib.util.find_spec(name) is not None:
             versions[name] = __import__(name).__version__
     print(json.dumps(versions, sort_keys=True), flush=True)
-    suite = unittest.defaultTestLoader.discover(str(ROOT / 'tests'))
+    if importlib.util.find_spec('pytest') is not None:
+        import pytest
+        return int(pytest.main([str(ROOT / 'tests'), '-q', '-rs', '-p', 'no:cacheprovider']))
+    print('pytest is not installed: running unittest classes only; pytest-style modules are not collected', flush=True)
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+    for path in sorted((ROOT / 'tests').glob('test_*.py')):
+        if 'import pytest' in path.read_text(encoding='utf-8'):
+            continue
+        suite.addTests(loader.discover(str(ROOT / 'tests'), pattern=path.name))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
 

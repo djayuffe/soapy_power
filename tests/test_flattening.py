@@ -1,9 +1,6 @@
 """Flattening controls, constrained fits, independent evidence and failure gates."""
 import copy
 import json
-import math
-from pathlib import Path
-import tempfile
 import unittest
 from unittest import mock
 
@@ -11,7 +8,7 @@ import numpy as np
 
 from soapypower.calibration import PowerCalibration
 from soapypower.calibration_cli import main
-from soapypower.equalization import relative_inverse, equalize_record, equalize_file
+from soapypower.equalization import relative_inverse, equalize_record
 from soapypower.response_smoothing import smooth_row, smooth_profile
 from soapypower.response_validation import validate_holdout, response_sha256
 from soapypower.records import read_records, integrate_record
@@ -71,7 +68,6 @@ class UsableBandTests(unittest.TestCase):
         result=equalize_record(record,self.calibration(),10000,0,0,30,usable_policy=dict(edge_guard_hz=64,dc_exclusion_hz=32))
         meta=result['metadata']['equalization']
         self.assertTrue(result['masked_bins']);self.assertEqual(len(meta['usable_bands']),2)
-        raw=np.asarray(meta['raw_baseband_hz'])
         for i in result['masked_bins']:self.assertIsNone(result['power'][i])
         self.assertTrue(any('dc_or_spur_guard' in reasons for reasons in meta['exclusion_reasons']))
         with self.assertRaises(ValueError):integrate_record(result)

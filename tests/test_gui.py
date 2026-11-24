@@ -51,8 +51,19 @@ def http(control):
     yield c,folder,'http://127.0.0.1:'+str(s.server_port)
     s.shutdown();s.server_close();t.join()
 
+class Reply:
+    """A fully read HTTP response: status and body without holding the connection open."""
+    def __init__(self,status,body):self.status=status;self.body=body
+    def read(self):return self.body
+
+
 def request(url,data=None,headers=None):
-    return urllib.request.urlopen(urllib.request.Request(url,data=json.dumps(data).encode() if data is not None else None,headers=headers or {}),timeout=5)
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url,data=json.dumps(data).encode() if data is not None else None,headers=headers or {}),timeout=5) as reply:
+            return Reply(reply.status,reply.read())
+    except urllib.error.HTTPError as error:
+        error.body=error.read();error.close()   # status code stays available; the socket is released
+        raise
 
 def test_http_assets_actions_and_auth(http):
     c,folder,url=http

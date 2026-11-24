@@ -1,9 +1,10 @@
 """Telemetry preserves source semantics, polling budgets and reference boundaries."""
+import importlib.util
 import copy,hashlib,io,json,tempfile,types,unittest
 from pathlib import Path
 from unittest import mock
 import numpy as np
-from soapypower.telemetry import TelemetryMonitor,TelemetryPolicy,native_metadata,digest
+from soapypower.telemetry import TelemetryMonitor,TelemetryPolicy,digest
 from soapypower.filter_model import validate_chain,digital_response
 from soapypower.telemetry_models import fit_thermal,ThermalModel,fit_settling,evaluate_settling,ModelContextMismatch
 from soapypower.telemetry_cli import apply_thermal,measurement_signature,main
@@ -88,6 +89,7 @@ class MonitorTests(unittest.TestCase):
  def test_lo_mapping_handles_shift_and_preserves_hypothesis(self):
   s={'tuning_components_hz':{'RF':50e6,'BB':14e6}};r=lo_mapping(s,36e6,28e6);self.assertEqual(r['rx_rf_minus_bb_residual_hz'],0);self.assertEqual(r['analog_lo_baseband_hz'],-14e6);self.assertFalse(r['automatic_exclusion'])
 
+@unittest.skipUnless(importlib.util.find_spec('scipy'), 'needs SciPy (optional [fft] extra)')
 class FilterTests(unittest.TestCase):
  def test_chain_validation_is_idempotent_and_preserves_raw_source(self):
   original=chain();before=copy.deepcopy(original);a=validate_chain(original);b=validate_chain(original)

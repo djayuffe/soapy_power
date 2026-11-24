@@ -1,10 +1,10 @@
-import json, sys, tempfile, unittest, datetime
+import json, os, sys, tempfile, unittest, datetime
 from pathlib import Path
 import numpy as np
 
 try:
     import matplotlib, scipy  # noqa
-    HAVE = True
+    HAVE = os.name == 'posix'          # reports are published through POSIX locks + symlinks
 except Exception:
     HAVE = False
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
@@ -39,7 +39,7 @@ def synth(path, sweeps, signals, t_start=1.7e9):
             t += 0.02
 
 
-@unittest.skipUnless(HAVE, 'needs matplotlib and scipy')
+@unittest.skipUnless(HAVE, 'needs matplotlib, scipy and POSIX')
 class SuperscanTests(unittest.TestCase):
     def run_tool(self, signals, sweeps=90, t_start=1.7e9, extra=()):
         import analyze_superscan as an
@@ -99,7 +99,6 @@ except Exception:
     HAVE_SGP4 = False
 
 
-@unittest.skipUnless(HAVE and HAVE_SGP4, 'needs matplotlib, scipy and sgp4')
 class ControlTests(unittest.TestCase):
     def test_guided_hits_must_follow_a_moving_curve(self):
         import superscan_id as sid
@@ -122,6 +121,7 @@ class ControlTests(unittest.TestCase):
         self.assertFalse(sid.on_signal(A, [(1, 10.0, 401.6e6, 0.0, 1.0)], 6.5))     # stable lines are masked, not signals
 
 
+@unittest.skipUnless(HAVE, 'needs matplotlib, scipy and POSIX')
 class LineOriginTests(unittest.TestCase):
     def test_rf_line_seen_from_both_los_and_spur_from_one(self):
         import analyze_superscan as an
@@ -137,6 +137,7 @@ class LineOriginTests(unittest.TestCase):
         self.assertEqual(len(L[1]['views']), 2)
 
 
+@unittest.skipUnless(HAVE and HAVE_SGP4, 'needs matplotlib, scipy, sgp4 and POSIX')
 class IdentificationTests(unittest.TestCase):
     run_tool = SuperscanTests.run_tool
     QTH = dict(lat_deg=63.3, lon_deg=10.3, alt_m=50)

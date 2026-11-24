@@ -1,5 +1,4 @@
 """USRP/UHD-style clocking, sensor domains, mapping and manual controls."""
-import io
 import json
 from types import SimpleNamespace
 import unittest

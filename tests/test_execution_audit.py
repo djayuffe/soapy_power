@@ -1,11 +1,9 @@
 """Regression cases found by the end-to-end execution audit."""
-import copy
 import datetime
 import hashlib
 import io
 import json
 from pathlib import Path
-import tempfile
 import threading
 import unittest
 from unittest import mock
@@ -14,7 +12,7 @@ from soapypower.psd import PSD
 from soapypower.calibration import PowerCalibration,_compare
 from soapypower.calibration_cli import main
 from soapypower.calibration_workflows import average_capture
-from soapypower.files import EvidenceSnapshot,write_json
+from soapypower.files import EvidenceSnapshot
 from soapypower.passive_response import _solve
 import test_architecture as architecture
 import test_calibration_workflows as workflows

@@ -1,8 +1,6 @@
 import io, json, time, unittest
-from unittest import mock
 import numpy as np
 from tests import test_audit as audit  # noqa: F401  (AcquisitionTests.setUp builds a SoapyPower on a fake device)
-from soapypower import writer
 
 
 def packet(ret, flags=0):

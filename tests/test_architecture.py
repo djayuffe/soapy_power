@@ -1,5 +1,4 @@
 """Architecture, DC, calibration and hardware-control regression tests."""
-import copy
 import datetime
 import io
 import json

@@ -1,5 +1,4 @@
 """Independent numerical references and measurement-integrity fault injection."""
-import concurrent.futures
 from decimal import Decimal, localcontext
 import datetime
 import io

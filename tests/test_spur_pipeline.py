@@ -1,8 +1,6 @@
 import json
-import math
 import unittest
 
-import numpy as np
 
 from soapypower import spur_pipeline as sp
 from soapypower import spur_twin as st

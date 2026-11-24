@@ -2,12 +2,19 @@
 import datetime
 import hashlib
 import json
-import os
 from pathlib import Path
 import signal
 import sys
 import time
 import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason='POSIX-only runner tooling: fcntl locks, symlink publication, process groups')
+
+
+def needs(*modules):
+    """Skip a test whose optional analysis/report dependencies are not installed."""
+    for name in modules:
+        pytest.importorskip(name)
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 import superscan_run as run
 from report_bundle import bundle,verify
@@ -124,6 +131,7 @@ def test_nested_report_bundles_verify(tmp_path):
 
 
 def test_tall_identification_rows_paginate_without_loss():
+    needs('matplotlib', 'scipy')
     from analyze_superscan import identification_chunks
     rows=[[str(i),'a wrapped candidate confidence statement '*6] for i in range(30)]
     chunks=list(identification_chunks(rows,[4,20]))
@@ -138,6 +146,7 @@ def test_scan_set_rejects_duplicate_or_escaped_capture_paths(tmp_path):
 
 
 def test_scan_set_full_report_on_known_truth_capture(tmp_path):
+    needs('matplotlib', 'scipy', 'reportlab', 'pypdf')
     from test_analyze_superscan import synth,BANDS
     from analyze_scan_set import generate
     session=tmp_path/'session';session.mkdir();synth(session/'superscan.jsonl',12,[])
@@ -164,6 +173,7 @@ def test_cli_cancellation_marks_manifest_and_terminates_child(tmp_path):
 
 
 def test_partial_final_sweep_is_not_labelled_complete(tmp_path):
+    needs('matplotlib', 'scipy')
     from test_analyze_superscan import synth
     from analyze_superscan import load
     p=tmp_path/'scan.jsonl';synth(p,2,[]);lines=p.read_text().splitlines();p.write_text('\n'.join(lines[:-1])+'\n')

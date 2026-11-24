@@ -11,6 +11,8 @@ import uuid
 
 import pytest
 
+pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason='POSIX-only runner tooling: fcntl locks, symlink publication, process groups')
+
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('control_gui',ROOT/'soapypower/gui.py')
 gui=importlib.util.module_from_spec(spec);spec.loader.exec_module(gui)
@@ -71,7 +73,7 @@ def test_pause_resume_retry_abort_preserves_partitions_and_budget(receiver):
     accepted=(folder/'capture-001.jsonl').read_bytes();time.sleep(.3)
     assert read(mfile)['credited_seconds']==m['credited_seconds']
     assert not (folder/'attempt-002.jsonl').exists()
-    resume=command(folder,'resume')
+    command(folder,'resume')
     wait_for(lambda:(folder/'attempt-002.jsonl').is_file())
     retry=command(folder,'retry')
     wait_for(lambda:(folder/'attempt-003.jsonl').is_file())

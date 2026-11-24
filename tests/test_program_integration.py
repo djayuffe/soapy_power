@@ -1,5 +1,5 @@
 """Regression evidence for promoted live acquisition and comparison algorithms."""
-import copy
+import importlib.util
 import hashlib
 import json
 import tempfile
@@ -12,7 +12,7 @@ import test_audit as audit
 import test_architecture as architecture
 from soapypower.acquisition_quality import QualityPolicy, RejectionEvidence, HeadroomRejected
 from soapypower.scan_profile import ScanProfile, import_campaign_profile
-from soapypower.coverage import masked_frequency_plan, coverage_gaps, support_intervals
+from soapypower.coverage import masked_frequency_plan, coverage_gaps
 from soapypower.spectral_comparison import rebin_density, fuse_density, fuse_observations
 from soapypower.relative_noise import RelativeNoiseReference
 from soapypower.common_iq import common_band_iq, equal_duration_phase
@@ -381,6 +381,7 @@ class AlgorithmTests(unittest.TestCase):
         for source in ([0,0,1],[0,np.nan,2],[2,1,0]):
             with self.assertRaises(ValueError):rebin_density(source,[1,2],[0,2])
 
+    @unittest.skipUnless(importlib.util.find_spec('scipy'), 'needs SciPy (optional [fft] extra)')
     def test_common_band_tone_preserves_amplitude_and_phase_delay(self):
         fs=5120000;n=np.arange(100000);z=.2*np.exp(2j*np.pi*100000*n/fs)
         original=z.copy();y,meta=common_band_iq(z,fs)
@@ -392,11 +393,13 @@ class AlgorithmTests(unittest.TestCase):
         np.testing.assert_array_equal(z,original)
         self.assertFalse(meta['absolute_phase_aligned'])
 
+    @unittest.skipUnless(importlib.util.find_spec('scipy'), 'needs SciPy (optional [fft] extra)')
     def test_common_iq_budget_and_duration_are_checked(self):
         z=np.ones(100000,dtype=complex)
         for options in ({'duration':1/3000000},{'max_samples':100},{'start_seconds':0}):
             with self.assertRaises(ValueError):common_band_iq(z,2560000,**options)
 
+    @unittest.skipUnless(importlib.util.find_spec('scipy'), 'needs SciPy (optional [fft] extra)')
     def test_common_phase_has_equal_bins_and_disjoint_partitions(self):
         rng=np.random.RandomState(123);z=(rng.randn(50000)+1j*rng.randn(50000))*.01
         result=equal_duration_phase(z,2560000)
@@ -495,6 +498,7 @@ class NoiseReferenceTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):analyze(['rebin',str(source),str(out),'--target-edges',str(target)])
             self.assertFalse(out.exists())
 
+    @unittest.skipUnless(importlib.util.find_spec('scipy'), 'needs SciPy (optional [fft] extra)')
     def test_phase_cli_exports_arrays_and_preserves_heldout_traces(self):
         with tempfile.TemporaryDirectory() as d:
             source=Path(d)/'source.npz';out=Path(d)/'phase.npz'
