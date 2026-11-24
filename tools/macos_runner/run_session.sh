@@ -82,6 +82,54 @@ report_set() {
   echo "superscan_report exit=$ARC" | tee -a "$ses/result.txt"
 }
 
+# ---- Local browser workspace (request key gui = start | stop, optional gui_port, default 8765). File-only:
+# no SDR bindings, discovery or device opens. The server runs in its own session so it outlives this launchd job
+# (launchd ends the job's process group), binds 127.0.0.1 only and is recorded in $OUTDIR/gui.pid / gui.log.
+GUI_ACTION="$(req_field gui)"
+if [ -n "$GUI_ACTION" ]; then
+  GUI_PORT="$(req_field gui_port)"; GUI_PORT="${GUI_PORT:-8765}"
+  if ! [[ "$GUI_PORT" =~ ^[0-9]{4,5}$ ]] || [ "$GUI_PORT" -lt 1024 ] || [ "$GUI_PORT" -gt 65535 ]; then
+    finish "RESULT=gui_bad_port"; exit 2
+  fi
+  GUI_PIDF="$OUTDIR/gui.pid"; GUI_LOG="$OUTDIR/gui.log"; GUI_URL="http://127.0.0.1:$GUI_PORT"
+  gui_pid() { local p; p="$(cat "$GUI_PIDF" 2>/dev/null)"
+    if [[ "$p" =~ ^[0-9]+$ ]] && ps -p "$p" -o command= 2>/dev/null | grep -q 'soapypower[.]gui'; then echo "$p"; fi; }
+  gui_up() { [ "$(curl -s -o /dev/null -m 2 -w '%{http_code}' "$GUI_URL/" 2>/dev/null)" = 200 ]; }
+  case "$GUI_ACTION" in
+    stop)
+      P="$(gui_pid)"
+      if [ -n "$P" ]; then
+        kill "$P"; for _ in $(seq 1 50); do kill -0 "$P" 2>/dev/null || break; sleep 0.1; done
+      fi
+      rm -f "$GUI_PIDF"; echo "gui stopped${P:+ (pid $P)}"
+      finish "RESULT=gui_stopped"; exit 0;;
+    start)
+      P="$(gui_pid)"
+      if [ -n "$P" ] && gui_up; then echo "gui already running: $GUI_URL (pid $P)"; finish "RESULT=gui_running;URL=$GUI_URL;PID=$P"; exit 0; fi
+      GPY=""
+      for candidate in "$OUTDIR/.venv/bin/python" /opt/homebrew/bin/python3 python3; do
+        if "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 9))' >/dev/null 2>&1; then GPY="$candidate"; break; fi
+      done
+      [ -n "$GPY" ] || { finish "RESULT=gui_needs_python_3_9"; exit 1; }
+      "$GPY" - "$REPO" "$OUTDIR" "$GUI_PORT" "$GUI_LOG" "$GUI_PIDF" <<'PYEOF' || { finish "RESULT=gui_launch_failed;LOG=$GUI_LOG"; exit 1; }
+import os, subprocess, sys
+repo, sessions, port, log, pidfile = sys.argv[1:6]
+env = {k: v for k, v in os.environ.items() if not k.startswith(('DYLD_', 'SOAPY_', 'PYTHONPATH'))}
+with open(log, 'ab') as out:
+    child = subprocess.Popen([sys.executable, '-m', 'soapypower.gui', '--repo', repo, '--sessions', sessions,
+                              '--port', port, '--no-browser'],
+                             cwd=repo, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True)
+with open(pidfile, 'w') as f:
+    f.write(str(child.pid))
+PYEOF
+      for _ in $(seq 1 100); do gui_up && break; [ -n "$(gui_pid)" ] || break; sleep 0.1; done
+      if gui_up; then echo "gui started: $GUI_URL (pid $(gui_pid))"; finish "RESULT=gui_started;URL=$GUI_URL;PID=$(gui_pid)"; exit 0; fi
+      echo "gui did not answer on $GUI_URL; see $GUI_LOG"; tail -5 "$GUI_LOG" 2>/dev/null
+      finish "RESULT=gui_failed;LOG=$GUI_LOG"; exit 1;;
+    *) finish "RESULT=gui_bad_action"; exit 2;;
+  esac
+fi
+
 # Reanalysis is CPU/file-only. Dispatch before SDR bindings, discovery or device opens.
 REAN="$(req_field reanalyze)"
 if [ -n "$REAN" ]; then

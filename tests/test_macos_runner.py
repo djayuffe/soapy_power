@@ -156,3 +156,40 @@ Path(os.environ['REANALYSIS_SEEN']).write_text(json.dumps(sys.argv[1:]))
     assert 'device:' not in done.stdout and 'SoapySDR' not in done.stdout
     assert 'RESULT=reanalyze_0' in (sessions/'last-run.env').read_text()
     assert capture.read_text()=='{"captures":[]}'
+
+
+@unittest.skipIf(os.name == 'nt' or shutil.which('bash') is None or shutil.which('curl') is None, 'POSIX bash scripts + curl')
+def test_gui_request_starts_detached_workspace_and_stops_it(tmp_path):
+    import json, socket, time, urllib.request
+    sessions=tmp_path/'sessions';venv=sessions/'.venv/bin';binpath=tmp_path/'bin'
+    for p in (venv,binpath):p.mkdir(parents=True)
+    plutil=binpath/'plutil';plutil.write_text(FAKE_PLUTIL.format(python=sys.executable));plutil.chmod(0o755)
+    (venv/'python').write_text('#!/bin/sh\nexec "%s" "$@"\n' % sys.executable);(venv/'python').chmod(0o755)
+    with socket.socket() as s:
+        s.bind(('127.0.0.1',0));port=s.getsockname()[1]
+    def run(action):
+        request=tmp_path/(action+'.plist');request.write_bytes(plistlib.dumps(dict(mode='scan',gui=action,gui_port=str(port))))
+        env=dict(os.environ,PATH=str(binpath)+':'+os.environ['PATH'],MODE='scan',SPR_REPO=str(ROOT),SPR_SESSIONS=str(sessions),REQUEST_FILE=str(request))
+        done=subprocess.run(['bash',str(RUNNER/'run_session.sh')],env=env,capture_output=True,text=True,timeout=60)
+        return done,(sessions/'last-run.env').read_text()
+    try:
+        done,result=run('start')
+        assert done.returncode==0,done.stdout+done.stderr
+        assert 'RESULT=gui_started' in result and 'URL=http://127.0.0.1:%d' % port in result
+        assert 'SoapySDR' not in done.stdout and 'device:' not in done.stdout
+        pid=int((sessions/'gui.pid').read_text())
+        with urllib.request.urlopen('http://127.0.0.1:%d/api/state' % port,timeout=5) as r:
+            assert 'sessions' in json.load(r)            # the server outlived the runner job
+        done,result=run('start')
+        assert done.returncode==0 and 'RESULT=gui_running' in result   # no second server
+        done,result=run('stop')
+        assert done.returncode==0 and 'RESULT=gui_stopped' in result and not (sessions/'gui.pid').exists()
+        for _ in range(50):
+            try:os.kill(pid,0)
+            except OSError:break
+            time.sleep(.1)
+        else:raise AssertionError('gui process still running after stop')
+    finally:
+        if (sessions/'gui.pid').exists():
+            try:os.kill(int((sessions/'gui.pid').read_text()),15)
+            except OSError:pass

@@ -8,6 +8,8 @@ python -m soapypower.gui --repo /path/to/soapy_power --sessions /path/to/soapy_p
 soapy_power_gui --repo /path/to/soapy_power
 ```
 
+On macOS the installed runner can start it detached from any shell or remote session: `bash tools/macos_runner/queue.sh scan --gui start --wait 60` (and `--gui stop`; `--gui-port N` for another port). It runs the repository's GUI with the runner's Python, writes `sessions/gui.pid` and `sessions/gui.log`, reports an already running server instead of starting a second one, and never opens the SDR.
+
 The server binds only to `127.0.0.1:8765`. Use `--port` to change the port or `--no-browser` to avoid opening a browser. Viewing saved sessions needs no native SDR bindings and does not probe a device. The frontend uses bundled assets, with no network service or frontend build dependency.
 
 Acquisition and report generation use the existing macOS launchd runner. Install it using `tools/macos_runner/install.sh` as described in the runner documentation. If it is unavailable, the GUI remains a report viewer. Choose **Probe receiver** to explicitly queue a hardware probe. Do not run another capture process concurrently outside the runner.

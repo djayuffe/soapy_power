@@ -30,6 +30,12 @@ soapy_power_gui --repo /absolute/path/to/soapy_power \
   --sessions /absolute/path/to/sessions --no-browser
 ```
 
+With the runner installed, it can also start the workspace in the background (no SDR access; log in `sessions/gui.log`):
+
+```sh
+bash tools/macos_runner/queue.sh scan --gui start --wait 60   # --gui stop ends it; --gui-port N for another port
+```
+
 Open **http://127.0.0.1:8765**. The server binds only to loopback; `--port` selects another port. On macOS, install the existing launchd runner with `tools/macos_runner/install.sh` to enable queued acquisition. Read that script's setup instructions before installation. Without a loaded runner, the GUI remains a saved-result viewer.
 
 The workspace provides scan configuration, receiver probing, latest spectrum and sampled IF waterfall, headroom/temperature/LO-lock/continuity evidence, session history, report links and queued reanalysis. Defaults are starting points, not universal optimum settings. Select the input that actually matches the connected antenna or termination.
