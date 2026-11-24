@@ -28,6 +28,8 @@ jobs:
       # Optional analysis/report tooling (superscan, satellite identification, PDF reports).
       - run: python -m pip install matplotlib sgp4 reportlab pypdf
       - run: python -m pip install --no-deps -e .
+      - name: Import smoke test (native extensions)
+        run: python -X faulthandler -c "import platform, numpy, scipy, simplespectral, pyfftw; print(platform.platform(), platform.machine(), numpy.__version__, scipy.__version__, pyfftw.__version__)"
       - run: python tools/validate.py --backend numpy
       - run: python tools/validate.py --backend scipy
       - run: python tools/validate.py --backend fftw

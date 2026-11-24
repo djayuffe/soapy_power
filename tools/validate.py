@@ -63,8 +63,13 @@ def main():
             print('Skipping unavailable backend: ' + backend, flush=True)
             continue
         print('Validating backend: ' + backend, flush=True)
-        process = subprocess.run([sys.executable, str(Path(__file__).resolve()), '--worker', backend], cwd=str(ROOT))
-        results.append({'backend': backend, 'status': 'passed' if process.returncode == 0 else 'failed'})
+        # -X faulthandler: a native crash (e.g. an FFT extension) prints its stack instead of exiting silently
+        process = subprocess.run([sys.executable, '-X', 'faulthandler', str(Path(__file__).resolve()), '--worker', backend],
+                                 cwd=str(ROOT))
+        if process.returncode != 0:
+            print('Backend {} failed: worker exit code {}'.format(backend, process.returncode), flush=True)
+        results.append({'backend': backend, 'status': 'passed' if process.returncode == 0 else 'failed',
+                        'exit_code': process.returncode})
     if args.report:
         from soapypower.files import write_json
         write_json(args.report, {'python': sys.version, 'platform': platform.platform(), 'results': results})
