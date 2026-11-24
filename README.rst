@@ -351,7 +351,8 @@ window. Constant detrending removes each segment's mean. DC interpolation only
 replaces the central bin and is mainly useful with boxcar.
 
 Install an accelerated backend with ``pip install '.[fft]'`` (SciPy) or
-``pip install '.[fftw]'`` (pyFFTW). ``--no-pyfftw`` selects the available fallback.
+``pip install '.[fftw]'`` (pyFFTW; not on Intel Macs, where the pyFFTW 0.15.1 x86_64
+wheel crashes on import). ``--no-pyfftw`` selects the available fallback.
 ``--pow2`` rounds FFT lengths upward and therefore changes frequency resolution.
 Automatic live settings use up to four PSD workers and 32 pending chunk slots,
 and acquisition chunks of about 100 ms (at least one device block, at most

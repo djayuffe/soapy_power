@@ -24,15 +24,20 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install numpy scipy pyfftw simplespectral build twine pytest
+      - run: python -m pip install numpy scipy simplespectral build twine pytest
+      # pyFFTW 0.15.1's macOS x86_64 wheel segfaults on import (seen 2026-11-24 on macos-15-intel with
+      # numpy 2.5.5 / scipy 1.18.1), and simplespectral imports it automatically. Not installed there.
+      - if: matrix.os != 'macos-15-intel'
+        run: python -m pip install pyfftw
       # Optional analysis/report tooling (superscan, satellite identification, PDF reports).
       - run: python -m pip install matplotlib sgp4 reportlab pypdf
       - run: python -m pip install --no-deps -e .
       - name: Import smoke test (native extensions)
-        run: python -X faulthandler -c "import platform, numpy, scipy, simplespectral, pyfftw; print(platform.platform(), platform.machine(), numpy.__version__, scipy.__version__, pyfftw.__version__)"
+        run: python -X faulthandler -c "import platform, numpy, scipy, simplespectral; print(platform.platform(), platform.machine(), numpy.__version__, scipy.__version__, 'pyfftw' if simplespectral.fft_pyfftw else 'no pyfftw')"
       - run: python tools/validate.py --backend numpy
       - run: python tools/validate.py --backend scipy
-      - run: python tools/validate.py --backend fftw
+      - if: matrix.os != 'macos-15-intel'
+        run: python tools/validate.py --backend fftw
       - run: python tools/fuzz_integration.py --trials 10000
       - run: python -m build
       - run: python -m twine check dist/*

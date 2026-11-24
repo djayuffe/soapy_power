@@ -31,8 +31,10 @@ pytest modules. Tests that need matplotlib/scipy/sgp4/reportlab/pypdf, or POSIX
 
 The GitHub workflow runs required NumPy, SciPy and FFTW checks on Ubuntu 24.04,
 Windows and macOS arm64 with Python 3.9 and 3.12 (Ubuntu 26.04 images have no
-Python 3.9), plus macOS Intel (`macos-15-intel`) with Python 3.12, all with the
-optional analysis tooling installed. Hosted macOS arm64 jobs have repeatedly not
+Python 3.9), plus macOS Intel (`macos-15-intel`) with Python 3.12 and the NumPy and
+SciPy backends only, all with the optional analysis tooling installed. The pyFFTW
+0.15.1 macOS x86_64 wheel segfaults on import there, and `simplespectral` imports
+pyFFTW whenever it is installed: do not install the `[fftw]` extra on Intel Macs. Hosted macOS arm64 jobs have repeatedly not
 been acquired for lack of capacity, so they are allowed to fail without failing the
 workflow; check that they actually ran before treating arm64 as validated. The
 workflow also builds and checks distributions, runs every console entry point's

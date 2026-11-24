@@ -12,7 +12,7 @@ Install SoapySDR, its Python bindings and the driver for your receiver separatel
 python -m pip install .
 # Optional FFT backends:
 python -m pip install '.[fft]'
-# or: python -m pip install '.[fftw]'
+# or: python -m pip install '.[fftw]'   # not on Intel Macs: the pyFFTW 0.15.1 x86_64 wheel crashes on import
 ```
 
 Core CLI metadata requires Python 3.6+. The optional GUI requires **Python 3.9+**. Automated reports have additional dependencies documented in [development](DEVELOPMENT.md) and the runner scripts. The source GUI's saved-result viewer uses the Python standard library and bundled browser assets; viewing results does not open an SDR.
