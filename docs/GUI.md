@@ -61,3 +61,22 @@ For new runner sessions, `request.plist` records the typed acquisition request. 
 All POST endpoints require the local Host, a matching Origin when provided, `Content-Type: application/json` and the per-process `X-CSRF-Token` from the workspace page. `/api/pause`, `/api/resume`, `/api/retry`, `/api/abort` and the compatibility alias `/api/stop` accept exactly `{"session":"superscan-YYYYMMDD-HHMMSS"}`. Only `/api/retry` can queue a fresh acquisition for a finished session; pause/resume/abort never enqueue hardware work. Validation errors use HTTP 400; pending/busy conflicts use 409. A successful control response means the request is durably written, not that the hardware transition has already finished.
 
 The supervisor reads an atomically published `control-request.json` with version 1, a 32-character lowercase hexadecimal ID and action `pause`, `resume` or `retry`. `captures.json.control_ack` identifies the last acknowledged command, and `controls` records acknowledgments and credited time, including the final abort event. Abort events have a null request ID; `control_ack` continues to identify the last protocol command. Abort uses the existing sticky `stop-request.json`, which takes priority. These files are local operator control, not an API for unrelated programs to modify during a scan.
+
+
+## Process ownership, buffering and failure recovery
+
+See [the GUI and runner audit](GUI_AUDIT.md) for corrected findings, exact buffer/concurrency bounds, crash recovery and deployment instructions. The console shows runner job state and distinguishes an interrupted supervisor from the immutable recorded acquisition status. Disconnected or stale snapshots disable mutations. A submitted action may remain pending while the supervisor closes and validates an attempt.
+
+The interface is a local instrument console: acquisition totals, latest qualified/unqualified record, sampled IF history, receiver evidence and a session/control log. Preview masks and missing time remain blank. The display history is bounded and remains in the server while sessions are being polled; it is not the full raw archive.
+
+Daemon-managed runtime diagnostics rotate in `gui.log`, with startup failures in `gui-startup.log`. Metadata in `gui-service.json` verifies the process instance; `gui.pid` is a compatibility file, not sufficient authority for signalling a process. Install/update the launch agent with `tools/macos_runner/install.sh --no-probe` while the runner is idle. Existing queued GUI lifecycle requests run serially; use `python -m soapypower.gui_service` for independent GUI start/status/stop.
+
+## Expert workbench
+
+The **Workbench** button opens the advanced interface described in
+[GUI_WORKBENCH.md](GUI_WORKBENCH.md). It exposes acquisition, calibration,
+telemetry, experiments, phase/noise analysis and measured spur diagnostics
+through typed controls generated from the actual CLI parsers. Validate and
+review the plan before queuing it. Outputs go into new `expert-*` sessions.
+
+Satellite catalog, pass planning, target preparation and frame-time spectrum/waterfall predictions are documented in [SATNOGS_GUI.md](SATNOGS_GUI.md).

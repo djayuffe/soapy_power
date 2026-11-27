@@ -91,43 +91,18 @@ if [ -n "$GUI_ACTION" ]; then
   if ! [[ "$GUI_PORT" =~ ^[0-9]{4,5}$ ]] || [ "$GUI_PORT" -lt 1024 ] || [ "$GUI_PORT" -gt 65535 ]; then
     finish "RESULT=gui_bad_port"; exit 2
   fi
-  GUI_PIDF="$OUTDIR/gui.pid"; GUI_LOG="$OUTDIR/gui.log"; GUI_URL="http://127.0.0.1:$GUI_PORT"
-  gui_pid() { local p; p="$(cat "$GUI_PIDF" 2>/dev/null)"
-    if [[ "$p" =~ ^[0-9]+$ ]] && ps -p "$p" -o command= 2>/dev/null | grep -q 'soapypower[.]gui'; then echo "$p"; fi; }
-  gui_up() { [ "$(curl -s -o /dev/null -m 2 -w '%{http_code}' "$GUI_URL/" 2>/dev/null)" = 200 ]; }
-  case "$GUI_ACTION" in
-    stop)
-      P="$(gui_pid)"
-      if [ -n "$P" ]; then
-        kill "$P"; for _ in $(seq 1 50); do kill -0 "$P" 2>/dev/null || break; sleep 0.1; done
-      fi
-      rm -f "$GUI_PIDF"; echo "gui stopped${P:+ (pid $P)}"
-      finish "RESULT=gui_stopped"; exit 0;;
-    start)
-      P="$(gui_pid)"
-      if [ -n "$P" ] && gui_up; then echo "gui already running: $GUI_URL (pid $P)"; finish "RESULT=gui_running;URL=$GUI_URL;PID=$P"; exit 0; fi
-      GPY=""
-      for candidate in "$OUTDIR/.venv/bin/python" /opt/homebrew/bin/python3 python3; do
-        if "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 9))' >/dev/null 2>&1; then GPY="$candidate"; break; fi
-      done
-      [ -n "$GPY" ] || { finish "RESULT=gui_needs_python_3_9"; exit 1; }
-      "$GPY" - "$REPO" "$OUTDIR" "$GUI_PORT" "$GUI_LOG" "$GUI_PIDF" <<'PYEOF' || { finish "RESULT=gui_launch_failed;LOG=$GUI_LOG"; exit 1; }
-import os, subprocess, sys
-repo, sessions, port, log, pidfile = sys.argv[1:6]
-env = {k: v for k, v in os.environ.items() if not k.startswith(('DYLD_', 'SOAPY_', 'PYTHONPATH'))}
-with open(log, 'ab') as out:
-    child = subprocess.Popen([sys.executable, '-m', 'soapypower.gui', '--repo', repo, '--sessions', sessions,
-                              '--port', port, '--no-browser'],
-                             cwd=repo, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True)
-with open(pidfile, 'w') as f:
-    f.write(str(child.pid))
-PYEOF
-      for _ in $(seq 1 100); do gui_up && break; [ -n "$(gui_pid)" ] || break; sleep 0.1; done
-      if gui_up; then echo "gui started: $GUI_URL (pid $(gui_pid))"; finish "RESULT=gui_started;URL=$GUI_URL;PID=$(gui_pid)"; exit 0; fi
-      echo "gui did not answer on $GUI_URL; see $GUI_LOG"; tail -5 "$GUI_LOG" 2>/dev/null
-      finish "RESULT=gui_failed;LOG=$GUI_LOG"; exit 1;;
-    *) finish "RESULT=gui_bad_action"; exit 2;;
-  esac
+  GPY=""
+  for candidate in "$OUTDIR/.venv/bin/python" /opt/homebrew/bin/python3 python3; do
+    if "$candidate" -c 'import sys;sys.exit(sys.version_info < (3,9))' >/dev/null 2>&1; then GPY="$candidate";break;fi
+  done
+  [ -n "$GPY" ] || { finish "RESULT=gui_needs_python_3_9";exit 1; }
+  GUI_RESULT=$(PYTHONPATH="$REPO" "$GPY" -m soapypower.gui_service "$GUI_ACTION" --repo "$REPO" --sessions "$OUTDIR" --port "$GUI_PORT")
+  GUI_RC=$?
+  if [ "$GUI_RC" != 0 ]; then finish "RESULT=gui_failed";exit "$GUI_RC";fi
+  GUI_STATE=$(printf '%s' "$GUI_RESULT" | "$GPY" -c 'import json,sys;print(json.load(sys.stdin)["state"])')
+  echo "$GUI_RESULT"
+  finish "RESULT=$GUI_STATE;URL=http://127.0.0.1:$GUI_PORT"
+  exit 0
 fi
 
 # Reanalysis is CPU/file-only. Dispatch before SDR bindings, discovery or device opens.
@@ -158,6 +133,28 @@ RESULT=reanalyze_$ARC"
   [ "$ARC" = 0 ] && exit 0 || exit 1
 fi
 
+# Typed expert jobs reuse the selected native stack. Offline work bypasses
+# all device discovery; generic drivers retain the explicitly configured stack.
+EXPERT="$(req_field expert)"
+expert_run() {
+  PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}" "$PY" -m soapypower.gui_jobs --repo "$REPO" --sessions "$OUTDIR" --request "$REQ"
+  exit $?
+}
+if [ -n "$EXPERT" ]; then
+  PY=""
+  for candidate in "$OUTDIR/.venv/bin/python" /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3 python3; do
+    if "$candidate" -c 'import numpy, scipy, matplotlib' >/dev/null 2>&1; then PY="$candidate"; break; fi
+  done
+  [ -n "$PY" ] || { finish "RESULT=expert_missing_dependencies"; exit 1; }
+  EXPERT_KIND=$(PYTHONPATH="$REPO" "$PY" -c 'import json,sys; from soapypower.gui_jobs import plan; p=plan(json.loads(sys.argv[1]),sys.argv[2]);print(p["runtime"] if p["hardware"] else "offline")' "$EXPERT" "$OUTDIR") || exit 2
+  case "$EXPERT_KIND" in
+    offline) expert_run;;
+    generic) :;;
+    b200|bladerf) DEVICE_KIND="$EXPERT_KIND";;
+    *) finish "RESULT=expert_invalid_runtime";exit 2;;
+  esac
+fi
+
 # ---- Homebrew 0.8-ABI stack. `brew upgrade` moves /opt/homebrew/opt/soapysdr to 0.9 (Python 3.15 bindings,
 # modules0.9) but keeps the superseded 0.8 keg until `brew cleanup`. Modules built for 0.8 (SoapyUHD,
 # SoapyBladeRF) name libSoapySDR.0.8 by its opt path; dyld resolves it by leaf name through
@@ -181,6 +178,29 @@ in_env() {
     if [ -n "$img" ]; then export UHD_IMAGES_DIR="$img"; fi
     "$@" )
 }
+
+# A generic expert receiver selects bindings by import, without requiring a
+# B200 or probing an unrelated receiver. Explicitly configured stacks win.
+if [ "${EXPERT_KIND:-}" = generic ]; then
+  GPY=""; GSITE=""; GDYLD=""; GPLUGIN=""
+  for candidate in "$OUTDIR"/.venv*/bin/python /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3 python3; do
+    [ -x "$candidate" ] || continue
+    ver="$("$candidate" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)" || continue
+    for k in "" ${KEG08[@]+"${KEG08[@]}"}; do
+      site=""; dyl=""; plug="${SOAPY_SDR_PLUGIN_PATH:-}"
+      if [ -n "$k" ]; then site="$(keg_site "$k" "$ver")"; [ -n "$site" ] || continue; dyl="$k/lib"; plug="$k/lib/SoapySDR/modules0.8"; fi
+      if in_env "$site" "$dyl" "$plug" "" -- "$candidate" -c 'import SoapySDR, numpy, simplesoapy, simplespectral' >/dev/null 2>&1; then
+        GPY="$candidate"; GSITE="$site"; GDYLD="$dyl"; GPLUGIN="$plug"; break 2
+      fi
+    done
+  done
+  [ -n "$GPY" ] || { finish "RESULT=expert_no_configured_soapy_stack"; exit 1; }
+  PY="$GPY"
+  export PYTHONPATH="$REPO${GSITE:+:$GSITE}"
+  [ -z "$GDYLD" ] || export DYLD_LIBRARY_PATH="$GDYLD${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+  [ -z "$GPLUGIN" ] || export SOAPY_SDR_PLUGIN_PATH="$GPLUGIN"
+  expert_run
+fi
 
 if [ "$DEVICE_KIND" = bladerf ]; then
   # ---- bladeRF1 + XB-200 (receive only): patched SoapyBladeRF module + its libbladeRF from sessions/
@@ -211,6 +231,7 @@ print("RESULT", SoapySDR.getAPIVersion(), len(SoapySDR.Device.enumerate("driver=
   export SOAPY_SDR_PLUGIN_PATH="$STACK/modules"
   export DYLD_LIBRARY_PATH="$BDYLD${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
   export PYTHONPATH="$REPO:$REPO/tools/bladerf${BSITE:+:$BSITE}"
+  [ -z "$EXPERT" ] || expert_run
   SERIAL="$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1]))["serial"])' "$PROF/receiver-profile-final.json")"
   BDEV="driver=bladerf,serial=$SERIAL,xb200=custom"
   echo "python: $PY ($("$PY" --version 2>&1))  SOAPY_SDR_PLUGIN_PATH=$SOAPY_SDR_PLUGIN_PATH  DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
@@ -327,6 +348,7 @@ fi
 if [ -n "$MISSING" ]; then echo "FEIL: $PY mangler: $MISSING (send en setup-forespørsel)"; finish "RESULT=missing_packages:$MISSING;PY=$PY;SERIAL=$SERIAL"; exit 1; fi
 echo "python: $PY ($("$PY" --version 2>&1)) PYTHONPATH=${PYTHONPATH:-} SOAPY_SDR_PLUGIN_PATH=${SOAPY_SDR_PLUGIN_PATH:-} DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH:-}"
 export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
+[ -z "$EXPERT" ] || expert_run
 DEV="driver=uhd,type=b200,serial=$SERIAL,recv_frame_size=16360,num_recv_frames=1024"
 echo "device: $DEV   UHD_IMAGES_DIR=${UHD_IMAGES_DIR:-<unset>}"
 if [ "$MODE" != scan ]; then echo "== $MODE ok"; finish "RESULT=${MODE}_ok;PY=$PY;SERIAL=$SERIAL"; exit 0; fi

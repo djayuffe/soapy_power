@@ -5,6 +5,7 @@ The guarantee describes requested IF coordinates; unknown analog LO spurs are
 not inferred. Actual tuner coercion must still be checked by the caller.
 """
 import math
+from bisect import bisect_left
 from soapypower.numerics import finite
 
 
@@ -36,7 +37,7 @@ def coverage_gaps(centers, start, stop, halfwidth, mask_width=0, mask_offset=0, 
 
 
 def masked_frequency_plan(start, stop, halfwidth, bin_width, mask_width=0,
-                          mask_offset=0, tune_range=None, max_centers=1000000):
+                          mask_offset=0, tune_range=None, max_centers=1000000, preferred_centers=None):
     start,stop = finite(start,'start'),finite(stop,'stop')
     h = finite(halfwidth,'usable IF halfwidth',positive=True)
     df = finite(bin_width,'bin width',positive=True)
@@ -61,4 +62,19 @@ def masked_frequency_plan(start, stop, halfwidth, bin_width, mask_width=0,
     centers = [first+i*step for i in range(count-1)] + [last]
     if coverage_gaps(centers,start,stop,h,mask,offset,df):
         raise ValueError('requested band cannot be covered with positive weight outside the configured mask')
+    if preferred_centers is not None:
+        # Keep the proven coverage grid intact; requested overlap adds views.
+        # Never quantize/move coverage centers or bridge their origin holes.
+        added = set()
+        for value in preferred_centers:
+            value = finite(value, 'preferred center')
+            if not low <= value <= high:
+                continue
+            index = bisect_left(centers, value)
+            neighbours = centers[max(0, index-1):index+1]
+            if all(abs(value-other) > df/2 for other in neighbours):
+                added.add(value)
+            if len(centers) + len(added) > max_centers:
+                raise ValueError('coverage and overlap plan exceeds center budget')
+        centers = sorted(set(centers) | added)
     return centers

@@ -31,7 +31,12 @@ include EXPERIMENTS.md
 include SPURS.md
 include IMPLEMENTATION_GAPS.md
 
-recursive-include soapypower/web *.html *.css *.js
+recursive-include soapypower/web *.html *.css *.js *.json
 include docs/GUI.md
 include docs/SUPERSCAN.md
 include README.md
+include docs/GUI_AUDIT.md
+
+include docs/GUI_WORKBENCH.md
+
+include docs/SATNOGS_GUI.md

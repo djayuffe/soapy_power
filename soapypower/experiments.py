@@ -192,7 +192,19 @@ def _sha256(path):
 
 def subprocess_runner(trial, argv, output, timeout):
     started = time.monotonic()
-    done = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, check=False)
+    inherited = {}
+    lease_text = os.environ.get('SPR_RADIO_LEASE_FD')
+    if os.name != 'nt' and lease_text is not None:
+        try:
+            fd = int(lease_text)
+            lease = Path(os.environ['SPR_SESSIONS']) / '.receiver.lock'
+            actual, expected = os.fstat(fd), lease.stat()
+            if fd < 3 or (actual.st_dev, actual.st_ino) != (expected.st_dev, expected.st_ino):
+                raise ValueError('receiver lease identity differs')
+            inherited['pass_fds'] = (fd,)
+        except (OSError, KeyError, ValueError) as error:
+            raise ValueError('Invalid inherited receiver lease') from error
+    done = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, check=False, **inherited)
     return {'returncode': done.returncode, 'seconds': time.monotonic() - started,
             'stderr_tail': done.stderr.decode('utf-8', 'replace')[-2000:]}
 

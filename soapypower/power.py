@@ -1018,7 +1018,8 @@ class SoapyPower:
             tuner = self.device.get_frequency_range() if hasattr(self.device,'get_frequency_range') else None
             rf_range = sorted(lnb_lo+direction*x for x in tuner) if tuner is not None else None
             rf_centers = masked_frequency_plan(min_freq,max_freq,coverage_halfwidth,df,
-                dc_mask_width, direction*(-dc_offset if iq_conjugate else dc_offset),rf_range)
+                dc_mask_width, direction*(-dc_offset if iq_conjugate else dc_offset),rf_range,
+                preferred_centers=rf_centers if overlap and not crop else None)
         elif usable_halfwidth is not None:
             raise ValueError('usable halfwidth requires ensure_coverage')
         freq_list = [direction * (center - lnb_lo) for center in rf_centers]

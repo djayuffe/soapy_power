@@ -1,0 +1,6294 @@
+{
+  "version": 1,
+  "commands": [
+    {
+      "id": "acquisition",
+      "tool": "acquisition",
+      "module": "soapypower.__main__",
+      "command": [],
+      "description": "Obtain a power spectrum from SoapySDR devices",
+      "options": [
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "Main options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "freq",
+          "flags": [
+            "-f",
+            "--freq"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "1420405752",
+          "choices": null,
+          "help": "center frequency or frequency range to scan, number can be followed by a k, M or G multiplier (default: 1420405752)",
+          "group": "Main options",
+          "converter": "freq_or_freq_range",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "output to file (incompatible with --output-fd, default is stdout)",
+          "group": "Main options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "output_fd",
+          "flags": [
+            "--output-fd"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "output to existing file descriptor (incompatible with -O)",
+          "group": "Main options",
+          "converter": "int",
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "format",
+          "flags": [
+            "-F",
+            "--format"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "rtl_power",
+          "choices": [
+            "json",
+            "rtl_power",
+            "rtl_power_fftw",
+            "soapy_power_bin",
+            "soapy_power_bin_v3"
+          ],
+          "help": "output format (default: rtl_power)",
+          "group": "Main options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "quiet",
+          "flags": [
+            "-q",
+            "--quiet"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "limit verbosity",
+          "group": "Main options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "debug",
+          "flags": [
+            "--debug"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "detailed debugging messages",
+          "group": "Main options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "detect",
+          "flags": [
+            "--detect"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "detect connected SoapySDR devices and exit",
+          "group": "Main options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "info",
+          "flags": [
+            "--info"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "show info about selected SoapySDR device and exit",
+          "group": "Main options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "version",
+          "flags": [
+            "--version"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show program's version number and exit",
+          "group": "Main options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "bins",
+          "flags": [
+            "-b",
+            "--bins"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 512,
+          "choices": null,
+          "help": "number of FFT bins (incompatible with -B, default: 512)",
+          "group": "FFT bins",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "bin_size",
+          "flags": [
+            "-B",
+            "--bin-size"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "bin size in Hz (incompatible with -b)",
+          "group": "FFT bins",
+          "converter": "float_with_multiplier",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "repeats",
+          "flags": [
+            "-n",
+            "--repeats"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 1600,
+          "choices": null,
+          "help": "integration length in FFT-sized sample blocks (incompatible with -t and -T, default: 1600)",
+          "group": "Averaging",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "time",
+          "flags": [
+            "-t",
+            "--time"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "integration time (incompatible with -T and -n)",
+          "group": "Averaging",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "total_time",
+          "flags": [
+            "-T",
+            "--total-time"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "total integration time of all hops (incompatible with -t and -n)",
+          "group": "Averaging",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "endless",
+          "flags": [
+            "-c",
+            "--continue"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "repeat the measurement endlessly (incompatible with -u and -e)",
+          "group": "Measurements",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "runs",
+          "flags": [
+            "-u",
+            "--runs"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 1,
+          "choices": null,
+          "help": "number of measurements (incompatible with -c and -e, default: 1)",
+          "group": "Measurements",
+          "converter": "int",
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "elapsed",
+          "flags": [
+            "-e",
+            "--elapsed"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "scan session duration (time limit in seconds, incompatible with -c and -u)",
+          "group": "Measurements",
+          "converter": "float",
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "device",
+          "flags": [
+            "-d",
+            "--device"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "",
+          "choices": null,
+          "help": "SoapySDR device to use",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "channel",
+          "flags": [
+            "-C",
+            "--channel"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "SoapySDR RX channel (default: 0)",
+          "group": "Device settings",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "antenna",
+          "flags": [
+            "-A",
+            "--antenna"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "",
+          "choices": null,
+          "help": "SoapySDR selected antenna",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "rate",
+          "flags": [
+            "-r",
+            "--rate"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": 2000000.0,
+          "choices": null,
+          "help": "sample rate (default: 2000000.0)",
+          "group": "Device settings",
+          "converter": "float_with_multiplier",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "bandwidth",
+          "flags": [
+            "-w",
+            "--bandwidth"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "filter bandwidth (default: 0)",
+          "group": "Device settings",
+          "converter": "float_with_multiplier",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "ppm",
+          "flags": [
+            "-p",
+            "--ppm"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "frequency correction in ppm",
+          "group": "Device settings",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "gain",
+          "flags": [
+            "-g",
+            "--gain"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 37.2,
+          "choices": null,
+          "help": "total gain (incompatible with -G and -a, default: 37.2)",
+          "group": "Device settings",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "specific_gains",
+          "flags": [
+            "-G",
+            "--specific-gains"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "",
+          "choices": null,
+          "help": "specific gains of individual amplification elements (incompatible with -g and -a, example: LNA=28,VGA=12,AMP=0",
+          "group": "Device settings",
+          "converter": "specific_gains",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "agc",
+          "flags": [
+            "-a",
+            "--agc"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "enable Automatic Gain Control (incompatible with -g and -G)",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "lnb_lo",
+          "flags": [
+            "--lnb-lo"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "LNB LO frequency, negative for upconverters (default: 0)",
+          "group": "Device settings",
+          "converter": "float_with_multiplier",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "lnb_high_side",
+          "flags": [
+            "--lnb-high-side"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "use RF = LNB LO - IF and mirror the IQ frequency axis",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "dc_correction",
+          "flags": [
+            "--dc-correction"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "default",
+          "choices": [
+            "default",
+            "on",
+            "off"
+          ],
+          "help": "driver DC correction mode (default leaves device behavior unchanged)",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "iq_correction",
+          "flags": [
+            "--iq-correction"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "default",
+          "choices": [
+            "default",
+            "on",
+            "off"
+          ],
+          "help": "driver IQ correction mode (default leaves device behavior unchanged)",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "clock_source",
+          "flags": [
+            "--clock-source"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "supported motherboard clock source",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "time_source",
+          "flags": [
+            "--time-source"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "supported time source; does not reset/synchronize device time",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "master_clock_rate",
+          "flags": [
+            "--master-clock-rate"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "Device settings",
+          "converter": "float_with_multiplier",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "manual_correction_tolerance",
+          "flags": [
+            "--manual-correction-tolerance"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "explicit absolute tolerance for normalized manual correction readback",
+          "group": "Device settings",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "manual_dc",
+          "flags": [
+            "--manual-dc"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "normalized RX hardware DC correction (capability checked)",
+          "group": "Device settings",
+          "converter": "correction_pair",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "manual_iq",
+          "flags": [
+            "--manual-iq"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "normalized driver IQ correction controls, not dB/radians",
+          "group": "Device settings",
+          "converter": "correction_pair",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "tune_args",
+          "flags": [
+            "--tune-args"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "",
+          "choices": null,
+          "help": "SoapySDR frequency arguments, e.g. OFFSET=250000 (driver dependent)",
+          "group": "Device settings",
+          "converter": "device_settings",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "device_settings",
+          "flags": [
+            "--device-settings"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "",
+          "choices": null,
+          "help": "SoapySDR device settings (example: biastee=true)",
+          "group": "Device settings",
+          "converter": "device_settings",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "stream_args",
+          "flags": [
+            "--stream-args"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "",
+          "choices": null,
+          "help": "SoapySDR RX stream arguments (example: buffers=128,buflen=65536,transfers=16). UHD USB ring sizing (num_recv_frames, recv_frame_size) is NOT a stream argument: use -d \"driver=uhd,...,num_recv_frames=N\"",
+          "group": "Device settings",
+          "converter": "device_settings",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "force_rate",
+          "flags": [
+            "--force-rate"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "ignore list of sample rates provided by device and allow any value",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "force_bandwidth",
+          "flags": [
+            "--force-bandwidth"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "ignore list of filter bandwidths provided by device and allow any value",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "tune_delay",
+          "flags": [
+            "--tune-delay"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "time to delay measurement after changing frequency (to avoid artifacts)",
+          "group": "Device settings",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "reset_stream",
+          "flags": [
+            "--reset-stream"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "reset streaming after changing frequency (to avoid artifacts)",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "reopen_stream",
+          "flags": [
+            "--reopen-stream"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "close and reopen the RX stream for every hop, including repeated tunes",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "deadline_policy",
+          "flags": [
+            "--deadline-policy"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "interrupt",
+          "choices": [
+            "interrupt",
+            "finish-hop"
+          ],
+          "help": "time limit behavior: interrupt acquisition or finish the current hop; signals still interrupt",
+          "group": "Device settings",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "overlap",
+          "flags": [
+            "-o",
+            "--overlap"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "percent of overlap when frequency hopping (incompatible with -k)",
+          "group": "Crop",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "crop",
+          "flags": [
+            "-k",
+            "--crop"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "percent of crop when frequency hopping (incompatible with -o)",
+          "group": "Crop",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "buffer_size",
+          "flags": [
+            "-s",
+            "--buffer-size"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "base buffer size (number of samples, 0 = auto, default: 0)",
+          "group": "Performance options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "max_buffer_size",
+          "flags": [
+            "-S",
+            "--max-buffer-size"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "maximum buffer size (number of samples, -1 = unlimited, 0 = auto, default: 0)",
+          "group": "Performance options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "even",
+          "flags": [
+            "--even"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "use only even numbers of FFT bins",
+          "group": "Performance options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "pow2",
+          "flags": [
+            "--pow2"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "use only powers of 2 as number of FFT bins",
+          "group": "Performance options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "max_threads",
+          "flags": [
+            "--max-threads"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "maximum number of PSD threads (0 = auto, default: 0)",
+          "group": "Performance options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "max_queue_size",
+          "flags": [
+            "--max-queue-size"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "maximum size of PSD work queue (-1 = unlimited, 0 = auto, default: 0)",
+          "group": "Performance options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "fft_threads",
+          "flags": [
+            "--fft-threads"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 1,
+          "choices": null,
+          "help": "threads per pyFFTW transform (default: 1; PSD workers run in parallel)",
+          "group": "Performance options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "no_pyfftw",
+          "flags": [
+            "--no-pyfftw"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "don't use pyfftw library even if it is available (use scipy.fftpack or numpy.fft)",
+          "group": "Performance options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "partial_policy",
+          "flags": [
+            "--partial-policy"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": [
+            "emit",
+            "reject",
+            "legacy"
+          ],
+          "help": "partial acquisition policy (default: reject calibrated, emit metadata-capable raw)",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "acquisition_rounding",
+          "flags": [
+            "--acquisition-rounding"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "exact",
+          "choices": [
+            "exact",
+            "block"
+          ],
+          "help": "",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "settle_samples",
+          "flags": [
+            "--settle-samples"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "",
+          "group": "Other options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "lock_sensor",
+          "flags": [
+            "--lock-sensor"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "driver RX lock sensor name; requires a true readback",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "reference_lock_sensor",
+          "flags": [
+            "--reference-lock-sensor"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "motherboard reference-lock sensor, separate from RX LO lock",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "lock_timeout",
+          "flags": [
+            "--lock-timeout"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 2.0,
+          "choices": null,
+          "help": "",
+          "group": "Other options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "timestamp_tolerance_samples",
+          "flags": [
+            "--timestamp-tolerance-samples"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0.25,
+          "choices": null,
+          "help": "",
+          "group": "Other options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "require_timestamps",
+          "flags": [
+            "--require-timestamps"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "workspace_budget",
+          "flags": [
+            "--workspace-budget"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 67108864,
+          "choices": null,
+          "help": "application FFT workspace bytes per worker; excludes driver/input queues and backend cache",
+          "group": "Other options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "allow_estimated_dc",
+          "flags": [
+            "--allow-estimated-dc"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "skip_driver_teardown",
+          "flags": [
+            "--skip-driver-teardown"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "after the measurement and output are closed, exit with the measurement status without running SDR driver destructors (UHD on macOS can abort in USB teardown after a complete run)",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "calibration",
+          "flags": [
+            "--calibration"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "measured, settings-matched power calibration profile; output dBm/Hz or mW/Hz",
+          "group": "Other options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "dc_mask_width",
+          "flags": [
+            "--dc-mask-width"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "exclude this baseband DC/spur bandwidth as NaN (default: disabled)",
+          "group": "Other options",
+          "converter": "float_with_multiplier",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "dc_offset",
+          "flags": [
+            "--dc-offset"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "spur center in raw IQ baseband before conjugation (requires DC mask)",
+          "group": "Other options",
+          "converter": "float_with_multiplier",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "precision",
+          "flags": [
+            "--precision"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "double",
+          "choices": [
+            "single",
+            "double"
+          ],
+          "help": "FFT computation precision (default: double)",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "iq_conjugate",
+          "flags": [
+            "--iq-conjugate"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "conjugate IQ to reverse baseband spectral orientation",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "linear",
+          "flags": [
+            "-l",
+            "--linear"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "linear power values instead of logarithmic",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "remove_dc",
+          "flags": [
+            "-R",
+            "--remove-dc"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "interpolate the central PSD bin (requires boxcar; estimates rather than measures its power)",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "detrend",
+          "flags": [
+            "-D",
+            "--detrend"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "none",
+          "choices": [
+            "none",
+            "constant"
+          ],
+          "help": "remove mean value from data to cancel DC bias (default: none)",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "fft_window",
+          "flags": [
+            "--fft-window"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "hann",
+          "choices": [
+            "boxcar",
+            "hann",
+            "hamming",
+            "blackman",
+            "bartlett",
+            "kaiser",
+            "tukey"
+          ],
+          "help": "Welch's method window function (default: hann)",
+          "group": "Other options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "fft_window_param",
+          "flags": [
+            "--fft-window-param"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "shape parameter of window function (required for kaiser and tukey windows)",
+          "group": "Other options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "fft_overlap",
+          "flags": [
+            "--fft-overlap"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 50,
+          "choices": null,
+          "help": "Welch's method overlap between segments (default: 50)",
+          "group": "Other options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "telemetry_policy",
+          "flags": [
+            "--telemetry-policy"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "Typed telemetry polling/validity policy JSON",
+          "group": "Receiver quality and measured controls",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "settling_model",
+          "flags": [
+            "--settling-model"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "Reference-validated settling model; unmatched steps use configured delay",
+          "group": "Receiver quality and measured controls",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "rf_state",
+          "flags": [
+            "--rf-state"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "Record advertised RF/BB tuning and sensor snapshots before/after each hop",
+          "group": "Receiver quality and measured controls",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "centers",
+          "flags": [
+            "--centers"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "Explicit hop centres (RF), visited in this order every run; replaces the -f hop plan. Use for interleaved multi-band scans with the DC spike kept out of the bands of interest",
+          "group": "Receiver quality and measured controls",
+          "converter": "center_list",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "ensure_coverage",
+          "flags": [
+            "--ensure-coverage"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "Plan overlapping positive-weight coverage outside the DC exclusion",
+          "group": "Receiver quality and measured controls",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "usable_halfwidth",
+          "flags": [
+            "--usable-halfwidth"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "Trusted IF halfwidth for coverage planning (Hz)",
+          "group": "Receiver quality and measured controls",
+          "converter": "float_with_multiplier",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "headroom",
+          "flags": [
+            "--headroom"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "Reject unsafe raw IQ before publishing a hop",
+          "group": "Receiver quality and measured controls",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "headroom_max",
+          "flags": [
+            "--headroom-max"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0.85,
+          "choices": null,
+          "help": "",
+          "group": "Receiver quality and measured controls",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "headroom_p999",
+          "flags": [
+            "--headroom-p999"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0.6,
+          "choices": null,
+          "help": "",
+          "group": "Receiver quality and measured controls",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "headroom_retries",
+          "flags": [
+            "--headroom-retries"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "Bounded retries using an explicit profile backoff",
+          "group": "Receiver quality and measured controls",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "headroom_workspace",
+          "flags": [
+            "--headroom-workspace"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 67108864,
+          "choices": null,
+          "help": "",
+          "group": "Receiver quality and measured controls",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "rejection_evidence",
+          "flags": [
+            "--rejection-evidence"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "Fresh directory for durable rejected/partial IQ",
+          "group": "Receiver quality and measured controls",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "receiver_profile",
+          "flags": [
+            "--receiver-profile"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "Measured state-bound receiver scan profile JSON",
+          "group": "Receiver quality and measured controls",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        }
+      ],
+      "mutex": [
+        [
+          "output",
+          "output_fd"
+        ],
+        [
+          "bins",
+          "bin_size"
+        ],
+        [
+          "repeats",
+          "time",
+          "total_time"
+        ],
+        [
+          "endless",
+          "runs",
+          "elapsed"
+        ],
+        [
+          "gain",
+          "specific_gains",
+          "agc"
+        ],
+        [
+          "overlap",
+          "crop"
+        ],
+        [
+          "even",
+          "pow2"
+        ]
+      ]
+    },
+    {
+      "id": "calibration:validate",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "validate"
+      ],
+      "description": "calibration validate",
+      "options": [
+        {
+          "dest": "profile",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:context",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "context"
+      ],
+      "description": "calibration context",
+      "options": [
+        {
+          "dest": "records",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "atomically replace an existing output file",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:build",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "build"
+      ],
+      "description": "calibration build",
+      "options": [
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "context",
+          "flags": [
+            "--context"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "measurements",
+          "flags": [
+            "--measurements"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "reference",
+          "flags": [
+            "--reference"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "reference_plane",
+          "flags": [
+            "--reference-plane"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "reference_baseband_hz",
+          "flags": [
+            "--reference-baseband-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "uncertainty_db",
+          "flags": [
+            "--uncertainty-db"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "measured_at",
+          "flags": [
+            "--measured-at"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "max_spread_db",
+          "flags": [
+            "--max-spread-db"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:integrate",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "integrate"
+      ],
+      "description": "calibration integrate",
+      "options": [
+        {
+          "dest": "records",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "start_hz",
+          "flags": [
+            "--start-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "stop_hz",
+          "flags": [
+            "--stop-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "method",
+          "flags": [
+            "--method"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": [
+            "fractional",
+            "legacy-centers"
+          ],
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "include_estimated",
+          "flags": [
+            "--include-estimated"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "omit_masked",
+          "flags": [
+            "--omit-masked"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "report only measured bandwidth; never claim full-band power",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:baseline",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "baseline"
+      ],
+      "description": "calibration baseline",
+      "options": [
+        {
+          "dest": "records",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "temperature_k",
+          "flags": [
+            "--temperature-k"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "source_ohms",
+          "flags": [
+            "--source-ohms"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "receiver_ohms",
+          "flags": [
+            "--receiver-ohms"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "start_hz",
+          "flags": [
+            "--start-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "stop_hz",
+          "flags": [
+            "--stop-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:compare",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "compare"
+      ],
+      "description": "calibration compare",
+      "options": [
+        {
+          "dest": "reference",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "observed",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "start_hz",
+          "flags": [
+            "--start-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "stop_hz",
+          "flags": [
+            "--stop-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:from-captures",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "from-captures"
+      ],
+      "description": "calibration from-captures",
+      "options": [
+        {
+          "dest": "manifest",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:characterize",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "characterize"
+      ],
+      "description": "calibration characterize",
+      "options": [
+        {
+          "dest": "manifest",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "require_checks",
+          "flags": [
+            "--require-checks"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "save report, then return failure if any measured checks fail",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:equalize",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "equalize"
+      ],
+      "description": "calibration equalize",
+      "options": [
+        {
+          "dest": "records",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "profile",
+          "flags": [
+            "--profile"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "reference_rf_hz",
+          "flags": [
+            "--reference-rf-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "reference_baseband_hz",
+          "flags": [
+            "--reference-baseband-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "regularization",
+          "flags": [
+            "--regularization"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "mode",
+          "flags": [
+            "--mode"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "regularized",
+          "choices": [
+            "regularized",
+            "attenuation-only"
+          ],
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "usable_policy",
+          "flags": [
+            "--usable-policy"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "explicit JSON band selection policy; exclusions become masks",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "max_boost_db",
+          "flags": [
+            "--max-boost-db"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 12,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:smooth-profile",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "smooth-profile"
+      ],
+      "description": "calibration smooth-profile",
+      "options": [
+        {
+          "dest": "profile",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "model",
+          "flags": [
+            "--model"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "holdouts",
+          "flags": [
+            "--holdouts"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:validate-response",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "validate-response"
+      ],
+      "description": "calibration validate-response",
+      "options": [
+        {
+          "dest": "profile",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "holdouts",
+          "flags": [
+            "--holdouts"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "require_checks",
+          "flags": [
+            "--require-checks"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:overlap-fit",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "overlap-fit"
+      ],
+      "description": "calibration overlap-fit",
+      "options": [
+        {
+          "dest": "manifest",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:gain-compare",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "gain-compare"
+      ],
+      "description": "calibration gain-compare",
+      "options": [
+        {
+          "dest": "manifest",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "require_checks",
+          "flags": [
+            "--require-checks"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:tone-audit",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "tone-audit"
+      ],
+      "description": "calibration tone-audit",
+      "options": [
+        {
+          "dest": "iq",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "sample_rate",
+          "flags": [
+            "--sample-rate"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "expected_baseband_hz",
+          "flags": [
+            "--expected-baseband-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "reference_rf_hz",
+          "flags": [
+            "--reference-rf-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "frame_size",
+          "flags": [
+            "--frame-size"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 4096,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "frames",
+          "flags": [
+            "--frames"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 128,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "search_hz",
+          "flags": [
+            "--search-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 500,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "min_tone_fraction",
+          "flags": [
+            "--min-tone-fraction"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0.8,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:interval-audit",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "interval-audit"
+      ],
+      "description": "calibration interval-audit",
+      "options": [
+        {
+          "dest": "iq",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "intervals",
+          "flags": [
+            "--intervals"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:assist",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "assist"
+      ],
+      "description": "calibration assist",
+      "options": [
+        {
+          "dest": "configuration",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "offline",
+          "flags": [
+            "--offline"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "validate geometry and guidance without opening an SDR",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "calibration:auto",
+      "tool": "calibration",
+      "module": "soapypower.calibration_cli",
+      "command": [
+        "auto"
+      ],
+      "description": "calibration auto",
+      "options": [
+        {
+          "dest": "configuration",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "directory",
+          "flags": [
+            "--directory"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "new session directory; never overwrite evidence",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "source_hook",
+          "flags": [
+            "--source-hook"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "explicit executable implementing the JSON source-state acknowledgment protocol",
+          "group": "options",
+          "converter": null,
+          "role": "source",
+          "polarity": true
+        },
+        {
+          "dest": "hook_timeout",
+          "flags": [
+            "--hook-timeout"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 30,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "analysis:rebin",
+      "tool": "analysis",
+      "module": "soapypower.analysis_cli",
+      "command": [
+        "rebin"
+      ],
+      "description": "analysis rebin",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Density/IQ NPZ, or JSON manifest for fuse/spur-atlas/import-profile",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "target_edges",
+          "flags": [
+            "--target-edges"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "JSON array of target cell edges (Hz)",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "analysis:noise-reference",
+      "tool": "analysis",
+      "module": "soapypower.analysis_cli",
+      "command": [
+        "noise-reference"
+      ],
+      "description": "analysis noise-reference",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Density/IQ NPZ, or JSON manifest for fuse/spur-atlas/import-profile",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "metadata",
+          "flags": [
+            "--metadata"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "JSON with context, method and (for reference) reference",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "analysis:noise-compare",
+      "tool": "analysis",
+      "module": "soapypower.analysis_cli",
+      "command": [
+        "noise-compare"
+      ],
+      "description": "analysis noise-compare",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Density/IQ NPZ, or JSON manifest for fuse/spur-atlas/import-profile",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "metadata",
+          "flags": [
+            "--metadata"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "JSON with context, method and (for reference) reference",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "reference",
+          "flags": [
+            "--reference"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "analysis:common-iq",
+      "tool": "analysis",
+      "module": "soapypower.analysis_cli",
+      "command": [
+        "common-iq"
+      ],
+      "description": "analysis common-iq",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Density/IQ NPZ, or JSON manifest for fuse/spur-atlas/import-profile",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "sample_rate",
+          "flags": [
+            "--sample-rate"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "duration",
+          "flags": [
+            "--duration"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0.016,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "analysis:phase",
+      "tool": "analysis",
+      "module": "soapypower.analysis_cli",
+      "command": [
+        "phase"
+      ],
+      "description": "analysis phase",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Density/IQ NPZ, or JSON manifest for fuse/spur-atlas/import-profile",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "sample_rate",
+          "flags": [
+            "--sample-rate"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "duration",
+          "flags": [
+            "--duration"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0.016,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "bin_hz",
+          "flags": [
+            "--bin-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 10000,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "origin_exclusion",
+          "flags": [
+            "--origin-exclusion"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 250000,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "usable_halfwidth",
+          "flags": [
+            "--usable-halfwidth"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 900000,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "analysis:fuse",
+      "tool": "analysis",
+      "module": "soapypower.analysis_cli",
+      "command": [
+        "fuse"
+      ],
+      "description": "analysis fuse",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Density/IQ NPZ, or JSON manifest for fuse/spur-atlas/import-profile",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "target_edges",
+          "flags": [
+            "--target-edges"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "JSON array of target cell edges (Hz)",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "analysis:spur-atlas",
+      "tool": "analysis",
+      "module": "soapypower.analysis_cli",
+      "command": [
+        "spur-atlas"
+      ],
+      "description": "analysis spur-atlas",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Density/IQ NPZ, or JSON manifest for fuse/spur-atlas/import-profile",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "tolerance_hz",
+          "flags": [
+            "--tolerance-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "analysis:import-profile",
+      "tool": "analysis",
+      "module": "soapypower.analysis_cli",
+      "command": [
+        "import-profile"
+      ],
+      "description": "analysis import-profile",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Density/IQ NPZ, or JSON manifest for fuse/spur-atlas/import-profile",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "metadata",
+          "flags": [
+            "--metadata"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "JSON with context, method and (for reference) reference",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "telemetry:inventory",
+      "tool": "telemetry",
+      "module": "soapypower.telemetry_cli",
+      "command": [
+        "inventory"
+      ],
+      "description": "telemetry inventory",
+      "options": [
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "device",
+          "flags": [
+            "--device"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "sample_rate",
+          "flags": [
+            "--sample-rate"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 2000000.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "bandwidth",
+          "flags": [
+            "--bandwidth"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "gain",
+          "flags": [
+            "--gain"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 20,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "antenna",
+          "flags": [
+            "--antenna"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "",
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "master_clock_rate",
+          "flags": [
+            "--master-clock-rate"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "policy",
+          "flags": [
+            "--policy"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "telemetry:fit-thermal",
+      "tool": "telemetry",
+      "module": "soapypower.telemetry_cli",
+      "command": [
+        "fit-thermal"
+      ],
+      "description": "telemetry fit-thermal",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "telemetry:fit-settling",
+      "tool": "telemetry",
+      "module": "soapypower.telemetry_cli",
+      "command": [
+        "fit-settling"
+      ],
+      "description": "telemetry fit-settling",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "telemetry:filter-model",
+      "tool": "telemetry",
+      "module": "soapypower.telemetry_cli",
+      "command": [
+        "filter-model"
+      ],
+      "description": "telemetry filter-model",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "frequency_grid",
+          "flags": [
+            "--frequency-grid"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "telemetry:signature",
+      "tool": "telemetry",
+      "module": "soapypower.telemetry_cli",
+      "command": [
+        "signature"
+      ],
+      "description": "telemetry signature",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "telemetry:apply-thermal",
+      "tool": "telemetry",
+      "module": "soapypower.telemetry_cli",
+      "command": [
+        "apply-thermal"
+      ],
+      "description": "telemetry apply-thermal",
+      "options": [
+        {
+          "dest": "model",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "observation",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "overwrite",
+          "flags": [
+            "--overwrite"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "spurs:demo",
+      "tool": "spurs",
+      "module": "soapypower.spur_cli",
+      "command": [
+        "demo"
+      ],
+      "description": "spurs demo",
+      "options": [
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "out",
+          "flags": [
+            "--out"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "spurs-demo",
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "bins",
+          "flags": [
+            "--bins"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 4096,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "rate",
+          "flags": [
+            "--rate"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 56000000.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "dof",
+          "flags": [
+            "--dof"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 20.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "seed",
+          "flags": [
+            "--seed"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "profile",
+          "flags": [
+            "--profile"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "b200",
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "spurs:analyze",
+      "tool": "spurs",
+      "module": "soapypower.spur_cli",
+      "command": [
+        "analyze"
+      ],
+      "description": "spurs analyze",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "out",
+          "flags": [
+            "--out"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "spur-analysis",
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "profile",
+          "flags": [
+            "--profile"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "b200",
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "alpha",
+          "flags": [
+            "--alpha"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0.001,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "orders",
+          "flags": [
+            "--orders"
+          ],
+          "kind": "integer",
+          "nargs": "+",
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "spurs:plan",
+      "tool": "spurs",
+      "module": "soapypower.spur_cli",
+      "command": [
+        "plan"
+      ],
+      "description": "spurs plan",
+      "options": [
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "center",
+          "flags": [
+            "--center"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 260000000.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "rate",
+          "flags": [
+            "--rate"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 56000000.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "profile",
+          "flags": [
+            "--profile"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "b200",
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "count",
+          "flags": [
+            "--count"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 3,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "span",
+          "flags": [
+            "--span"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "out",
+          "flags": [
+            "--out"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "spur-plan.json",
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "experiments:plan",
+      "tool": "experiments",
+      "module": "soapypower.experiments",
+      "command": [
+        "plan"
+      ],
+      "description": "experiments plan",
+      "options": [
+        {
+          "dest": "device",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "start_mhz",
+          "flags": [
+            "--start-mhz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 100.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "stop_mhz",
+          "flags": [
+            "--stop-mhz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 300.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "scan_seconds",
+          "flags": [
+            "--scan-seconds"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 60.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "tone_dbm",
+          "flags": [
+            "--tone-dbm"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "generator level; enables the settling sweep",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "tone_mhz",
+          "flags": [
+            "--tone-mhz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 200.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "max_receiver_input_dbm",
+          "flags": [
+            "--max-receiver-input-dbm"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "declared safe receiver input (required with --tone-dbm)",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "path_loss_db",
+          "flags": [
+            "--path-loss-db"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "generator-to-receiver loss (required with --tone-dbm)",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "antenna",
+          "flags": [
+            "--antenna"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "RX2",
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "gain",
+          "flags": [
+            "--gain"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 20.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "input",
+          "flags": [
+            "--input"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "antenna",
+          "choices": [
+            "antenna",
+            "terminated"
+          ],
+          "help": "what is connected to the port (operator declaration)",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "no_telemetry",
+          "flags": [
+            "--no-telemetry"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "do not record per-hop telemetry snapshots",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "require_temperature",
+          "flags": [
+            "--require-temperature"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "reject a hop whose RFIC temperature is missing or older than 3 s",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "experiments:run",
+      "tool": "experiments",
+      "module": "soapypower.experiments",
+      "command": [
+        "run"
+      ],
+      "description": "experiments run",
+      "options": [
+        {
+          "dest": "suite",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "directory",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "new session directory",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "source_hook",
+          "flags": [
+            "--source-hook"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "executable implementing the SourceController protocol",
+          "group": "options",
+          "converter": null,
+          "role": "source",
+          "polarity": true
+        },
+        {
+          "dest": "retries",
+          "flags": [
+            "--retries"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 1,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "soapy_power",
+          "flags": [
+            "--soapy-power"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "soapy_power",
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "experiments:analyze",
+      "tool": "experiments",
+      "module": "soapypower.experiments",
+      "command": [
+        "analyze"
+      ],
+      "description": "experiments analyze",
+      "options": [
+        {
+          "dest": "directory",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "input",
+          "flags": [
+            "--input"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": [
+            "antenna",
+            "terminated"
+          ],
+          "help": "declare the input of a suite planned without --input",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "experiments:calibration-config",
+      "tool": "experiments",
+      "module": "soapypower.experiments",
+      "command": [
+        "calibration-config"
+      ],
+      "description": "experiments calibration-config",
+      "options": [
+        {
+          "dest": "device",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "levels_dbm",
+          "flags": [
+            "--levels-dbm"
+          ],
+          "kind": "number",
+          "nargs": "+",
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "max_receiver_input_dbm",
+          "flags": [
+            "--max-receiver-input-dbm"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "path_loss_db",
+          "flags": [
+            "--path-loss-db"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "reference",
+          "flags": [
+            "--reference"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "source certificate / serials",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "reference_plane",
+          "flags": [
+            "--reference-plane"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "antenna",
+          "flags": [
+            "--antenna"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": "RX2",
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "gain",
+          "flags": [
+            "--gain"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 20.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "experiments:compare",
+      "tool": "experiments",
+      "module": "soapypower.experiments",
+      "command": [
+        "compare"
+      ],
+      "description": "experiments compare",
+      "options": [
+        {
+          "dest": "terminated",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "antenna",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "threshold_db",
+          "flags": [
+            "--threshold-db"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 3.0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "experiments:dry-run",
+      "tool": "experiments",
+      "module": "soapypower.experiments",
+      "command": [
+        "dry-run"
+      ],
+      "description": "experiments dry-run",
+      "options": [
+        {
+          "dest": "directory",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "new session directory",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "noise",
+      "tool": "noise",
+      "module": "soapypower.noise_audit",
+      "command": [],
+      "description": "Offline IQ noise diagnostics; never an absolute calibration or automatic correction.",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "one-dimensional complex64/complex128 .npy file",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "sample_rate",
+          "flags": [
+            "--sample-rate"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "fft_size",
+          "flags": [
+            "--fft-size"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 4096,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "segments",
+          "flags": [
+            "--segments"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 128,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "overlap",
+          "flags": [
+            "--overlap"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0.5,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "center_hz",
+          "flags": [
+            "--center-hz"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 0,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "amplitude_threshold",
+          "flags": [
+            "--amplitude-threshold"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "dc_exclude_bins",
+          "flags": [
+            "--dc-exclude-bins"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 2,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "dc_warning_db",
+          "flags": [
+            "--dc-warning-db"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 10,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "variation_warning_db",
+          "flags": [
+            "--variation-warning-db"
+          ],
+          "kind": "number",
+          "nargs": null,
+          "required": false,
+          "default": 6,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": "float",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "coherent_features",
+          "flags": [
+            "--coherent-features"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "train/held-out phase-qualified stationary-line diagnostics; no filtering",
+          "group": "options",
+          "converter": null,
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "output",
+          "flags": [
+            "-O",
+            "--output"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "force",
+          "flags": [
+            "--force"
+          ],
+          "kind": "boolean",
+          "nargs": 0,
+          "required": false,
+          "default": false,
+          "choices": null,
+          "help": "",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "scan-spurs",
+      "tool": "scan-spurs",
+      "module": "soapypower.scan_spurs",
+      "command": [],
+      "description": "Bounded, non-destructive spur diagnostics on measured JSONL scan records.\n\nOnly contiguous common measured IF support is pooled. Context changes, tuning\norientation, units, gain and DSP settings are separated. Sequential LO tracks\nare hypotheses: this adapter never generates notches or invents phase.\n",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": "+",
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Measured JSONL scan files",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "out",
+          "flags": [
+            "--out"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Fresh output directory",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        },
+        {
+          "dest": "max_records",
+          "flags": [
+            "--max-records"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 192,
+          "choices": null,
+          "help": "Representative row memory budget, 24\u20131536",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "max_groups",
+          "flags": [
+            "--max-groups"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 12,
+          "choices": null,
+          "help": "Matched support group limit, 1\u201396",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        },
+        {
+          "dest": "max_bins",
+          "flags": [
+            "--max-bins"
+          ],
+          "kind": "integer",
+          "nargs": null,
+          "required": false,
+          "default": 8192,
+          "choices": null,
+          "help": "Maximum exact bins/view, 16\u201365536; no interpolation",
+          "group": "options",
+          "converter": "int",
+          "role": "value",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    },
+    {
+      "id": "scan-report",
+      "tool": "scan-report",
+      "module": "soapypower.scan_report",
+      "command": [],
+      "description": "Bounded high-resolution previews and guard inventory for expert captures.\n\nPlots use maximum-preserving display pooling, never calibrated rebinning. Each\nattempt stays separate, and its row-dependent RF tuning is shown explicitly.\n",
+      "options": [
+        {
+          "dest": "input",
+          "flags": [],
+          "kind": "text",
+          "nargs": "+",
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Recorded JSONL density files",
+          "group": "positional arguments",
+          "converter": null,
+          "role": "input",
+          "polarity": true
+        },
+        {
+          "dest": "help",
+          "flags": [
+            "-h",
+            "--help"
+          ],
+          "kind": "text",
+          "nargs": 0,
+          "required": false,
+          "default": "==SUPPRESS==",
+          "choices": null,
+          "help": "show this help message and exit",
+          "group": "options",
+          "converter": null,
+          "role": "managed",
+          "polarity": true
+        },
+        {
+          "dest": "out",
+          "flags": [
+            "--out"
+          ],
+          "kind": "text",
+          "nargs": null,
+          "required": true,
+          "default": null,
+          "choices": null,
+          "help": "Fresh report directory",
+          "group": "options",
+          "converter": null,
+          "role": "output",
+          "polarity": true
+        }
+      ],
+      "mutex": []
+    }
+  ]
+}

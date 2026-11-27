@@ -44,6 +44,7 @@ class MacosRunnerTests(unittest.TestCase):
         plutil.write_text(FAKE_PLUTIL.format(python=sys.executable))
         plutil.chmod(0o755)
         shutil.copy(RUNNER / 'runner.sh', self.app / 'runner.sh')
+        shutil.copy(RUNNER / 'runner.py', self.repo / 'tools' / 'macos_runner' / 'runner.py')
         shutil.copy(RUNNER / 'queue.sh', self.repo / 'tools' / 'macos_runner' / 'queue.sh')
         stub = self.repo / 'tools' / 'macos_runner' / 'run_session.sh'
         stub.write_text(STUB_SESSION)
@@ -108,7 +109,7 @@ class MacosRunnerTests(unittest.TestCase):
         seen = (self.sessions / 'seen-scan').read_text()
         for line in ('MODE=scan', 'INPUT=terminated', 'GAIN_DB=12.5', 'SCAN_SECONDS=30', 'ANTENNA=RX2', 'PROCEDURE=suite'):
             self.assertIn(line + '\n', seen)
-        self.assertIn('REQUEST_FILE={}'.format(self.sessions / 'queue' / 'taken'), seen)
+        self.assertIn('REQUEST_FILE={}'.format((self.sessions / 'queue' / 'taken').resolve()), seen)
         self.assertEqual(list(q.glob('*.json')), [])
 
     def test_session_script_rejects_an_undeclared_input_before_touching_hardware(self):

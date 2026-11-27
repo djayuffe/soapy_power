@@ -1,17 +1,693 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="__TOKEN__"><title>soapy_power · Spectrum workspace</title><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script></head>
-<body>
-<aside class="sidebar"><a class="brand" href="/"><span class="brand-mark">≋</span><span>soapy<span class="muted">_power</span><small>RECEIVER WORKSPACE</small></span></a><div class="nav-label">WORKSPACE</div><button class="nav active" id="overview-nav"><span>◉</span> Overview</button><button class="nav" id="history-nav"><span>▤</span> Session history</button><button class="nav" id="scan-nav"><span>＋</span> New scan</button><div class="sidebar-bottom"><div class="instrument-icon">⌁</div><strong id="receiver-name">Receive control</strong><p>Local connection<br>RF receive only</p><div class="sidebar-pill"><i></i> <span id="runner-label">Checking runner…</span></div><button class="ghost small" id="probe-button">Probe receiver ↗</button></div></aside>
-<main><header><div class="breadcrumbs">WORKSPACE <span>/</span> OVERVIEW</div><div class="top-right"><span id="connection"><i></i> Connecting</span><span class="local-tag">LOCAL</span></div></header>
-<section class="page-heading"><div><div class="eyebrow">SIGNALS, WITH CONTEXT</div><h1>Spectrum workspace<span>.</span></h1><p>Scan, observe, and follow the evidence.</p></div><button class="primary" id="new-scan"><span>＋</span> New scan</button></section>
-<div id="notice" class="notice" hidden></div>
-<section class="metrics"><article><span class="metric-label">ACQUISITION</span><div class="metric-value" id="acquisition-state">—</div><div class="metric-detail" id="acquisition-note">Select a session to inspect</div></article><article><span class="metric-label">CREDITED SCAN TIME</span><div class="metric-value" id="duration-value">—</div><div class="metric-detail" id="duration-note">Outages excluded from final totals</div></article><article><span class="metric-label">ACCEPTED RECORDS</span><div class="metric-value" id="record-value">—</div><div class="metric-detail" id="record-note">Confirmed saved records</div></article><article><span class="metric-label">RECOVERIES</span><div class="metric-value" id="recovery-value">—</div><div class="metric-detail">Recognized transport failures</div></article></section>
-<section class="workspace-grid"><article class="panel spectrum-panel"><div class="panel-heading"><div><h2>Latest spectrum</h2><span class="subtle" id="spectrum-subtitle">Waiting for a saved or live frame</span></div><span class="badge" id="frame-status">NO FRAME</span></div><div class="chart-wrap"><canvas id="spectrum" aria-label="Latest relative power spectrum"></canvas><div class="chart-empty" id="spectrum-empty">Choose a session or start a new capture.<small>Live previews never replace the saved measurements.</small></div></div><div class="plot-footer"><span class="legend-dot"></span> Relative PSD · uncalibrated <span id="frame-time">—</span></div><div class="waterfall-heading"><span>IF WATERFALL</span><span>Sampled visits · actual dwell and gaps</span></div><div class="waterfall-wrap"><canvas id="waterfall" aria-label="Sampled IF waterfall with acquisition gaps"></canvas></div><div class="plot-footer"><span id="if-label">IF offset (MHz) · each row can have a different RF center</span><span>Missing time is not measured</span></div></article>
-<article class="panel quality-panel"><div class="panel-heading"><h2>Receiver quality</h2><span class="badge" id="quality-badge">LATEST FRAME</span></div><div class="temperature"><span class="temp-icon">♨</span><div><strong id="temperature">—</strong><span>RFIC sensor · calibration unknown</span></div></div><div class="guard-meter"><div><span>Peak I/Q component</span><b id="peak-value">—</b></div><div class="meter-track"><i id="peak-meter"></i><span></span></div><small>0.5 guard reference for satellite scans</small></div><div class="guard-meter"><div><span>p99.9 component</span><b id="p999-value">—</b></div><div class="meter-track"><i id="p999-meter"></i></div><small>0.2 guard reference for satellite scans</small></div><div class="quality-list"><div><span>RX LO lock</span><b id="lo-value">—</b></div><div><span>Continuity</span><b id="continuity-value">—</b></div><div><span>RF state validity</span><b id="rf-value">—</b></div><div><span>Sample rate</span><b id="rate-value">—</b></div><div><span>Gain setting</span><b id="gain-value">—</b></div><div><span>Frequency resolution</span><b id="resolution-value">—</b></div></div><div class="quality-note">These checks qualify delivered data.<br>They do not establish absolute RF calibration.</div></article>
-<article class="panel session-panel"><div class="panel-heading"><div><h2>Session history</h2><span class="subtle">Separate acquisition contexts. Preserved results.</span></div><button class="ghost small" id="refresh">↻ Refresh</button></div><div class="table-scroll"><table><thead><tr><th>SESSION / START</th><th>STATE</th><th>SCAN TIME</th><th>RECORDS</th><th>REPORT</th></tr></thead><tbody id="session-list"><tr><td colspan="5" class="empty-row">Loading saved sessions…</td></tr></tbody></table></div></article>
-<article class="panel activity-panel"><div class="panel-heading"><div><h2>Selected session</h2><span class="subtle" id="selected-name">—</span></div><div class="actions"><a class="ghost small" id="report-link" hidden target="_blank" rel="noopener">Open report ↗</a><button class="ghost small" id="generate-report" disabled>Generate report</button><button class="ghost small" id="pause-scan" hidden>Pause</button><button class="primary small" id="resume-scan" hidden>Resume</button><button class="ghost small" id="retry-scan" hidden>Retry attempt</button><button class="danger small" id="stop-scan" hidden>Abort</button></div></div><div id="control-status" class="control-status" role="status" hidden></div><div class="progress-track"><i id="progress-bar"></i></div><div class="progress-description"><span id="progress-description">No session selected</span><span id="progress-percent">—</span></div><details><summary>Control history <span>Acknowledged operations</span></summary><ol id="control-history"></ol></details><details><summary>Acquisition log <span>Technical details</span></summary><pre id="log">No log selected.</pre></details></article></section>
-<footer><span><i></i> Receiver data stays on this computer.</span><span>soapy_power / LOCAL CONTROL</span></footer></main>
-<dialog id="scan-dialog"><form id="scan-form"><div class="dialog-header"><div><span class="eyebrow">RECEIVE ONLY</span><h2>Configure a scan</h2></div><button type="button" class="icon-button" id="close-dialog" aria-label="Close scan configuration">×</button></div><p class="dialog-intro">Use the existing runner, quality guards and automatic reports.</p><div class="form-grid"><label>Receiver<select name="device" id="device"><option value="b200">Ettus B200 / B200mini</option><option value="bladerf">bladeRF + XB-200</option></select></label><label>Workflow<select name="workflow" id="workflow"><option value="satellite">Satellite bands</option><option value="hopscan">140–150 MHz hop scan</option><option value="fullrange">Full-range survey</option><option value="baseline">Fixed baseline captures</option><option value="suite">100–300 MHz experiment suite</option></select></label><label>Duration<select name="duration_s"><option value="300">5 minutes</option><option value="900">15 minutes</option><option value="1800" selected>30 minutes</option><option value="3600">1 hour</option><option value="30">30-second receive check</option></select></label><label>RF input connected<select name="input"><option value="antenna">Antenna</option><option value="terminated">50 Ω termination</option></select></label><label id="antenna-field">Antenna port<select name="antenna"><option value="RX2">RX2</option><option value="TX/RX">TX/RX · receiving only</option></select></label><label>Gain<select name="gain" id="gain"><option value="60" selected>60 dB · conservative starting point</option><option value="50">50 dB</option><option value="40">40 dB</option><option value="30">30 dB</option><option value="20">20 dB</option><option value="70">70 dB</option><option value="auto">Automatic · pilot + burst reserve</option></select></label><label class="satellite-field">Sample rate<select name="rate_msps"><option value="2" selected>2 MS/s · verified stable setup</option><option value="4">4 MS/s · faster revisit</option><option value="8">8 MS/s · highest USB load</option></select></label><label class="satellite-field">Band plan<select name="plan"><option value="sat-full">VHF + UHF satellite bands</option><option value="sat">Narrow satellite plan</option><option value="sat-s">Satellite + S-band</option></select></label><label class="satellite-field">LO dither<select name="dither_khz"><option value="300" selected>300 kHz · overlapping LO views</option><option value="0">No extra dither</option></select></label><label id="blade-job" hidden>bladeRF procedure<select name="bladerf_job"><option value="dense-dc+survey">DC diagnostics + survey</option><option value="survey">Survey</option><option value="survey-anchor">Anchor-control survey</option><option value="dense-dc">Dense DC diagnostics</option></select></label></div><div class="scan-summary" id="scan-summary"></div><div class="included"><strong>Satellite scan protections</strong><p>Headroom guard · verified continuity · LO lock · fresh telemetry · sleep prevention · bounded recovery</p></div><div id="form-error" class="form-error" role="alert" hidden></div><div class="dialog-footer"><span>No transmission. No firmware changes.</span><button class="primary" type="submit" id="start-scan">Start scan →</button></div></form></dialog>
-<dialog id="confirm-dialog"><div class="dialog-header"><h2 id="confirm-title">Stop this capture?</h2></div><p id="confirm-message">Accepted data will be preserved. The supervisor will stop acquisition and generate the available report.</p><div class="dialog-footer"><button class="ghost" id="cancel-stop">Cancel</button><button class="danger" id="confirm-stop">Abort and preserve data</button></div></dialog>
-<div id="toast" role="status" hidden></div>
-</body></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="csrf-token" content="__TOKEN__">
+    <title>
+      soapy_power | Receiver console
+    </title>
+    <link rel="stylesheet" href="/style.css">
+    <script defer src="/app.js">
+    </script>
+    <script defer src="/workbench.js"></script>
+    <script defer src="/satellites.js"></script>
+    <script defer src="/skyview.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="/">
+        soapy_power
+        <span>
+          Receiver console
+        </span>
+      </a>
+      <div class="connection-status">
+        <span id="connection">
+          Connecting
+        </span>
+        <span class="local-tag">
+          LOCAL
+        </span>
+      </div>
+    </header>
+    <nav class="toolbar" aria-label="Workspace controls">
+      <div class="nav-group">
+        <button id="overview-nav">
+          Overview
+        </button>
+        <button id="satellite-nav">SatNOGS</button>
+        <button id="workbench-nav">Workbench</button>
+        <button id="history-nav">
+          Sessions
+        </button>
+      </div>
+      <div class="instrument">
+        <strong id="receiver-name">
+          Receiver
+        </strong>
+        <span id="runner-label">
+          Checking runner
+        </span>
+      </div>
+      <div class="nav-group">
+        <button id="probe-button">
+          Probe receiver
+        </button>
+        <button id="scan-nav">
+          Configure
+        </button>
+        <button class="primary" id="new-scan">
+          New scan
+        </button>
+      </div>
+    </nav>
+    <main>
+      <div id="notice" class="notice" role="status" hidden>
+      </div>
+      <section class="metrics">
+        <article>
+          <span class="metric-label">
+            ACQUISITION
+          </span>
+          <div class="metric-value" id="acquisition-state">
+            —
+          </div>
+          <div class="metric-detail" id="acquisition-note">
+            Select a session to inspect
+          </div>
+        </article>
+        <article>
+          <span class="metric-label">
+            CREDITED SCAN TIME
+          </span>
+          <div class="metric-value" id="duration-value">
+            —
+          </div>
+          <div class="metric-detail" id="duration-note">
+            Outages excluded from final totals
+          </div>
+        </article>
+        <article>
+          <span class="metric-label">
+            ACCEPTED RECORDS
+          </span>
+          <div class="metric-value" id="record-value">
+            —
+          </div>
+          <div class="metric-detail" id="record-note">
+            Confirmed saved records
+          </div>
+        </article>
+        <article>
+          <span class="metric-label">
+            RECOVERIES
+          </span>
+          <div class="metric-value" id="recovery-value">
+            —
+          </div>
+          <div class="metric-detail">
+            Recognized transport failures
+          </div>
+        </article>
+      </section>
+      <section class="workspace-grid">
+        <article class="panel spectrum-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>
+                Latest spectrum
+              </h2>
+              <span class="subtle" id="spectrum-subtitle">
+                Waiting for a saved or live frame
+              </span>
+            </div>
+            <span class="badge" id="frame-status">
+              NO FRAME
+            </span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="spectrum" aria-label="Latest relative power spectrum">
+            </canvas>
+            <div class="chart-empty" id="spectrum-empty">
+              Choose a session or start a new capture.
+              <small>
+                Live previews never replace the saved measurements.
+              </small>
+            </div>
+          </div>
+          <div class="plot-footer">
+            <span class="legend-dot">
+            </span>
+            <span id="power-unit">
+              Relative PSD · uncalibrated
+            </span>
+            <span id="frame-time">
+              —
+            </span>
+          </div>
+          <div class="waterfall-heading">
+            <span>
+              IF WATERFALL
+            </span>
+            <span>
+              Sampled visits · actual dwell and gaps
+            </span>
+          </div>
+          <div class="waterfall-wrap">
+            <canvas id="waterfall" aria-label="Sampled IF waterfall with acquisition gaps">
+            </canvas>
+          </div>
+          <div class="plot-footer">
+            <span id="if-label">
+              IF offset (MHz) · each row can have a different RF center
+            </span>
+            <span>
+              Missing time is not measured
+            </span>
+          </div>
+        </article>
+        <article class="panel quality-panel">
+          <div class="panel-heading">
+            <h2>
+              Receiver status
+            </h2>
+            <span class="badge" id="quality-badge">
+              RECORDED STATE
+            </span>
+          </div>
+          <div class="temperature">
+            <div>
+              <strong id="temperature">
+                —
+              </strong>
+              <span>
+                RFIC sensor · calibration unknown
+              </span>
+            </div>
+          </div>
+          <div class="guard-meter">
+            <div>
+              <span>
+                Peak I/Q component
+              </span>
+              <b id="peak-value">
+                —
+              </b>
+            </div>
+            <div class="meter-track">
+              <i id="peak-meter">
+              </i>
+              <span>
+              </span>
+            </div>
+            <small id="peak-limit">Saved guard limit unavailable</small>
+          </div>
+          <div class="guard-meter">
+            <div>
+              <span>
+                p99.9 component
+              </span>
+              <b id="p999-value">
+                —
+              </b>
+            </div>
+            <div class="meter-track">
+              <i id="p999-meter">
+              </i>
+            </div>
+            <small id="p999-limit">Saved guard limit unavailable</small>
+          </div>
+          <div class="quality-list">
+            <div>
+              <span>
+                RX LO lock
+              </span>
+              <b id="lo-value">
+                —
+              </b>
+            </div>
+            <div>
+              <span>
+                Continuity
+              </span>
+              <b id="continuity-value">
+                —
+              </b>
+            </div>
+            <div>
+              <span>
+                RF state validity
+              </span>
+              <b id="rf-value">
+                —
+              </b>
+            </div>
+            <div>
+              <span>
+                Sample rate
+              </span>
+              <b id="rate-value">
+                —
+              </b>
+            </div>
+            <div>
+              <span>
+                Gain setting
+              </span>
+              <b id="gain-value">
+                —
+              </b>
+            </div>
+            <div>
+              <span>
+                Frequency resolution
+              </span>
+              <b id="resolution-value">
+                —
+              </b>
+            </div>
+          </div>
+          <div class="quality-note">
+            These checks qualify delivered data.
+            <br>
+            They do not establish absolute RF calibration.
+          </div>
+        </article>
+        <article class="panel session-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>
+                Session history
+              </h2>
+              <span class="subtle">
+                Acquisition history and reports
+              </span>
+            </div>
+            <button class="ghost small" id="refresh">
+              Refresh
+            </button>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>
+                    SESSION / START
+                  </th>
+                  <th>
+                    STATE
+                  </th>
+                  <th>
+                    SCAN TIME
+                  </th>
+                  <th>
+                    RECORDS
+                  </th>
+                  <th>
+                    REPORT
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="session-list">
+                <tr>
+                  <td colspan="5" class="empty-row">
+                    Loading saved sessions…
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel activity-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>
+                Selected session
+              </h2>
+              <span class="subtle" id="selected-name">
+                —
+              </span>
+            </div>
+            <div class="actions">
+              <a class="ghost small" id="report-link" hidden target="_blank" rel="noopener">
+                Open report
+              </a>
+              <button class="ghost small" id="open-expert-job" hidden>Workbench controls</button>
+              <button class="ghost small" id="generate-report" disabled>
+                Generate report
+              </button>
+              <button class="ghost small" id="pause-scan" hidden>
+                Pause
+              </button>
+              <button class="primary small" id="resume-scan" hidden>
+                Resume
+              </button>
+              <button class="ghost small" id="retry-scan" hidden>
+                Retry attempt
+              </button>
+              <button class="danger small" id="stop-scan" hidden>
+                Abort
+              </button>
+            </div>
+          </div>
+          <div id="control-status" class="control-status" role="status" hidden>
+          </div>
+          <div class="progress-track">
+            <i id="progress-bar">
+            </i>
+          </div>
+          <div class="progress-description">
+            <span id="progress-description">
+              No session selected
+            </span>
+            <span id="progress-percent">
+              —
+            </span>
+          </div>
+          <details>
+            <summary>
+              Control history
+              <span>
+                Acknowledged operations
+              </span>
+            </summary>
+            <ol id="control-history">
+            </ol>
+          </details>
+          <details>
+            <summary>
+              Acquisition log
+              <span>
+                Technical details
+              </span>
+            </summary>
+            <pre id="log">
+              No log selected.
+            </pre>
+          </details>
+        </article>
+      </section>
+      <section class="panel satellite-panel" id="satellite-panel" aria-labelledby="satellite-title">
+        <div class="panel-heading"><div><h2 id="satellite-title">Satellite operations</h2><span id="satellite-source" class="subtle">SatNOGS transmitter catalog and orbital predictions</span></div><button id="satellite-refresh">Update SatNOGS data</button></div>
+        <div class="satellite-toolbar">
+          <label>RF minimum (MHz)<input type="number" id="satellite-low" value="100" min="1" max="10000"></label>
+          <label>RF maximum (MHz)<input type="number" id="satellite-high" value="6000" min="1" max="10000"></label>
+          <label>Look ahead<select id="satellite-horizon"><option value="1800">30 minutes</option><option value="3600">1 hour</option><option value="7200" selected>2 hours</option></select></label>
+          <button id="satellite-apply">Apply range</button>
+          <label><span>Spectrum annotation</span><span><input type="checkbox" id="satellite-overlay" checked> Predicted downlinks</span></label>
+        </div>
+        <p id="satellite-state" role="status">Loading local satellite reference…</p>
+        <p id="satellite-frame" class="quality-note">Predictions are candidates; reception and identity require measured evidence.</p>
+        <section class="sky-view" aria-labelledby="sky-title">
+          <div class="panel-heading"><div><h3 id="sky-title">Sky view · azimuth / elevation</h3><span class="subtle">SGP4 predictions · North up, East right · zenith at center</span></div><span id="sky-mode" class="badge">LIVE UTC</span></div>
+          <div class="sky-controls">
+            <label>Satellite pass (UTC)<select id="sky-pass" aria-label="Satellite pass"><option>No pass loaded</option></select></label>
+            <button id="sky-live">Live UTC</button><button id="sky-restart">Restart pass</button><button id="sky-play" disabled>Play pass</button>
+            <label>Playback speed<select id="sky-speed"><option value="1">1×</option><option value="10">10×</option><option value="30" selected>30×</option><option value="60">60×</option><option value="300">300×</option></select></label>
+            <label><span>Other satellites</span><input id="sky-others" type="checkbox" checked aria-label="Show other visible satellites"></label>
+          </div>
+          <div class="sky-grid">
+            <div class="sky-map"><canvas id="sky-polar" role="img" aria-label="Predicted satellite sky plot. North up, East right, elevation 90 degrees at center."></canvas><p class="subtle">○ AOS · □ LOS · cyan selected pass · amber elevation mask · click a visible satellite to select</p></div>
+            <div class="sky-readout">
+              <strong id="sky-name">No pass selected</strong><div id="sky-clock" class="sky-clock">—</div><p id="sky-status" role="status">Waiting for orbital predictions</p>
+              <dl><div><dt>Azimuth</dt><dd id="sky-az">—</dd></div><div><dt>Elevation</dt><dd id="sky-el">—</dd></div><div><dt>Slant range</dt><dd id="sky-range">—</dd></div><div><dt>Range rate</dt><dd id="sky-rate">—</dd></div><div><dt>Doppler</dt><dd id="sky-doppler">—</dd></div><div><dt>AOS (UTC)</dt><dd id="sky-aos">—</dd></div><div><dt>LOS (UTC)</dt><dd id="sky-los">—</dd></div><div><dt>Peak elevation</dt><dd id="sky-peak">—</dd></div></dl>
+              <p id="sky-reference" class="quality-note">Simulation uses current observer and catalog. Playback never retunes the receiver or changes spectrum timestamps.</p>
+            </div>
+          </div>
+          <label class="sky-seek-label">Pass time<input id="sky-seek" type="range" min="0" max="1000" value="0" step="1" disabled aria-label="Pass playback time"></label>
+          <canvas id="sky-timeline" class="sky-timeline" role="img" aria-label="Predicted elevation over pass time with playback cursor"></canvas>
+        </section>
+        <div class="table-scroll"><table><thead><tr><th>PASS / NORAD</th><th>RISE – SET</th><th>MAX EL</th><th>DOWNLINK / MODE</th><th>SCAN</th></tr></thead><tbody id="satellite-passes"></tbody></table></div>
+        <details><summary>Active transmitter catalog</summary><label>Find satellite or frequency<input type="search" id="satellite-search" placeholder="Name, NORAD, MHz or mode"></label><div id="satellite-catalog" class="satellite-catalog"></div></details>
+        <details><summary>Observer position · WGS84</summary><p>Used locally for horizon, azimuth and Doppler prediction. Coordinates are not sent to SatNOGS.</p>
+          <form id="observer-form"><div class="satellite-toolbar">
+            <label>Latitude (degrees)<input name="lat_deg" type="number" step="any" min="-90" max="90" required></label>
+            <label>Longitude (degrees)<input name="lon_deg" type="number" step="any" min="-180" max="180" required></label>
+            <label>Altitude (m)<input name="alt_m" type="number" step="any" min="-500" max="10000" value="0" required></label>
+            <label>Elevation mask (degrees)<input name="min_elevation_deg" type="number" step="any" min="0" max="90" value="0" required></label>
+            <button type="submit">Save local observer</button>
+          </div></form>
+        </details>
+        <p class="subtle"><a href="https://db.satnogs.org/" target="_blank" rel="noopener">SatNOGS DB</a> · CC BY-SA · cached sources and TLE age shown above. No decoding or confirmed satellite identification from PSD alone.</p>
+      </section>
+      <footer>
+        <span id="job-status">
+          No runner jobs recorded
+        </span>
+        <span>
+          RX only · Local control
+        </span>
+      </footer>
+    </main>
+    <dialog id="scan-dialog" aria-labelledby="scan-title">
+      <form id="scan-form">
+        <div class="dialog-header">
+          <div>
+            <h2 id="scan-title">
+              Configure a scan
+            </h2>
+          </div>
+          <button type="button" class="icon-button" id="close-dialog" aria-label="Close scan configuration">
+            ×
+          </button>
+        </div>
+        <p class="dialog-intro">
+          Select the receiver, connected input and acquisition procedure.
+        </p>
+        <button type="button" id="scan-satnogs">Plan from SatNOGS passes and transmitters</button>
+        <div class="form-grid">
+          <label>
+            Receiver
+            <select name="device" id="device">
+              <option value="b200">
+                Ettus B200 / B200mini
+              </option>
+              <option value="bladerf">
+                bladeRF + XB-200
+              </option>
+            </select>
+          </label>
+          <label>
+            Workflow
+            <select name="workflow" id="workflow">
+              <option value="satellite">
+                Satellite bands
+              </option>
+              <option value="hopscan">
+                140–150 MHz hop scan
+              </option>
+              <option value="fullrange">
+                Full-range survey
+              </option>
+              <option value="baseline">
+                Fixed baseline captures
+              </option>
+              <option value="suite">
+                100–300 MHz experiment suite
+              </option>
+            </select>
+          </label>
+          <label>
+            Duration
+            <select name="duration_s">
+              <option value="300">
+                5 minutes
+              </option>
+              <option value="900">
+                15 minutes
+              </option>
+              <option value="1800" selected>
+                30 minutes
+              </option>
+              <option value="3600">
+                1 hour
+              </option>
+              <option value="30">
+                30-second receive check
+              </option>
+            </select>
+          </label>
+          <label>
+            RF input connected
+            <select name="input">
+              <option value="antenna">
+                Antenna
+              </option>
+              <option value="terminated">
+                50 Ω termination
+              </option>
+            </select>
+          </label>
+          <label id="antenna-field">
+            Antenna port
+            <select name="antenna">
+              <option value="RX2">
+                RX2
+              </option>
+              <option value="TX/RX">
+                TX/RX · receiving only
+              </option>
+            </select>
+          </label>
+          <label>
+            Gain
+            <select name="gain" id="gain">
+              <option value="60" selected>
+                60 dB
+              </option>
+              <option value="50">
+                50 dB
+              </option>
+              <option value="40">
+                40 dB
+              </option>
+              <option value="30">
+                30 dB
+              </option>
+              <option value="20">
+                20 dB
+              </option>
+              <option value="70">
+                70 dB
+              </option>
+              <option value="auto">
+                Automatic · pilot + burst reserve
+              </option>
+            </select>
+          </label>
+          <label class="satellite-field">
+            Sample rate
+            <select name="rate_msps">
+              <option value="2" selected>
+                2 MS/s
+              </option>
+              <option value="4">
+                4 MS/s
+              </option>
+              <option value="8">
+                8 MS/s
+              </option>
+            </select>
+          </label>
+          <label class="satellite-field">
+            Band plan
+            <select name="plan">
+              <option value="sat-full">
+                VHF + UHF satellite bands
+              </option>
+              <option value="sat">
+                Narrow satellite plan
+              </option>
+              <option value="sat-s">
+                Satellite + S-band
+              </option>
+            </select>
+          </label>
+          <label class="satellite-field">
+            LO dither
+            <select name="dither_khz">
+              <option value="300" selected>
+                300 kHz · overlapping LO views
+              </option>
+              <option value="0">
+                No extra dither
+              </option>
+            </select>
+          </label>
+          <label id="blade-job" hidden>
+            bladeRF procedure
+            <select name="bladerf_job">
+              <option value="dense-dc+survey">
+                DC diagnostics + survey
+              </option>
+              <option value="survey">
+                Survey
+              </option>
+              <option value="survey-anchor">
+                Anchor-control survey
+              </option>
+              <option value="dense-dc">
+                Dense DC diagnostics
+              </option>
+            </select>
+          </label>
+        </div>
+        <div class="scan-summary" id="scan-summary">
+        </div>
+        <div class="included">
+          <strong>
+            Qualification
+          </strong>
+          <p>
+            Headroom guard · verified continuity · LO lock · fresh telemetry · sleep prevention · bounded recovery
+          </p>
+        </div>
+        <div id="form-error" class="form-error" role="alert" hidden>
+        </div>
+        <div class="dialog-footer">
+          <span>
+            Acquisition uses the local runner.
+          </span>
+          <button class="primary" type="submit" id="start-scan">
+            Start scan
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+      <div class="dialog-header">
+        <h2 id="confirm-title">
+          Stop this capture?
+        </h2>
+      </div>
+      <p id="confirm-message">
+        Accepted data will be preserved. The supervisor will stop acquisition and generate the available report.
+      </p>
+      <div class="dialog-footer">
+        <button class="ghost" id="cancel-stop">
+          Cancel
+        </button>
+        <button class="danger" id="confirm-stop">
+          Abort and preserve data
+        </button>
+      </div>
+    </dialog>
+    <dialog id="workbench-dialog" aria-labelledby="expert-title">
+      <div class="dialog-header"><div><h2 id="expert-title">Measurement workbench</h2><p>Receive, calibrate, diagnose and analyze with the native CLI engines.</p></div><button id="expert-close" aria-label="Close workbench">×</button></div>
+      <div class="expert-toolbar">
+        <label>Operation<select id="expert-operation"></select></label>
+        <label>Native runtime<select id="expert-runtime"><option value="b200">Ettus / UHD</option><option value="bladerf">bladeRF / XB-200</option><option value="generic">Configured SoapySDR stack / RTL</option></select></label>
+        <button id="expert-preset">Guarded B200 scan preset</button>
+      </div>
+      <p id="expert-description"></p>
+      <div id="expert-acquisition" class="expert-toolbar">
+        <label>Active process budget (seconds)<input id="expert-seconds" type="number" min="5" max="3600" value="30"></label>
+        <label><span>Post-acquisition diagnostics</span><span><input id="expert-antispur" type="checkbox"> Measured spur audit</span></label>
+      </div>
+      <p class="quality-note">Expert scans default to JSON for live previews and reports. Other output formats retain raw partitions. Per-record guards determine qualification; active process time includes tuning and setup. Spur attribution preserves raw data and never applies automatic notches. PSD cannot recover phase: phase analysis requires recorded complex IQ. Source hooks must already be installed in sessions/hooks.</p>
+      <div class="expert-toolbar"><label>Find an option<input id="expert-search" type="search" placeholder="DC, gain, telemetry, window…"></label><button id="expert-refresh-artifacts">Refresh input artifacts</button><span id="artifact-count"></span></div>
+      <datalist id="expert-artifacts"></datalist>
+      <details><summary>Create a JSON input artifact</summary>
+        <p>Save a configuration, manifest, telemetry policy or reference metadata. Existing files are never replaced.</p>
+        <label>Filename<input id="artifact-name" value="configuration.json"></label>
+        <label>JSON content<textarea id="artifact-json" rows="8" spellcheck="false">{}</textarea></label>
+        <button id="artifact-save">Save new input artifact</button><span id="artifact-created" role="status"></span>
+      </details>
+      <div id="expert-fields"></div>
+      <p class="subtle" id="expert-managed"></p>
+      <div id="expert-error" class="form-error" role="alert" hidden></div>
+      <div class="dialog-footer"><button id="expert-validate">Validate and preview</button><button id="expert-run" class="primary" disabled>Queue reviewed plan</button></div>
+      <details><summary>Execution plan</summary><pre id="expert-preview"></pre></details>
+      <section class="expert-job"><h3>Job monitor</h3>
+        <div class="expert-toolbar"><label>Saved job identifier<input id="expert-job-id" placeholder="expert-YYYYMMDD-HHMMSS-xxxxxxxx"></label><button id="expert-open-job">Open job</button></div>
+        <p id="expert-job-state" role="status">No expert job selected</p>
+        <div class="actions"><button id="expert-pause" disabled>Pause</button><button id="expert-resume" disabled>Resume</button><button id="expert-retry" disabled>Retry in fresh partition</button><button id="expert-abort" class="danger" disabled>Abort and preserve</button></div>
+        <details><summary>Worker log</summary><pre id="expert-log"></pre></details>
+        <div id="expert-files" class="expert-files"></div>
+      </section>
+    </dialog>
+    <div id="toast" role="status" hidden>
+    </div>
+  </body>
+</html>

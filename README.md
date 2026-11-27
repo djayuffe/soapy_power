@@ -102,3 +102,11 @@ python -m pytest -q tests/test_gui.py tests/test_superscan_recovery.py tests/tes
 `python tools/validate.py` repeats the suite once per installed FFT backend (NumPy, SciPy, pyFFTW), as CI does. HTTP tests need permission to bind a loopback socket. Runner, supervisor and report-publication tests are POSIX-only and skip on Windows. Recovery tests use synthetic records and fake receiver processes. They validate software behavior; they do not substitute for RF calibration or hardware qualification.
 
 MIT licensed. Original project: [xmikos/soapy_power](https://github.com/xmikos/soapy_power). Fork: [djayuffe/soapy_power](https://github.com/djayuffe/soapy_power).
+
+### GUI and runner reliability
+
+The receiver console uses bounded request workers and display buffers, streamed report downloads, fresh-state controls and typed queue validation. Runner and receiver leases prevent cooperating jobs from overlapping after a process failure. Read the [GUI/runner audit](docs/GUI_AUDIT.md) for findings, runtime bounds and recovery limits. Update legacy launch-agent installations with `bash tools/macos_runner/install.sh --no-probe` while idle.
+
+The receiver console includes an [expert measurement workbench](docs/GUI_WORKBENCH.md) for custom acquisition, calibration, telemetry, phase/noise and non-destructive spur diagnostics. CLI-derived controls, plan preflight, partitioned pause/retry and automatic high-resolution reports share the local runner.
+
+[SatNOGS integration](docs/SATNOGS_GUI.md) adds pass planning, transmitter-based scan preparation and reference-aware live spectrum/waterfall predictions to the receiver console.

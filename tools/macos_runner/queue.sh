@@ -42,8 +42,21 @@ case "$PLANARGS" in *[!A-Za-z0-9\ .=_-]*) echo "--plan-args: letters, digits, sp
 [ -z "$SRATE" ] || [[ "$SRATE" =~ ^(2|4|8)$ ]] || { echo "--superscan-rate: 2 | 4 | 8" >&2; exit 2; }
 [ -z "$SPLAN" ] || [[ "$SPLAN" =~ ^(sat|sat-full|sat-s)$ ]] || { echo "--superscan-plan: sat | sat-full | sat-s" >&2; exit 2; }
 [ -z "$REAN" ] || [[ "$REAN" =~ ^(hopscan|superscan)-[0-9]{8}-[0-9]{6}$ ]] || { echo "--reanalyze: hopscan-YYYYMMDD-HHMMSS or superscan-YYYYMMDD-HHMMSS" >&2; exit 2; }
+for flag in "$OVP" "$HOP" "$SUP" "$SATDB"; do
+  [ -z "$flag" ] || [ "$flag" = 1 ] || { echo "boolean flags must be 1" >&2;exit 2; }
+done
+[ -z "$GUIPORT" ] || [ -n "$GUI" ] || { echo "--gui-port requires --gui" >&2;exit 2; }
+OPERATIONS=0
+for operation in "$GUI" "$REAN" "$OVP" "$HOP" "$SUP"; do
+  [ -z "$operation" ] || OPERATIONS=$(( OPERATIONS + 1 ))
+done
+[ "$OPERATIONS" -le 1 ] && { [ "$OPERATIONS" = 0 ] || [ "$MODE" = scan ]; } || { echo "conflicting operations" >&2;exit 2; }
+if [ "$DEV" = bladerf ] && { [ -n "$OVP" ] || [ -n "$HOP" ] || [ -n "$SUP" ]; }; then echo "unsupported device workflow" >&2;exit 2;fi
 mkdir -p "$SESSIONS/queue" "$SESSIONS/status"
 ID="$MODE-$(date +%Y%m%d-%H%M%S)-$$"
+TMP=$(mktemp "$SESSIONS/queue/.$ID.XXXXXX")
+trap 'rm -f "$TMP"' EXIT
+ID="$ID-${TMP##*.}"
 TYPE=integer; case "$GAIN" in *.*) TYPE=real;; esac
 {
   echo '<?xml version="1.0" encoding="UTF-8"?>'
@@ -65,16 +78,16 @@ TYPE=integer; case "$GAIN" in *.*) TYPE=real;; esac
   [ -z "$GUIPORT" ] || printf '<key>gui_port</key><string>%s</string>\n' "$GUIPORT"
   [ -z "$PLANARGS" ] || printf '<key>plan_args</key><string>%s</string>\n' "$PLANARGS"
   echo '</dict></plist>'
-} > "$SESSIONS/queue/.$ID.tmp"
-mv "$SESSIONS/queue/.$ID.tmp" "$SESSIONS/queue/$ID.json"   # atomic: the runner never sees a partial file
+} > "$TMP"
+mv "$TMP" "$SESSIONS/queue/$ID.json"   # atomic: the runner never sees a partial file
 echo "$ID"
 [ "$WAIT" -gt 0 ] || exit 0
 STATUS="$SESSIONS/status/$ID.json"
 for _ in $(seq 1 "$WAIT"); do
-  grep -Eq '"(finished|rejected)"' "$STATUS" 2>/dev/null && break
+  grep -Eq '"(finished|rejected|interrupted)"' "$STATUS" 2>/dev/null && break
   sleep 1
 done
-if ! grep -Eq '"(finished|rejected)"' "$STATUS" 2>/dev/null; then echo "still running: $STATUS" >&2; exit 3; fi
+if ! grep -Eq '"(finished|rejected|interrupted)"' "$STATUS" 2>/dev/null; then echo "still running: $STATUS" >&2; exit 3; fi
 cat "$STATUS"
 LOGF="$(sed -n 's/.*LOG=\([^;]*\);.*/\1/p' "$STATUS")"
 [ -n "$LOGF" ] && [ -f "$LOGF" ] && grep -v '^  nei ' "$LOGF" | tail -25

@@ -186,6 +186,16 @@ class RuntimeTests(unittest.TestCase):
         self.assertGreater(len(rows),2)
         self.assertTrue(all(r['metadata']['coverage_plan']['mask_aware'] for r in rows))
 
+    def test_requested_overlap_survives_mask_aware_coverage(self):
+        sdr,out = self.capable_receiver();self.signal(sdr,.1)
+        preferred=sdr.freq_plan(10000,12000,64,.75,quiet=True)
+        sdr.sweep(10000,12000,64,4,runs=1,max_threads=1,overlap=.75,
+                  ensure_coverage=True,dc_mask_width=32)
+        rows=[json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
+        actual=[r['metadata']['tuned_center_hz'] for r in rows]
+        self.assertTrue(all(min(abs(c-p) for c in actual)<=8 for p in preferred))
+        self.assertEqual(coverage_gaps(actual,10000,12000,512,32,margin=16),[])
+
     def manual_profile_receiver(self):
         sdr,out=self.capable_receiver(dc_correction='off',iq_correction='off')
         raw=sdr.device.device
@@ -354,6 +364,16 @@ class AlgorithmTests(unittest.TestCase):
         count=np.zeros(len(f),int)
         for c in new:count += ((abs(f-c)<960000-625)&(abs(f-c)>10000+625))
         self.assertTrue(np.all(count>0))
+
+    def test_overlap_adds_views_without_removing_coverage_centers(self):
+        base=masked_frequency_plan(100e6,103e6,960000,625,20000,tune_range=(24e6,1764e6))
+        preferred=[100e6+i*250000 for i in range(13)]
+        dense=masked_frequency_plan(100e6,103e6,960000,625,20000,tune_range=(24e6,1764e6),preferred_centers=preferred)
+        self.assertTrue(set(base).issubset(dense))
+        self.assertTrue(all(min(abs(c-p) for c in dense)<=625/2 for p in preferred))
+        self.assertEqual(coverage_gaps(dense,100e6,103e6,960000,20000,margin=625),[])
+        with self.assertRaisesRegex(ValueError,'budget'):
+            masked_frequency_plan(100e6,103e6,960000,625,20000,max_centers=len(base),preferred_centers=preferred)
 
     def test_unreachable_endpoint_and_impossible_mask_fail(self):
         with self.assertRaises(ValueError):masked_frequency_plan(0,100,10,1,8,tune_range=(0,1))

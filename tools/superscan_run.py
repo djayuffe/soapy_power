@@ -80,9 +80,14 @@ def control_request(path, acknowledged=None):
     try:
         if Path(path).stat().st_size > 4096:
             return None
-        value = json.loads(Path(path).read_text())
+        with Path(path).open('rb') as stream:
+            raw = stream.read(4097)
+        if len(raw) > 4096:
+            return None
+        value = json.loads(raw)
         if (
             isinstance(value, dict)
+            and type(value.get('version')) is int
             and value.get('version') == 1
             and value.get('action') in ('pause', 'resume', 'retry')
             and isinstance(value.get('id'), str)
@@ -90,13 +95,21 @@ def control_request(path, acknowledged=None):
             and value['id'] != acknowledged
         ):
             return value
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         pass
     return None
 
 
 def run_child(
-    command, log_path, data_path, stall_s, poll_s=0.25, cancel_file=None, control_file=None, acknowledged=None
+    command,
+    log_path,
+    data_path,
+    stall_s,
+    poll_s=0.25,
+    cancel_file=None,
+    control_file=None,
+    acknowledged=None,
+    lease_fd=None,
 ):
     """Kill a stalled process group, retaining stdout evidence and accepted prefix."""
 
@@ -109,7 +122,14 @@ def run_child(
 
     with log_path.open('wb') as log:
         check_control()  # Do not open a receiver for a request already pending.
-        child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+        child = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=log,
+            start_new_session=True,
+            pass_fds=(lease_fd,) if lease_fd is not None else (),
+        )
         last_progress = time.monotonic()
         size = 0
         stalled = False
@@ -139,6 +159,35 @@ def run_child(
                     os.killpg(child.pid, signal.SIGKILL)
                     child.wait()
     return code, stalled
+
+
+def classify_log(code, path):
+    """Scan bounded chunks; failure logs may be much larger than process memory."""
+    if code == 0:
+        return 'finished'
+    result = 'fatal'
+    overlap = ''
+    with path.open('rb') as stream:
+        while True:
+            chunk = stream.read(65536)
+            if not chunk:
+                break
+            text = overlap + chunk.decode('utf-8', 'replace')
+            kind = classify_failure(code, text)
+            if kind == 'headroom':
+                return kind
+            if kind == 'transport':
+                result = kind
+            overlap = text[-4096:]
+    return result
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 RETUNED_KEYS = ('frequency', 'freq', 'center_hz', 'frequency_hz', 'tuned_center_hz')
@@ -226,7 +275,7 @@ def accepted_prefix(raw, output, gain, max_gap_s=5.0):
     )
 
 
-def supervise(
+def _supervise(
     session,
     command,
     seconds,
@@ -241,6 +290,7 @@ def supervise(
     max_gap_s=5.0,
     execute=run_child,
     sleep=time.sleep,
+    lease_fd=None,
 ):
     session = Path(session)
     session.mkdir(parents=True, exist_ok=True)
@@ -384,6 +434,7 @@ def supervise(
                         cancel_file=session / 'stop-request.json',
                         control_file=control_file,
                         acknowledged=state['control_ack'],
+                        lease_fd=lease_fd,
                     )
                 else:
                     code, stalled = execute(args, log, raw, stall_s)
@@ -392,7 +443,6 @@ def supervise(
             except KeyboardInterrupt:
                 code, stalled, cancelled = -signal.SIGTERM, False, True
             metrics = accepted_prefix(raw, accepted, gain, max_gap_s)
-            text = log.read_text(errors='replace')
             kind = (
                 'cancelled'
                 if cancelled
@@ -402,7 +452,7 @@ def supervise(
                 if operator
                 else 'transport'
                 if stalled
-                else classify_failure(code, text)
+                else classify_log(code, log)
             )
             record = dict(
                 attempt=attempt,
@@ -455,10 +505,7 @@ def supervise(
                     ):
                         raise ValueError('missing typed headroom rejection')
                     path = rejected / entry['iq_file']
-                    if (
-                        path.parent.resolve() != rejected.resolve()
-                        or hashlib.sha256(path.read_bytes()).hexdigest() != entry['iq_sha256']
-                    ):
+                    if path.parent.resolve() != rejected.resolve() or file_sha256(path) != entry['iq_sha256']:
                         raise ValueError('rejected IQ integrity failure')
                 if gain <= min_gain:
                     break
@@ -503,6 +550,37 @@ def supervise(
         state['last_failure_class'] = last_class
         publish(manifest, state)
     return result
+
+
+def supervise(session, command, seconds, gain, **policy):
+    """Hold a receiver lease even if the supervisor dies before its RX child."""
+    if os.name == 'nt':
+        return _supervise(session, command, seconds, gain, **policy)
+    import fcntl
+
+    folder = Path(session)
+    folder.mkdir(parents=True, exist_ok=True)
+    lease = folder.parent / '.receiver.lock'
+    inherited = None
+    try:
+        fd = int(os.environ.get('SPR_RADIO_LEASE_FD', '-1'))
+        if fd >= 3 and os.fstat(fd).st_ino == lease.stat().st_ino and os.fstat(fd).st_dev == lease.stat().st_dev:
+            inherited = fd
+    except (OSError, ValueError):
+        pass
+    if inherited is not None:
+        try:
+            fcntl.flock(inherited, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError('Inherited receiver lease is owned by another capture')
+        return _supervise(folder, command, seconds, gain, lease_fd=inherited, **policy)
+    fd = os.open(lease, os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+    with os.fdopen(fd, 'r+') as stream:
+        try:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError('Receiver lease is held by another capture process')
+        return _supervise(folder, command, seconds, gain, lease_fd=stream.fileno(), **policy)
 
 
 def main():

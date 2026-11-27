@@ -124,7 +124,7 @@ def _fetch_generation(cache):
         meta['sources']['tle_satnogs'] = len(tles)
     except Exception as e:
         meta['sources']['tle_satnogs'] = f'failed: {e}'
-    for g in CELESTRAK_GROUPS:
+    for g in (() if tles else CELESTRAK_GROUPS):
         try:
             got = parse_tle_text(_get(CELESTRAK.format(g)).decode('ascii', 'replace'))
             for t in got:
@@ -168,7 +168,7 @@ def load(cache):
             continue
         n = int(n); s = sats.get(n, {})
         e = db.setdefault(n, dict(norad=n, name=s.get('name') or tles[n]['name'], sat_status=s.get('status', 'unknown'), l1=tles[n]['l1'], l2=tles[n]['l2'], transmitters=[]))
-        e['transmitters'].append(dict(description=t.get('description') or '', f_hz=float(f), f_high_hz=float(t['downlink_high']) if t.get('downlink_high') else None,
+        e['transmitters'].append(dict(uuid=t.get('uuid'), unconfirmed=t.get('unconfirmed', False), description=t.get('description') or '', f_hz=float(f), f_high_hz=float(t['downlink_high']) if t.get('downlink_high') else None,
                                       mode=t.get('mode') or '', baud=float(t['baud']) if t.get('baud') else None, alive=bool(t.get('alive', True)),
                                       status=t.get('status', ''), type=t.get('type', ''), service=t.get('service', ''), drift=t.get('downlink_drift')))
     return db
