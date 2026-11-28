@@ -118,7 +118,7 @@ def validate(value):
             raise ValueError('bad ' + field)
     for field, pattern in [
         ('superscan_dither', r'[0-9]{1,4}'),
-        ('reanalyze', r'(?:hopscan|superscan)-[0-9]{8}-[0-9]{6}'),
+        ('reanalyze', r'(?:hopscan|superscan|fullrange)-[0-9]{8}-[0-9]{6}'),
         ('plan_args', r'[A-Za-z0-9 .=_-]*'),
     ]:
         if field in r and (not isinstance(r[field], str) or not re.fullmatch(pattern, r[field])):

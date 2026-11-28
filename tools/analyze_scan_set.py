@@ -22,6 +22,7 @@ import traceback
 from report_bundle import bundle, verify
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0,str(HERE.parent))
 
 
 def sources(session):
@@ -110,6 +111,8 @@ def telemetry(source, writer):
                 temperature_c=validity.get('temperature_c'),
                 max_component=hr.get('max_component'),
                 p999_component=hr.get('p999_component'),
+                maximum_limit=hr.get('maximum_limit'),
+                p999_limit=hr.get('p999_limit'),
                 sensor_latency_p95_ms=ts.get('sensor_latency_p95_ms'),
                 native_chain_status=rf.get('chain', {}).get('status'),
                 lo_locked=sensors.get('rx:lo_locked', {}).get('value'),
@@ -155,6 +158,8 @@ FIELDS = (
     'temperature_c',
     'max_component',
     'p999_component',
+    'maximum_limit',
+    'p999_limit',
     'sensor_latency_p95_ms',
     'native_chain_status',
     'lo_locked',
@@ -177,8 +182,8 @@ def diagnostics(all_rows, parts, output):
     plt.style.use('dark_background')
     fig, axs = plt.subplots(3, 2, figsize=(18, 13), layout='constrained')
     params = [
-        ('max_component', 'Raw I/Q maximum', 0.5),
-        ('p999_component', 'Raw I/Q p99.9', 0.2),
+        ('max_component', 'Raw I/Q maximum', 'maximum_limit'),
+        ('p999_component', 'Raw I/Q p99.9', 'p999_limit'),
         ('temperature_c', 'Driver temperature (C)', None),
         ('sensor_latency_p95_ms', 'Per-record sensor p95 latency (ms)', None),
         ('center_mhz', 'Sequential LO center (MHz)', None),
@@ -189,7 +194,10 @@ def diagnostics(all_rows, parts, output):
         label = f"Part {n + 1}: {parts[n]['sample_rate_hz'] / 1e6:g} MS/s, {rows[0]['gain_db']:g} dB"
         for ax, (field, title, limit) in zip(axs.flat, params):
             y = [x[field] if isinstance(x[field], (int, float)) else np.nan for x in rows]
-            ax.plot(t, y, '.-', markersize=2, lw=0.55, label=label)
+            ax.scatter(t,y,s=4,label=label)
+            if limit:
+                bounds=[x.get(limit) if isinstance(x.get(limit),(float,int)) else np.nan for x in rows]
+                ax.scatter(t,bounds,s=3,color='#c07832',marker='_',label='Recorded guard limit' if n==0 else None)
             ax.set_title(title)
             ax.xaxis.set_major_formatter(
                 FuncFormatter(lambda v, p: datetime.datetime.fromtimestamp(v, datetime.timezone.utc).strftime('%H:%M'))
@@ -197,8 +205,6 @@ def diagnostics(all_rows, parts, output):
             ax.xaxis.set_major_locator(MaxNLocator(6))
             ax.grid(alpha=0.2)
     for ax, (_, _, limit) in zip(axs.flat, params):
-        if limit:
-            ax.axhline(limit, ls='--', color='#ffbd6b', lw=1)
         ax.set_xlabel('UTC acquisition time; gaps are retained')
     axs[0, 0].legend(fontsize=8)
     fig.suptitle('All-record receiver telemetry and guard evidence', fontsize=20)
@@ -458,7 +464,7 @@ def cover_pdf(report, output):
     w = PdfWriter()
     for label, path in [('Overview', output / 'overview.pdf')] + [
         (f'Part {n + 1}', output / p['report_dir'] / 'superscan_analysis.pdf') for n, p in enumerate(report['parts'])
-    ]:
+    ] + [(p.stem,p) for p in sorted((output/'feature-telemetry').glob('telemetry-*.pdf'))]:
         start = len(w.pages)
         for pg in PdfReader(path).pages:
             w.add_page(pg)
@@ -535,6 +541,8 @@ def generate(output, sessions, *, render_pdf=True):
                 part['analysis'] = json.loads((dest / 'superscan_summary.json').read_text())
                 parts.append(part)
         diagnostics(all_rows, parts, stage)
+        from soapypower.report_telemetry import generate as telemetry_report
+        feature_inventory=telemetry_report(paths,stage/'feature-telemetry')
         rejected = rejected_iq(sessions, stage)
         report = dict(
             version=1,
@@ -544,6 +552,7 @@ def generate(output, sessions, *, render_pdf=True):
             credited_scan_s=sum(p['credited_scan_s'] for p in parts),
             rf_dwell_s=sum(p['rf_dwell_s'] for p in parts),
             parts=parts,
+            feature_telemetry=dict(records=feature_inventory['records'],fields=len(feature_inventory['fields']),report='feature-telemetry/index.html'),
             rejected_iq=rejected,
             supervision=supervision,
             findings=evidence_findings(supervision, rejected),
@@ -580,7 +589,7 @@ def generate(output, sessions, *, render_pdf=True):
             sections += f'<section><h2>Part {n + 1}: {p["sample_rate_hz"] / 1e6:g} MS/s / {esc(str(p["gain"]))}</h2><p>{p["records"]:,} records; {p["credited_scan_s"]:.2f} s credited scan time; {p["rf_dwell_s"]:.2f} s summed dwell. SHA-256 <code>{p["sha256"]}</code></p><p><a href="{folder}/superscan_analysis.pdf">Full partition PDF</a> · <a href="{folder}/superscan_summary.json">Complete signal/pass inventory</a> · <a href="{folder}/superscan_tracks.csv">Tracks CSV</a> · <a href="{folder}/superscan_lines.csv">Lines CSV</a> · <a href="{folder}/superscan_events.csv">Events CSV</a></p><img loading="lazy" src="{folder}/superscan_p1_summary.png"><details><summary>Native-resolution interactive waterfalls</summary><ul>{links}</ul></details></section>'
         (stage / 'index.html').write_text(
             '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Full partitioned SDR analysis</title><style>body{max-width:1280px;margin:auto;padding:32px;background:#0b1422;color:#e4eefc;font:16px/1.6 system-ui}h1{font-size:42px}h2{color:#70ddce}a{color:#7bd8ff}section{margin:25px 0;padding:22px;background:#14243a}img{width:100%}code{overflow-wrap:anywhere;font-size:12px}p,li{color:#c0d0e4}summary{cursor:pointer}</style>'
-            + f'<h1>Complete partitioned SDR scan analysis</h1><p>{report["records"]:,} accepted records · {report["spectral_bins"]:,} recorded spectral bins processed · {report["credited_scan_s"] / 60:.3f} minutes credited sequential scan time · {report["rf_dwell_s"] / 60:.3f} minutes summed RF dwell.</p><p>Gain/rate contexts and interruptions are preserved. Levels remain relative. All accepted records are processed; graphical pixel grids and thumbnails are display representations.</p><p><a href="full-analysis.pdf">Multipage full analysis</a> · <a href="summary.json">Complete analysis JSON</a> · <a href="telemetry.csv">Every-record telemetry CSV</a> · <a href="bundle-manifest.json">Input/output hashes</a></p><img src="telemetry.png"><section><h2>Failure findings and fixes</h2><ul>'
+            + f'<h1>Complete partitioned SDR scan analysis</h1><p>{report["records"]:,} accepted records · {report["spectral_bins"]:,} recorded spectral bins processed · {report["credited_scan_s"] / 60:.3f} minutes credited sequential scan time · {report["rf_dwell_s"] / 60:.3f} minutes summed RF dwell.</p><p>Gain/rate contexts and interruptions are preserved. Levels remain relative. All accepted records are processed; graphical pixel grids and thumbnails are display representations.</p><p><a href="full-analysis.pdf">Multipage full analysis</a> · <a href="summary.json">Complete analysis JSON</a> · <a href="telemetry.csv">Every-record telemetry CSV</a> · <a href="feature-telemetry/index.html">All telemetry and feature evidence</a> · <a href="bundle-manifest.json">Input/output hashes</a></p><img src="telemetry.png"><section><h2>Failure findings and fixes</h2><ul>'
             + ''.join('<li>' + esc(x) + '</li>' for x in report['findings'])
             + '</ul></section>'
             + sections

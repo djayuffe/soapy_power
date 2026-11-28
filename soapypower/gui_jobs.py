@@ -75,7 +75,7 @@ def plan(payload, sessions, folder=None):
         if (
             payload.get('command') != 'acquisition'
             or not isinstance(target, dict)
-            or set(target) != {'norad', 'transmitter_id', 'cache_identity'}
+            or set(target) != {'norad', 'transmitter_id', 'cache_identity', 'observer_identity'}
         ):
             raise ValueError('Invalid satellite target')
         if (
@@ -87,6 +87,8 @@ def plan(payload, sessions, folder=None):
             raise ValueError('Invalid satellite transmitter identity')
         if not isinstance(target['cache_identity'], str) or not re.fullmatch(r'[a-f0-9]{64}', target['cache_identity']):
             raise ValueError('Invalid satellite reference identity')
+        if not isinstance(target['observer_identity'], str) or not re.fullmatch(r'[a-f0-9]{64}', target['observer_identity']):
+            raise ValueError('Invalid satellite observer identity')
     command = next((c for c in catalog()['commands'] if c['id'] == payload.get('command')), None)
     if command is None:
         raise ValueError('Unknown operation')
@@ -570,19 +572,19 @@ def _worker(repo, sessions, request):
             state.update(state='reporting', capture_state=capture_state)
             publish(folder / 'job.json', state)
             report_errors = []
-            if spec['anti_spur'] and not interrupted:
-                try:
-                    from soapypower.scan_spurs import analyze_files
-
-                    state['spur_analysis'] = analyze_files(sorted(folder.glob('attempt-*.jsonl')), folder / 'analysis')
-                except Exception as error:
-                    report_errors.append('Spur analysis: ' + str(error))
             try:
+                from tools.report_bundle import bundle
                 from soapypower.scan_report import generate
-
-                state['capture_report'] = generate(sorted(folder.glob('attempt-*.jsonl')), folder / 'analysis')
+                sources=sorted(folder.glob('attempt-*.jsonl'))
+                with bundle(folder/'analysis',sources) as stage:
+                    if spec['anti_spur'] and not interrupted:
+                        from soapypower.scan_spurs import analyze_files
+                        state['spur_analysis']=analyze_files(sources,stage/'spurs')
+                    state['capture_report']=generate(sources,stage)
+                    if spec['anti_spur'] and not interrupted:
+                        index=stage/'index.html';index.write_text(index.read_text()+'<p><a href="spurs/index.html">Measured spur evidence</a></p>')
             except Exception as error:
-                report_errors.append('Capture report: ' + str(error))
+                report_errors.append('Automatic report: '+str(error))
             state['state'] = capture_state
             if report_errors:
                 state.update(

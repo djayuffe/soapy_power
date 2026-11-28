@@ -435,3 +435,30 @@ def test_satellite_routes_validate_observer_and_never_queue_rx(server):
         prepare.assert_called_once_with(payload)
     assert not c.calls
     assert not list((c.sessions / 'queue').glob('*.json'))
+
+
+def test_shared_clock_and_offline_map_routes(server):
+    c, url = server
+    before = time.time()
+    health = json.load(get(url + '/api/health'))
+    assert before <= health['unix_s'] <= time.time()
+    for path in ('clock.js', 'worldmap.js', 'skyview.js'):
+        assert get(url + '/' + path).status == 200
+    land = json.load(get(url + '/world-land.json'))
+    assert land['polygons'] and 'Natural Earth' in land['source']
+    assert not c.calls
+
+
+def test_fullrange_reanalysis_and_publication_lock(server):
+    import fcntl
+    c,url=server
+    folder=c.sessions/'fullrange-20261128-000000';folder.mkdir()
+    with (folder/'.report.lock').open('w') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        assert c.building(folder)
+    assert not c.building(folder)
+    with mock.patch.object(c,'enqueue',return_value={'job_id':'test'}) as enqueue:
+        assert json.load(post(c,url,'/api/report',{'session':folder.name}))['job_id']=='test'
+        enqueue.assert_called_once_with(['scan','--reanalyze',folder.name])
+    (folder/'report-failure.txt').write_text('Report failed; saved captures unchanged')
+    assert c.item(folder)['status']=='report_failed'

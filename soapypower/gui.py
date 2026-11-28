@@ -218,6 +218,9 @@ class Control:
         if high <= low:
             raise ValueError('Satellite frequency range must be ascending')
         seconds = number(float(query.get('seconds', ['7200'])[0]), 60, 7200, 'Prediction horizon', True)
+        focus = query.get('norad', [None])[0]
+        if focus is not None:
+            focus = number(float(focus), 1, 1000000000, 'Satellite NORAD number', True)
         name = query.get('session', [None])[0] or None
         frame_time = None
         if name:
@@ -231,7 +234,7 @@ class Control:
                     if first <= frame_time:
                         frame_time = (first + frame_time) / 2
         value = self.satellites.snapshot(
-            dict(session=name, lo_hz=low, hi_hz=high, seconds=seconds, frame_time=frame_time)
+            dict(session=name, lo_hz=low, hi_hz=high, seconds=seconds, frame_time=frame_time, norad=focus)
         )
         value['refresh'] = self.satellites.refresh_status()
         return value
@@ -337,7 +340,8 @@ class Control:
         try:
             import fcntl
 
-            with (folder / '.analysis.lock').open('r') as f:
+            lock=folder / ('.report.lock' if folder.name.startswith('fullrange-') else '.analysis.lock')
+            with lock.open('r') as f:
                 try:
                     fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
                 except BlockingIOError:
@@ -401,7 +405,7 @@ class Control:
             status = 'interrupted'
         if status not in ('running', 'paused') and self.building(folder):
             status = 'reporting'
-        elif status not in ('running', 'paused') and (folder / 'analysis-failure.txt').is_file():
+        elif status not in ('running', 'paused') and any((folder/name).is_file() for name in ('analysis-failure.txt','report-failure.txt')):
             status = 'report_failed'
         return dict(
             id=folder.name,
@@ -849,7 +853,7 @@ class Control:
             paused_seconds=m.get('paused_seconds'),
             attempts=objects(m.get('attempts'))[-100:],
             log=tail(logpath) if logpath else '',
-            report_error=tail(folder / 'analysis-failure.txt', 3000),
+            report_error=tail(folder / 'analysis-failure.txt', 3000) or tail(folder/'report-failure.txt',3000),
             stop_requested=(folder / 'stop-request.json').exists(),
         )
 
@@ -991,9 +995,11 @@ class Handler(BaseHTTPRequestHandler):
                         'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'"
                     },
                 )
-            elif url.path in ('/app.js', '/workbench.js', '/satellites.js', '/skyview.js', '/style.css'):
+            elif url.path in ('/app.js', '/workbench.js', '/satellites.js', '/skyview.js', '/clock.js', '/worldmap.js', '/style.css'):
                 p = ASSETS / url.path[1:]
                 self.send(200, p.read_bytes(), 'text/javascript' if p.suffix == '.js' else 'text/css')
+            elif url.path == '/world-land.json':
+                self.send(200, (ASSETS / 'world-land.json').read_bytes(), 'application/json')
             elif url.path == '/api/satellites':
                 self.send(200, control.satellite_view(parse_qs(url.query)))
             elif url.path == '/api/options':
@@ -1009,7 +1015,7 @@ class Handler(BaseHTTPRequestHandler):
 
                 self.send(200, job_detail(control.sessions, parse_qs(url.query).get('id', [''])[0]))
             elif url.path == '/api/health':
-                self.send(200, dict(service='soapy_power', instance_id=control.instance_id, pid=os.getpid()))
+                self.send(200, dict(service='soapy_power', instance_id=control.instance_id, pid=os.getpid(), unix_s=time.time()))
             elif url.path == '/api/state':
                 self.send(200, control.snapshot())
             elif url.path == '/api/session':
@@ -1131,7 +1137,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Expected session only, with optional retry mode')
                 folder = c.session(data['session'])
                 if self.path == '/api/report':
-                    if not re.fullmatch(r'(superscan|hopscan)-\d{8}-\d{6}', folder.name):
+                    if not re.fullmatch(r'(superscan|hopscan|fullrange)-\d{8}-\d{6}', folder.name):
                         raise ValueError('This session does not support queued reanalysis')
                     manifest = json_file(folder / 'captures.json', {}) or {}
                     if c.building(folder):

@@ -40,3 +40,5 @@ include docs/GUI_AUDIT.md
 include docs/GUI_WORKBENCH.md
 
 include docs/SATNOGS_GUI.md
+
+include docs/AUTO_REPORT_AUDIT.md

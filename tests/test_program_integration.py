@@ -189,7 +189,9 @@ class RuntimeTests(unittest.TestCase):
     def test_requested_overlap_survives_mask_aware_coverage(self):
         sdr,out = self.capable_receiver();self.signal(sdr,.1)
         preferred=sdr.freq_plan(10000,12000,64,.75,quiet=True)
-        sdr.sweep(10000,12000,64,4,runs=1,max_threads=1,overlap=.75,
+        # The fake receiver has no realtime pacing. Keep this finite geometry
+        # test independent of host scheduling; overrun behavior is tested separately.
+        sdr.sweep(10000,12000,64,4,runs=1,max_threads=1,max_queue_size=512,overlap=.75,
                   ensure_coverage=True,dc_mask_width=32)
         rows=[json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
         actual=[r['metadata']['tuned_center_hz'] for r in rows]

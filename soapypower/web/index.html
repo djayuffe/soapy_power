@@ -8,11 +8,13 @@
       soapy_power | Receiver console
     </title>
     <link rel="stylesheet" href="/style.css">
+    <script defer src="/clock.js"></script>
     <script defer src="/app.js">
     </script>
     <script defer src="/workbench.js"></script>
     <script defer src="/satellites.js"></script>
     <script defer src="/skyview.js"></script>
+    <script defer src="/worldmap.js"></script>
   </head>
   <body>
     <header class="app-header">
@@ -22,6 +24,7 @@
           Receiver console
         </span>
       </a>
+      <div class="global-clock"><time id="global-clock">— UTC</time><span id="global-clock-status">Clock synchronization pending</span></div>
       <div class="connection-status">
         <span id="connection">
           Connecting
@@ -397,12 +400,14 @@
           <button id="satellite-apply">Apply range</button>
           <label><span>Spectrum annotation</span><span><input type="checkbox" id="satellite-overlay" checked> Predicted downlinks</span></label>
         </div>
+        <div class="satellite-connection"><span id="satellite-health" role="status">Connecting…</span><button id="satellite-retry">Reconnect predictions</button><label>Target duration<select id="satellite-duration"><option value="60">1 minute</option><option value="300" selected>5 minutes</option><option value="600">10 minutes</option><option value="1800">30 minutes</option></select></label></div>
         <p id="satellite-state" role="status">Loading local satellite reference…</p>
         <p id="satellite-frame" class="quality-note">Predictions are candidates; reception and identity require measured evidence.</p>
         <section class="sky-view" aria-labelledby="sky-title">
-          <div class="panel-heading"><div><h3 id="sky-title">Sky view · azimuth / elevation</h3><span class="subtle">SGP4 predictions · North up, East right · zenith at center</span></div><span id="sky-mode" class="badge">LIVE UTC</span></div>
+          <div class="panel-heading"><div><h3 id="sky-title">Satellite tracking · sky &amp; world</h3><span class="subtle">SGP4 predictions · North up, East right · zenith at center</span></div><span id="sky-mode" class="badge">LIVE UTC</span></div>
           <div class="sky-controls">
             <label>Satellite pass (UTC)<select id="sky-pass" aria-label="Satellite pass"><option>No pass loaded</option></select></label>
+            <label>Live satellite<select id="sky-object" aria-label="Live satellite"><option>No orbital tracks loaded</option></select></label>
             <button id="sky-live">Live UTC</button><button id="sky-restart">Restart pass</button><button id="sky-play" disabled>Play pass</button>
             <label>Playback speed<select id="sky-speed"><option value="1">1×</option><option value="10">10×</option><option value="30" selected>30×</option><option value="60">60×</option><option value="300">300×</option></select></label>
             <label><span>Other satellites</span><input id="sky-others" type="checkbox" checked aria-label="Show other visible satellites"></label>
@@ -410,15 +415,20 @@
           <div class="sky-grid">
             <div class="sky-map"><canvas id="sky-polar" role="img" aria-label="Predicted satellite sky plot. North up, East right, elevation 90 degrees at center."></canvas><p class="subtle">○ AOS · □ LOS · cyan selected pass · amber elevation mask · click a visible satellite to select</p></div>
             <div class="sky-readout">
-              <strong id="sky-name">No pass selected</strong><div id="sky-clock" class="sky-clock">—</div><p id="sky-status" role="status">Waiting for orbital predictions</p>
-              <dl><div><dt>Azimuth</dt><dd id="sky-az">—</dd></div><div><dt>Elevation</dt><dd id="sky-el">—</dd></div><div><dt>Slant range</dt><dd id="sky-range">—</dd></div><div><dt>Range rate</dt><dd id="sky-rate">—</dd></div><div><dt>Doppler</dt><dd id="sky-doppler">—</dd></div><div><dt>AOS (UTC)</dt><dd id="sky-aos">—</dd></div><div><dt>LOS (UTC)</dt><dd id="sky-los">—</dd></div><div><dt>Peak elevation</dt><dd id="sky-peak">—</dd></div></dl>
+              <strong id="sky-name">No pass selected</strong><p id="sky-event" class="sky-event">Waiting for orbital geometry</p><label>Downlink reference<select id="sky-transmitter" aria-label="Downlink reference"><option>No downlink loaded</option></select></label><button id="sky-prepare" disabled>Prepare selected downlink</button><span class="subtle">Opens a plan for review; playback does not schedule RX.</span><div id="sky-clock" class="sky-clock">—</div><p id="sky-status" role="status">Waiting for orbital predictions</p>
+              <dl><div><dt>TLE epoch (UTC)</dt><dd id="sky-tle">—</dd></div><div><dt>Azimuth</dt><dd id="sky-az">—</dd></div><div><dt>Elevation</dt><dd id="sky-el">—</dd></div><div><dt>Slant range</dt><dd id="sky-range">—</dd></div><div><dt>Range rate</dt><dd id="sky-rate">—</dd></div><div><dt>Predicted receive</dt><dd id="sky-receive">—</dd></div><div><dt>Doppler</dt><dd id="sky-doppler">—</dd></div><div><dt>AOS (UTC)</dt><dd id="sky-aos">—</dd></div><div><dt>LOS (UTC)</dt><dd id="sky-los">—</dd></div><div><dt>Peak elevation</dt><dd id="sky-peak">—</dd></div></dl>
               <p id="sky-reference" class="quality-note">Simulation uses current observer and catalog. Playback never retunes the receiver or changes spectrum timestamps.</p>
             </div>
           </div>
+          <div class="world-heading"><h4>Ground track · world map</h4><span id="world-position" class="subtle">Waiting for orbital geometry</span></div>
+          <canvas id="world-map" role="img" aria-label="Flat world map of predicted satellite positions, ground track, observer and approximate visibility footprint. Use the satellite pass selector for keyboard selection."></canvas>
+          <p id="world-status" class="subtle">Global positions share the sky plot clock.</p>
+          <p class="subtle">Cyan: selected satellite and ground track · amber square: observer · dashed amber: approximate elevation-mask footprint · <a href="https://www.naturalearthdata.com/about/terms-of-use/" target="_blank" rel="noopener">Made with Natural Earth</a></p>
           <label class="sky-seek-label">Pass time<input id="sky-seek" type="range" min="0" max="1000" value="0" step="1" disabled aria-label="Pass playback time"></label>
           <canvas id="sky-timeline" class="sky-timeline" role="img" aria-label="Predicted elevation over pass time with playback cursor"></canvas>
         </section>
-        <div class="table-scroll"><table><thead><tr><th>PASS / NORAD</th><th>RISE – SET</th><th>MAX EL</th><th>DOWNLINK / MODE</th><th>SCAN</th></tr></thead><tbody id="satellite-passes"></tbody></table></div>
+        <div class="satellite-pass-tools"><label>Find a pass<input id="satellite-pass-search" type="search" placeholder="Satellite or NORAD"></label><span id="satellite-page">No passes loaded</span><button id="satellite-prev" disabled>Previous passes</button><button id="satellite-next" disabled>Next passes</button></div>
+        <div class="table-scroll"><table><thead><tr><th>PASS / NORAD</th><th>RISE – SET (UTC)</th><th>MAX EL</th><th>DOWNLINK / MODE</th><th>SCAN</th></tr></thead><tbody id="satellite-passes"></tbody></table></div>
         <details><summary>Active transmitter catalog</summary><label>Find satellite or frequency<input type="search" id="satellite-search" placeholder="Name, NORAD, MHz or mode"></label><div id="satellite-catalog" class="satellite-catalog"></div></details>
         <details><summary>Observer position · WGS84</summary><p>Used locally for horizon, azimuth and Doppler prediction. Coordinates are not sent to SatNOGS.</p>
           <form id="observer-form"><div class="satellite-toolbar">

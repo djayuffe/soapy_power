@@ -71,8 +71,9 @@ def analyze_files(paths, output, max_records=192, max_groups=12, max_bins=8192):
                         raise ValueError('unsupported density unit')
                     if unit.startswith('dB'):
                         p = np.power(10.0, p / 10.0)
-                    for k in r.get('estimated_bins', []):
-                        p[int(k)] = np.nan
+                    for k in set(r.get('estimated_bins',[]))|set(r.get('masked_bins',[])):
+                        if type(k) is not int or not 0<=k<len(p):raise ValueError('Invalid masked/estimated bin')
+                        p[k]=np.nan
                     fixed = {
                         k: v
                         for k, v in ctx.items()

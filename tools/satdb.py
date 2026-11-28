@@ -154,22 +154,39 @@ def load(cache):
     cache = Path(cache).resolve()
     if not (cache / 'tle.json').exists():
         return {}
-    tles = {t['norad']: t for t in json.loads((cache / 'tle.json').read_text())}
+    tles = {}
+    for row in json.loads((cache / 'tle.json').read_text()):
+        try:
+            n = int(row['norad'])
+            if valid_tle(row['l1'], row['l2']) and catalog_number(row['l1'][2:7]) == n:
+                tles[n] = dict(row, name=row.get('name') or str(n))
+        except (ValueError, TypeError, KeyError, OverflowError):
+            continue
     sats = {}
     if (cache / 'satellites.json').exists():
         for s in json.loads((cache / 'satellites.json').read_text()):
-            if s.get('norad_cat_id'):
-                sats[int(s['norad_cat_id'])] = s
+            try:
+                if isinstance(s, dict) and s.get('norad_cat_id'):
+                    sats[int(s['norad_cat_id'])] = s
+            except (ValueError, TypeError, OverflowError):
+                continue
     tx = json.loads((cache / 'transmitters.json').read_text()) if (cache / 'transmitters.json').exists() else []
     db = {}
     for t in tx:
-        n = t.get('norad_cat_id'); f = t.get('downlink_low')
-        if not n or not f or int(n) not in tles:
+        if not isinstance(t, dict): continue
+        try:
+            n = int(t.get('norad_cat_id') or 0)
+            f = float(t.get('downlink_low') or 0)
+            high = float(t['downlink_high']) if t.get('downlink_high') else f
+            baud = float(t['baud']) if t.get('baud') else None
+            if n not in tles or not all(math.isfinite(x) and 0 < x <= 1e12 for x in (f, high)) or high < f: continue
+            if baud is not None and (not math.isfinite(baud) or baud < 0): continue
+        except (ValueError, TypeError, OverflowError):
             continue
-        n = int(n); s = sats.get(n, {})
+        s = sats.get(n, {})
         e = db.setdefault(n, dict(norad=n, name=s.get('name') or tles[n]['name'], sat_status=s.get('status', 'unknown'), l1=tles[n]['l1'], l2=tles[n]['l2'], transmitters=[]))
-        e['transmitters'].append(dict(uuid=t.get('uuid'), unconfirmed=t.get('unconfirmed', False), description=t.get('description') or '', f_hz=float(f), f_high_hz=float(t['downlink_high']) if t.get('downlink_high') else None,
-                                      mode=t.get('mode') or '', baud=float(t['baud']) if t.get('baud') else None, alive=bool(t.get('alive', True)),
+        e['transmitters'].append(dict(uuid=t.get('uuid') if isinstance(t.get('uuid'), str) else None, unconfirmed=t.get('unconfirmed', False), description=str(t.get('description') or ''), f_hz=f, f_high_hz=high,
+                                      mode=str(t.get('mode') or ''), baud=baud, alive=t.get('alive', True) is True,
                                       status=t.get('status', ''), type=t.get('type', ''), service=t.get('service', ''), drift=t.get('downlink_drift')))
     return db
 

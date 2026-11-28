@@ -77,3 +77,43 @@ A held receiver lease after a supervisor crash is intentional. Inspect the retai
 - GUI process health is checked at startup and by the explicit status command. This service manager is not a continuous crash-restart watchdog. The scan queue has its own launchd supervision and restart backstop.
 - A timeout after a submitted mutation has an uncertain outcome. Inspect the job/status before issuing another request. Request-ID replay protection is per server process, not durable exactly-once delivery across a crash.
 - Software fault injection does not substitute for a live hardware qualification run. No RF scan is required by this audit workflow.
+
+## Realtime and world-map follow-up
+
+- The orbital views now share a monotonic clock synchronized to the local server.
+  Synchronization age and transport uncertainty are disclosed; RF timestamps
+  stay independent. All pass-table times are now UTC.
+- Position geometry now includes below-horizon global tracks and WGS84
+  sub-satellite locations. Dateline crossing, stale geometry, missing observer
+  and missing local passes have explicit handling. Natural Earth outlines ship
+  locally; the browser does not request map tiles.
+- RF range and observer edits immediately invalidate the sky view. Playback
+  retains its source snapshot; the global simulation stops at the segment end.
+- Workbench polling is serialized, ignores switched-job or closed-dialog results,
+  disables controls after failures, and refreshes when a hidden tab returns.
+  Job controls cannot submit concurrent requests from repeated clicks.
+- Requests with an already-aborted selection signal are cancelled immediately.
+- Existing parser/catalog tests check all 44 operations and their typed options;
+  runner/control tests cover retries, pause, abort, receiver leases and reports.
+  These checks do not establish new SDR calibration or hardware performance.
+
+
+## SatNOGS selection and reference audit
+
+| Finding | Implemented correction |
+| --- | --- |
+| Map clicks during playback kept the old simulation selection | Switch to live UTC and resolve current orbital geometry before selecting |
+| Playback elevation mask could come from a refreshed observer | Use the same immutable playback source for sky, map, timeline and transmitter readouts |
+| Live satellite selection discarded a matching pass | Preserve the local pass and its playback/AOS/LOS controls |
+| Cached requests queued duplicate CPU computations | Track the current request key and skip already completed pending keys |
+| A broken frozen recording blocked current planning | Keep frozen frame failures separate from current orbital planning |
+| Reviewed scan targets did not bind the observer | Validate geometry hashes before and after freezing the reference |
+| One malformed transmitter could discard all catalog data | Validate records individually; retain valid entries |
+| Old polling errors could replace new range status | Abort obsolete requests and guard both success and error publication by context |
+| Large pass tables produced hundreds of action buttons | Searchable 24-segment pages, with full bounded geometry retained |
+| A requested catalog satellite could be omitted by the world-map cap | NORAD focus priority, retaining RF/TLE qualification and explicit limits |
+| Downlink readout always used the first transmitter | Explicit downlink selection, receive frequency and reviewed scan handoff |
+| Observer edits during a pending save could be overwritten | Track form edit revisions and serialize saves |
+
+The changes are CPU/file/browser logic. Regression and browser validation do not
+establish decoded satellite identity, absolute RF calibration or antenna tracking.

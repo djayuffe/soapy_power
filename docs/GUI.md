@@ -80,3 +80,23 @@ through typed controls generated from the actual CLI parsers. Validate and
 review the plan before queuing it. Outputs go into new `expert-*` sessions.
 
 Satellite catalog, pass planning, target preparation and frame-time spectrum/waterfall predictions are documented in [SATNOGS_GUI.md](SATNOGS_GUI.md).
+
+## Satellite tracking
+
+Open **SatNOGS** for the shared UTC clock, azimuth/elevation plot and offline world
+map. **Live UTC** tracks current predicted geometry; select a pass, play/pause,
+change speed or scrub to simulate it in both views. Pass-table times are UTC.
+The header labels simulation explicitly. Receiver controls and recorded spectra
+keep their acquisition time. See [the satellite guide](SATNOGS_GUI.md) for clock
+synchronization, observer setup, stale geometry, orbit limits and map attribution.
+
+The satellite view adds per-downlink selection, configurable target duration,
+pass search/pagination and connection recovery status. Catalog **Track live**
+prioritizes a selected NORAD in the bounded world map. Observer changes invalidate
+a reviewed target, so prepare it again before queuing. See the
+[selection and review workflow](SATNOGS_GUI.md#selection-reconnect-and-review-workflow).
+
+Automatic reports now include all-record telemetry exports, feature inventories,
+telemetry plots and measured-dwell waterfall previews. Full-range sessions support
+GUI report regeneration without reception. See [automatic report and waterfall
+behavior](AUTO_REPORT_AUDIT.md).

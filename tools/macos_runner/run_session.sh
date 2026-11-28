@@ -108,13 +108,14 @@ fi
 # Reanalysis is CPU/file-only. Dispatch before SDR bindings, discovery or device opens.
 REAN="$(req_field reanalyze)"
 if [ -n "$REAN" ]; then
-  if ! [[ "$REAN" =~ ^(hopscan|superscan)-[0-9]{8}-[0-9]{6}$ ]]; then
+  if ! [[ "$REAN" =~ ^(hopscan|superscan|fullrange)-[0-9]{8}-[0-9]{6}$ ]]; then
     finish "RESULT=reanalyze_bad_name"; exit 2
   fi
   SESSION="$OUTDIR/$REAN"
   unset PYTHONPATH SOAPY_SDR_PLUGIN_PATH
   PY=""; IMPORTS='import numpy, scipy.ndimage, matplotlib.pyplot'
   [ ! -f "$SESSION/captures.json" ] || IMPORTS="$IMPORTS, reportlab, pypdf"
+  case "$REAN" in fullrange-*) IMPORTS="$IMPORTS, pypdf";; esac
   for candidate in "$OUTDIR/.venv/bin/python" /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3 python3; do
     if MPLBACKEND=Agg "$candidate" -c "$IMPORTS" >/dev/null 2>&1; then PY="$candidate"; break; fi
   done
@@ -126,6 +127,7 @@ RESULT=reanalyze_missing_analysis_dependencies"; exit 1
   case "$REAN" in
     superscan-*) if [ -f "$SESSION/captures.json" ]; then report_set "$SESSION"
                  else report analyze_superscan.py "$SESSION/superscan.jsonl" "$SESSION" superscan --bands "$SESSION/bands.json"; fi;;
+    fullrange-*) MPLBACKEND=Agg "$PY" "$REPO/tools/report_auto.py" "$SESSION" > "$SESSION/report.log" 2>&1; ARC=$?;;
     hopscan-*) report analyze_hopscan.py "$SESSION/scan_140_150.jsonl" "$SESSION" hopscan;;
   esac
   finish "SESSION=$SESSION
@@ -543,6 +545,10 @@ RESULT=$RESULT"
 fi
 if [ "$PROCEDURE" = fullrange ]; then
   SESSION="$OUTDIR/fullrange-$STAMP"; mkdir -p "$SESSION"; save_request
+  # Freeze the cached observer/orbits before RX; never replace historical geometry with a live cache.
+  if ! "$PY" "$REPO/tools/satdb.py" snapshot "$OUTDIR/satdb" "$SESSION/reference" --qth "$OUTDIR/qth.json" > "$SESSION/reference-snapshot.log" 2>&1; then
+    mkdir -p "$SESSION/reference"; printf '%s\n' '{"status":"unavailable"}' > "$SESSION/reference/unavailable.json"
+  fi
   printf '%s\n' '{"version":1,"temperature_interval_s":1.0,"temperature_max_age_s":3.0}' > "$SESSION/telemetry-policy.json"
   FAILED=""
   VARIANTS="features-on features-off"; case " $PLAN_ARGS " in *" --only-on "*) VARIANTS=features-on;; *" --only-off "*) VARIANTS=features-off;; esac
@@ -561,10 +567,10 @@ if [ "$PROCEDURE" = fullrange ]; then
   # (uses the first python that can import numpy + matplotlib: the SDR python often lacks them)
   if [ -z "${NO_REPORT:-}" ]; then
     RPY=""; for cand in "$PY" "$HOME/.venv/bin/python" "$HOME/.pyenv/shims/python3" /opt/homebrew/bin/python3 /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 /usr/local/bin/python3 python3; do
-      "$cand" -c 'import numpy, matplotlib.pyplot' >/dev/null 2>&1 && { RPY="$cand"; break; }
+      "$cand" -c 'import numpy, matplotlib.pyplot, pypdf' >/dev/null 2>&1 && { RPY="$cand"; break; }
     done
-    if [ -n "$RPY" ]; then "$RPY" "$REPO/tools/report_auto.py" "$SESSION" > "$SESSION/report.log" 2>&1; echo "== report exit $? via $RPY ($(tail -n 1 "$SESSION/report.log" 2>/dev/null))"
-    else echo "== report hoppet over: ingen python med numpy+matplotlib (pip install matplotlib pypdf packaging)"; fi
+    if [ -n "$RPY" ]; then "$RPY" "$REPO/tools/report_auto.py" "$SESSION" > "$SESSION/report.log" 2>&1; ARC=$?; echo "== report exit $ARC via $RPY ($(tail -n 1 "$SESSION/report.log" 2>/dev/null))"
+    else echo "== report skipped: missing Python reporting dependencies"; echo "Automatic report unavailable: no Python with numpy and matplotlib" > "$SESSION/report-failure.txt"; fi
   fi
   RESULT="done"; [ -n "$FAILED" ] && RESULT="partial:$FAILED"
   finish "SESSION=$SESSION

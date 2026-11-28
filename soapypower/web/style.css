@@ -776,3 +776,21 @@ select {
 .sky-timeline { display:block; width:100%; height:125px; background:#121a23; }
 #satellite-passes td:last-child button { margin:3px; white-space:nowrap; }
 @media(max-width:760px) { .sky-grid { grid-template-columns:1fr; } .sky-view { padding:12px; } .sky-controls label:first-child { flex-basis:100%; } }
+
+/* Shared orbital clock and offline equirectangular ground-track display. */
+.global-clock { display:flex; flex-direction:column; gap:3px; margin-left:auto; font-variant-numeric:tabular-nums; }
+.global-clock time { font:500 13px ui-monospace,monospace; }
+.global-clock span { color:var(--muted,#687586); font-size:10px; }
+.world-heading { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:20px 0 8px; }
+.world-heading h4 { margin:0; font-size:13px; }
+#world-map { display:block; width:100%; aspect-ratio:2/1; background:#111b25; border:1px solid #344251; cursor:crosshair; }
+@media(max-width:760px) { .global-clock { order:3; width:100%; margin-top:8px; } .app-header { flex-wrap:wrap; } }
+
+.satellite-connection,.satellite-pass-tools { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:14px 0; }
+.satellite-connection > span { margin-right:auto; font-size:12px; color:#506175; }
+.satellite-connection > span[data-state="offline"] { color:#9b4e22; }
+.satellite-pass-tools > label { flex:1; min-width:180px; }
+.satellite-pass-tools > span { font-size:12px; color:#506175; }
+.sky-event { font-variant-numeric:tabular-nums; font-size:12px; color:#526b80; margin:4px 0 10px; }
+.sky-readout select { max-width:100%; width:100%; }
+.satellite-item { gap:8px; }

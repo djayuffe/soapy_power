@@ -174,8 +174,14 @@ def _peaks(capture, floor_mean, dof, alpha, dc_mask_hz, normalization):
     return peaks
 
 
-def _track_one(seed_capture, seed_peak, captures, peaks, law, tol_bins):
+def _track_geometry(captures, peaks):
+    return [(float(c['if_hz'][0]),float(c['if_hz'][-1]),float(np.median(np.diff(c['if_hz']))),
+             np.asarray([p['if_hz'] for p in found],float)) for c,found in zip(captures,peaks)]
+
+
+def _track_one(seed_capture, seed_peak, captures, peaks, law, tol_bins, geometry=None):
     n, s, kind = law
+    geometry=_track_geometry(captures,peaks) if geometry is None else geometry
     lo0, if0 = captures[seed_capture]['lo_hz'], seed_peak['if_hz']
     points = []
     for i, (capture, found) in enumerate(zip(captures, peaks)):
@@ -183,14 +189,11 @@ def _track_one(seed_capture, seed_peak, captures, peaks, law, tol_bins):
             predicted = if0
         else:
             predicted = if0 - s * n * (capture['lo_hz'] - lo0)
-        if abs(predicted) > float(np.ptp(capture['if_hz'])) / 2.0:
-            continue
-        if not found:
-            continue
-        candidates = [p for p in found if abs(p['if_hz'] - predicted) <= tol_bins * float(np.median(np.diff(capture['if_hz'])))]
-        if not candidates:
-            continue
-        peak = min(candidates, key=lambda p: abs(p['if_hz'] - predicted))
+        lower,upper,step,positions=geometry[i]
+        if predicted<lower-tol_bins*step or predicted>upper+tol_bins*step or not found:continue
+        distances=np.abs(positions-predicted);nearest=int(np.argmin(distances))
+        if distances[nearest]>tol_bins*step:continue
+        peak=found[nearest]
         points.append({
             'capture': i,
             'peak': peak,
@@ -226,12 +229,13 @@ def _track_one(seed_capture, seed_peak, captures, peaks, law, tol_bins):
 def _select_tracks(captures, peaks, orders, tol_bins, min_hits):
     """Build candidate tracks from every seed and greedily select non-overlapping ones."""
     candidates = []
+    geometry=_track_geometry(captures,peaks)
     laws = [(n, s, 'signal' if (n, s) == (1, 1) else 'image' if n == 1 else 'lo_harmonic')
             for n in orders for s in (1, -1)]
     for ci, found in enumerate(peaks):
         for peak in found:
             for law in laws:
-                track = _track_one(ci, peak, captures, peaks, law, tol_bins)
+                track = _track_one(ci, peak, captures, peaks, law, tol_bins,geometry)
                 if track['hits'] >= min_hits:
                     candidates.append(track)
     # Deduplicate identical point sets (same physical track seeded from many captures).

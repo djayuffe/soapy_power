@@ -110,3 +110,23 @@ The receiver console uses bounded request workers and display buffers, streamed 
 The receiver console includes an [expert measurement workbench](docs/GUI_WORKBENCH.md) for custom acquisition, calibration, telemetry, phase/noise and non-destructive spur diagnostics. CLI-derived controls, plan preflight, partitioned pause/retry and automatic high-resolution reports share the local runner.
 
 [SatNOGS integration](docs/SATNOGS_GUI.md) adds pass planning, transmitter-based scan preparation and reference-aware live spectrum/waterfall predictions to the receiver console.
+
+The SatNOGS panel includes a server-synchronized UTC prediction clock, animated
+azimuth/elevation sky plot and an offline flat world map with ground tracks,
+observer position and an approximate visibility footprint. Live tracking and
+1–300× pass playback share one clock; recorded RF timestamps remain unchanged.
+See [satellite tracking controls and limits](docs/SATNOGS_GUI.md#shared-utc-and-flat-world-map).
+
+Satellite operations also provide pass search/pagination, downlink-specific
+Doppler/readout selection, target-duration controls and explicit connection
+recovery. Reviewed target plans bind both catalog and observer geometry before
+RX. See [SatNOGS selection and review](docs/SATNOGS_GUI.md#selection-reconnect-and-review-workflow).
+
+Automatic reports now include all-record telemetry exports, feature inventories,
+telemetry plots and measured-dwell waterfall previews. Full-range sessions support
+GUI report regeneration without reception. See [automatic report and waterfall
+behavior](docs/AUTO_REPORT_AUDIT.md).
+
+Automatic 3D reports add acquisition-time satellite azimuth/elevation trajectories,
+predicted downlink overlays and CSV exports from verified archived references.
+See [orbital context and limits](docs/AUTO_REPORT_AUDIT.md#orbital-azimuthelevation-in-3d-reports).

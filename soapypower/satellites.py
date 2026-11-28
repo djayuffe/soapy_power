@@ -110,8 +110,10 @@ def transmitters(sd, cache):
 
 def observer(sd, path):
     value = read(path)
+    if not isinstance(value, dict):
+        raise ValueError('Observer must be a WGS84 object')
     sd.validate_qth(value)
-    for key, low, high in [('alt_m', -500, 10000), ('min_elevation_deg', 0, 90)]:
+    for key, low, high in [('lat_deg', -90, 90), ('lon_deg', -180, 180), ('alt_m', -500, 10000), ('min_elevation_deg', 0, 90)]:
         number = value.get(key, 0)
         if (
             isinstance(number, bool)
@@ -121,6 +123,57 @@ def observer(sd, path):
         ):
             raise ValueError('Invalid observer ' + key)
     return value
+
+
+def observer_identity(sd, path):
+    value = observer(sd, path)
+    geometry = {key: float(value.get(key, 0)) for key in ('lat_deg', 'lon_deg', 'alt_m', 'min_elevation_deg')}
+    return hashlib.sha256(json.dumps(geometry, sort_keys=True).encode()).hexdigest()
+
+
+def ground_track(sd, orbit, times):
+    """SGP4 TEME -> Earth-fixed -> WGS84 sub-satellite points, no RF access."""
+    import numpy as np
+    from sgp4.api import Satrec
+
+    times = np.asarray(times, dtype=float)
+    jd = times / 86400 + 2440587.5
+    whole = np.floor(jd)
+    error, position, _ = Satrec.twoline2rv(orbit['l1'], orbit['l2']).sgp4_array(whole, jd - whole)
+    theta = sd._gmst(jd)
+    x = 1000 * (np.cos(theta) * position[:, 0] + np.sin(theta) * position[:, 1])
+    y = 1000 * (-np.sin(theta) * position[:, 0] + np.cos(theta) * position[:, 1])
+    z = 1000 * position[:, 2]
+    radius = np.hypot(x, y)
+    a, e2 = 6378137.0, 6.69437999014e-3
+    lat = np.arctan2(z, radius * (1 - e2))
+    for _ in range(7):
+        normal = a / np.sqrt(1 - e2 * np.sin(lat) ** 2)
+        lat = np.arctan2(z + e2 * normal * np.sin(lat), radius)
+    normal = a / np.sqrt(1 - e2 * np.sin(lat) ** 2)
+    altitude = radius * np.cos(lat) + z * np.sin(lat) - normal * (1 - e2 * np.sin(lat) ** 2)
+    if np.any(error) or not all(np.isfinite(v).all() for v in (lat, x, y, altitude)):
+        raise ValueError('Invalid ground-track geometry')
+    return dict(times_s=np.round(times, 3).tolist(), lat_deg=np.round(np.degrees(lat), 5).tolist(),
+                lon_deg=np.round(np.degrees(np.arctan2(y, x)), 5).tolist(), alt_m=np.round(altitude, 1).tolist())
+
+
+def elevation_crossing(sd, orbit, qth, first, last, mask, rising):
+    """Refine an already bracketed crossing; never invent an unbracketed event."""
+    import numpy as np
+    values = sd.topo(orbit['l1'], orbit['l2'], np.array([first, last]), qth)[0] - mask
+    if not np.isfinite(values).all() or not (values[0] <= 0 < values[1] if rising else values[0] > 0 >= values[1]):
+        return None
+    while last - first > 0.5:
+        middle = (first + last) / 2
+        value = sd.topo(orbit['l1'], orbit['l2'], np.array([middle]), qth)[0][0] - mask
+        if not math.isfinite(float(value)):
+            return None
+        if (value > 0) == rising:
+            last = middle
+        else:
+            first = middle
+    return round(last if rising else first, 3)
 
 
 def compute(repo, sessions, spec):
@@ -141,9 +194,12 @@ def compute(repo, sessions, spec):
         if txs:
             selected[n] = dict(sat, transmitters=txs)
             catalog.extend(dict(norad=n, name=sat['name'], **x) for x in txs)
-    eligible = sum(
-        sd.tle_eligibility(s['l1'], s['l2'], now, now + spec['seconds'])['eligible'] for s in selected.values()
-    )
+    eligibility = {n: sd.tle_eligibility(s['l1'], s['l2'], now, now + spec['seconds']) for n, s in selected.items()}
+    eligible = sum(item['eligible'] for item in eligibility.values())
+    for tx in catalog:
+        state = eligibility[tx['norad']]
+        tx.update(tle_eligible=state['eligible'], tle_epoch_utc=state.get('tle_epoch_utc'),
+                  tle_age_days=state.get('tle_age_days_at_scan_midpoint'))
     result = dict(
         status='ready',
         generated_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -154,17 +210,22 @@ def compute(repo, sessions, spec):
         catalog=catalog[:5000],
         catalog_truncated=len(catalog) > 5000,
         active_satellites=len(selected),
+        focus_norad=spec.get('norad'),
         eligible_tles=eligible,
         stale_or_invalid_tles=len(selected) - eligible,
         passes=[],
         curves=[],
+        world=[],
+        ground_orbits={},
+        prediction_start=now,
+        prediction_stop=now + spec['seconds'],
         lo_hz=low,
         hi_hz=high,
         frame_session=spec.get('session'),
         identity_confirmed=False,
         notes=[
             'Predictions and frequency proximity do not confirm reception or identity.',
-            'Pass boundaries sampled at 30 s; Doppler curves interpolated at 5 s.',
+            'Pass search sampled at 30 s; bracketed crossings refined to 0.5 s. Clipped edges are window boundaries.',
         ],
     )
     try:
@@ -179,13 +240,34 @@ def compute(repo, sessions, spec):
     result['propagation'] = dict(
         model='SGP4 / TEME to ECEF / WGS84', sgp4_version=sgp4.__version__, max_tle_age_days=sd.DEFAULT_MAX_TLE_AGE_DAYS
     )
-    chosen = dict(list(selected.items())[:4096])
+    candidates = sorted(selected.items(), key=lambda item: (item[0] != spec.get('norad'), item[0]))
+    chosen = dict(candidates[:4096])
     result['prediction_truncated'] = len(selected) > 4096
     predictions = (
         sd.predict(chosen, qth, now, now + spec['seconds'], [dict(lo_hz=0, hi_hz=1e12)], step=30)
         if qth is not None
         else []
     )
+    # A short rolling global context remains usable outside local visible passes.
+    world_times = np.arange(now - 30, now + 151, 15, dtype=float)
+    world_orbits = [(n, orbit) for n, orbit in chosen.items()
+                    if sd.tle_eligibility(orbit['l1'], orbit['l2'], float(world_times[0]), float(world_times[-1]))['eligible']]
+    nearby = {p['norad'] for p in predictions}
+    world_orbits.sort(key=lambda item: (item[0] != spec.get('norad'), item[0] not in nearby, item[0]))
+    result['world_truncated'] = len(world_orbits) > 512
+    for n, orbit in world_orbits[:512]:
+        try:
+            track = ground_track(sd, orbit, world_times)
+            if qth is not None:
+                el, az, rng, rr = sd.topo(orbit['l1'], orbit['l2'], world_times, qth)
+                if not all(np.isfinite(v).all() for v in (el, az, rng, rr)):
+                    continue
+                track.update(el_deg=np.round(el, 4).tolist(), az_deg=np.round(az, 4).tolist(),
+                             range_m=np.round(rng, 1).tolist(), range_rate_m_s=np.round(rr, 3).tolist())
+            result['world'].append(dict(norad=n, name=orbit['name'], track=track,
+                                        transmitters=orbit['transmitters'][:32] if n == spec.get('norad') else orbit['transmitters'][:1]))
+        except (ValueError, RuntimeError, OverflowError):
+            continue
     minimum = (qth or {}).get('min_elevation_deg', 0)
     for p in predictions:
         t = np.asarray(p['t'])
@@ -193,14 +275,28 @@ def compute(repo, sessions, spec):
         visible = (t >= now) & (t <= now + spec['seconds']) & np.isfinite(elevation) & (elevation > minimum)
         edges = np.flatnonzero(np.diff(np.r_[False, visible, False]))
         for a, b in zip(edges[::2], edges[1::2]):
+            rise, setting = float(t[a]), float(t[b - 1])
+            refined_rise = refined_set = None
+            orbit = chosen[p['norad']]
+            try:
+                if a > 0 and t[a - 1] >= now:
+                    refined_rise = elevation_crossing(sd, orbit, qth, float(t[a - 1]), rise, minimum, True)
+                if b < len(t) and t[b] <= now + spec['seconds']:
+                    refined_set = elevation_crossing(sd, orbit, qth, setting, float(t[b]), minimum, False)
+            except (ValueError, RuntimeError, OverflowError):
+                pass
+            if refined_rise is not None: rise = refined_rise
+            if refined_set is not None: setting = refined_set
             peak = a + int(np.argmax(elevation[a:b]))
             result['passes'].append(
                 dict(
                     sky_track=None,
                     norad=p['norad'],
                     name=p['name'],
-                    rise_utc=float(t[a]),
-                    set_utc=float(t[b - 1]),
+                    rise_utc=rise,
+                    set_utc=setting,
+                    rise_refined=refined_rise is not None,
+                    set_refined=refined_set is not None,
                     max_el_deg=float(elevation[peak]),
                     max_el_utc=float(t[peak]),
                     clipped_start=bool(a == int(np.flatnonzero(t >= now)[0])),
@@ -222,6 +318,15 @@ def compute(repo, sessions, spec):
             orbit = chosen[item['norad']]
             sky_el, sky_az, sky_range, sky_rr = sd.topo(orbit['l1'], orbit['l2'], sample_times, qth)
             if all(np.isfinite(v).all() for v in (sky_el, sky_az, sky_range, sky_rr)):
+                item['ground_track'] = ground_track(sd, orbit, sample_times)
+                key = str(item['norad'])
+                if key not in result['ground_orbits']:
+                    from sgp4.api import Satrec
+                    mean_motion = Satrec.twoline2rv(orbit['l1'], orbit['l2']).no_kozai
+                    if math.isfinite(mean_motion) and mean_motion > 0:
+                        period = min(86400, max(600, 2 * math.pi / mean_motion * 60))
+                        if sd.tle_eligibility(orbit['l1'], orbit['l2'], now, now + period)['eligible']:
+                            result['ground_orbits'][key] = ground_track(sd, orbit, np.linspace(now, now + period, 128))
                 item['sky_track'] = dict(
                     times_s=np.round(sample_times, 3).tolist(),
                     el_deg=np.round(sky_el, 4).tolist(),
@@ -315,7 +420,8 @@ def prepare(repo, sessions, payload):
         runtime='b200',
         seconds=seconds,
         anti_spur=True,
-        satellite=dict(norad=n, transmitter_id=tx['id'], cache_identity=identity(cache)),
+        satellite=dict(norad=n, transmitter_id=tx['id'], cache_identity=identity(cache),
+                       observer_identity=observer_identity(sd, Path(sessions) / 'qth.json')),
         values=dict(
             device='driver=uhd,type=b200,recv_frame_size=16360,num_recv_frames=1024',
             antenna='RX2',
@@ -345,6 +451,8 @@ def freeze(repo, sessions, folder, target, seconds=300):
     cache = (Path(sessions) / 'satdb').resolve()
     if identity(cache) != target['cache_identity']:
         raise ValueError('Satellite cache changed; prepare and review the target again')
+    if target.get('observer_identity') != observer_identity(sd, Path(sessions) / 'qth.json'):
+        raise ValueError('Observer changed or target predates observer binding; prepare and review again')
     sat = transmitters(sd, cache).get(target['norad'])
     tx = next((t for t in sat['transmitters'] if t['id'] == target['transmitter_id']), None) if sat else None
     if tx is None:
@@ -354,6 +462,8 @@ def freeze(repo, sessions, folder, target, seconds=300):
     sd.snapshot(cache, Path(folder) / 'reference', Path(sessions) / 'qth.json')
     if identity((Path(folder) / 'reference').resolve() / 'satdb') != target['cache_identity']:
         raise ValueError('Satellite reference changed before freezing; RX was not started')
+    if observer_identity(sd, Path(folder) / 'reference/qth.json') != target['observer_identity']:
+        raise ValueError('Observer changed before freezing; RX was not started')
     from soapypower.gui_jobs import publish
 
     publish(
@@ -469,16 +579,24 @@ class SatelliteService:
         return dict(state='starting', pid=child.pid)
 
     def snapshot(self, spec):
-        cache, qth, frozen = sources(self.sessions, spec.get('session'))
+        try:
+            cache, qth, frozen = sources(self.sessions, spec.get('session'))
+        except (OSError, ValueError):
+            cache, qth = self.sessions / 'invalid-reference', self.sessions / 'invalid-observer'
         current = (self.sessions / 'satdb').resolve()
-        paths = [current / 'meta.json', self.sessions / 'qth.json', cache / 'meta.json', qth]
+        paths = [self.sessions / 'qth.json', qth]
+        paths += [folder / (name + '.json') for folder in (current, cache)
+                  for name in ('meta', 'satellites', 'transmitters', 'tle')]
+        from soapypower.gui import NAME
+        if isinstance(spec.get('session'), str) and NAME.fullmatch(spec['session']):
+            paths.append(self.sessions / spec['session'] / 'reference/bundle-manifest.json')
         signature = []
         for p in paths:
             try:
                 signature.append((str(p), p.stat().st_mtime_ns, p.stat().st_size))
             except FileNotFoundError:
                 signature.append((str(p), None, None))
-        context = json.dumps([spec.get('session'), spec['lo_hz'], spec['hi_hz'], spec['seconds'], signature])
+        context = json.dumps([spec.get('session'), spec['lo_hz'], spec['hi_hz'], spec['seconds'], spec.get('norad'), signature])
         request = dict(spec, now=math.floor(time.time() / 30) * 30)
         if request.get('frame_time') is not None:
             request['frame_time'] = math.floor(request['frame_time'] / 30) * 30
@@ -487,7 +605,7 @@ class SatelliteService:
             if self.closed:
                 raise RuntimeError('Satellite service is closed')
             saved = self.results.get(context)
-            if not saved or saved[0] != key:
+            if (not saved or saved[0] != key) and self.requested != key:
                 self.pending = (context, key, request)
                 if not self.running:
                     self.running = True
@@ -504,6 +622,10 @@ class SatelliteService:
                     return
                 context, key, spec = self.pending
                 self.pending = None
+                saved = self.results.get(context)
+                if saved and saved[0] == key:
+                    continue
+                self.requested = key
             try:
                 child = subprocess.Popen(
                     self.command('compute'),
@@ -528,13 +650,14 @@ class SatelliteService:
                     if 'No module named' in message and 'sgp4' in message:
                         message = 'Orbital prediction requires the optional sgp4 package in the GUI Python environment'
                     raise ValueError(message)
-                if len(stdout) > 4 * 1024**2:
+                if len(stdout.encode()) > 8 * 1024**2:
                     raise ValueError('Satellite response exceeded budget')
                 value = json.loads(stdout)
             except Exception as error:
                 value = dict(status='unavailable', error=str(error), passes=[], curves=[], catalog=[])
             with self.lock:
                 self.child = None
+                self.requested = None
                 if not self.closed:
                     self.results[context] = (key, value)
                     self.results.move_to_end(context)

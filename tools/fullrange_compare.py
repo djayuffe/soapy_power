@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 import numpy as np
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 
 CELL_HZ = 1e6
 
@@ -13,22 +14,25 @@ def load(path, usable=0.35, dc_hz=0.5e6, start_hz=70e6, stop_hz=6e9):
     cells, vals, hops, times, temps = [], [], set(), [], 0
     tseries, rseries = [], []
     records = 0
+    recorded_unit=None
     with open(path) as f:
         for line in f:
+            if not line.strip() or not line.endswith('\n'):continue
             r = json.loads(line)
             if r.get('power') is None:
                 continue
             records += 1
-            p = np.asarray(r['power'], dtype=float)
-            f0, w = float(r['first_bin_center_hz']), float(r['bin_width_hz'])
-            freq = f0 + w * np.arange(p.size)
-            center = 0.5 * (r['coverage_start_hz'] + r['coverage_stop_hz'])
-            half = 0.5 * (r['coverage_stop_hz'] - r['coverage_start_hz'])
-            keep = (np.abs(freq - center) <= usable * 2 * half) & (np.abs(freq - center) >= dc_hz) & np.isfinite(p) & (freq >= start_hz) & (freq < stop_hz)
+            unit=r.get('unit','dB(input power/Hz)')
+            if recorded_unit is not None and unit!=recorded_unit:raise ValueError('Mixed density units need separate reports')
+            recorded_unit=unit
+            from soapypower.report_spectrum import density
+            freq,p,keep,center=density(r,usable,dc_hz,start_hz,stop_hz)
             idx = np.floor(freq[keep] / CELL_HZ).astype(np.int64)
             for c in np.unique(idx):
+                mean=float(np.mean(p[keep][idx==c]))
+                if mean<=0:continue
                 cells.append(c)
-                vals.append(float(np.mean(p[keep][idx == c])))
+                vals.append(float(10*np.log10(mean)))
             hops.add(round(center))
             times.append(r['time_start'])
             rseries.append((r['time_start'], round(center)))
@@ -108,7 +112,7 @@ def main(argv=None):
         summary, lv = summarize(name, load(p))
         out['variants'][name] = summary
         lvs[name] = lv
-    if len(lvs) == 2:
+    if len(lvs) == 2 and set(lvs['features-on']) & set(lvs['features-off']):
         common = sorted(set(lvs['features-on']) & set(lvs['features-off']))
         diff = np.array([lvs['features-on'][c] - lvs['features-off'][c] for c in common])
         mad = float(np.median(np.abs(diff - np.median(diff))) * 1.4826)

@@ -2,7 +2,7 @@
 
 // Shares the console's authenticated request function. Values stay typed;
 // command text shown in the preview is never sent back for execution.
-const workbench = {catalog: null, command: null, job: null, plan: null, revision: 0, timer: null, busy: false};
+const workbench = {catalog: null, command: null, job: null, plan: null, revision: 0, timer: null, busy: false, polling: false, controlling: false, lastJob: null};
 const wb = id => document.getElementById(id);
 const el = (tag, text, cls) => {
   const node = document.createElement(tag);
@@ -159,14 +159,20 @@ async function refreshArtifacts() {
   wb('artifact-count').textContent = `${result.items.length} artifacts${result.truncated ? ' · listing capped; exact paths still accepted' : ''}`;
 }
 
+function disableExpertControls() {
+  for(const action of ['pause','resume','retry','abort'])wb('expert-'+action).disabled=true;
+}
+
 async function pollExpert() {
   clearTimeout(workbench.timer);
-  if (!wb('workbench-dialog').open) return;
+  if (!wb('workbench-dialog').open||document.hidden||workbench.polling) return;
+  workbench.polling=true;
   const id = workbench.job;
   try {
     if (id) {
       const result = await request('/api/expert?id=' + encodeURIComponent(id));
-      if (id !== workbench.job) return;
+      if (id !== workbench.job||!wb('workbench-dialog').open) return;
+      workbench.lastJob=result;
       wb('expert-job-state').textContent = `${result.id} · ${result.state} · active process time ${format(result.active_seconds)} s · ${result.attempts?.length || 0} attempts${result.abort_requested ? ' · abort requested' : result.pending_control ? ' · ' + result.pending_control + ' awaiting acknowledgement' : ''}`;
       wb('expert-log').textContent = result.log || result.error || 'Waiting for worker output…';
       const files = wb('expert-files'); files.replaceChildren();
@@ -177,12 +183,12 @@ async function pollExpert() {
       }
       for (const action of ['pause', 'resume', 'retry', 'abort']) {
         const control = wb('expert-' + action);
-        control.disabled = result.abort_requested || (result.pending_control && action !== 'abort') || !['running', 'paused'].includes(result.state) || (action !== 'abort' && result.command !== 'acquisition')
+        control.disabled = workbench.controlling || result.abort_requested || (result.pending_control && action !== 'abort') || !['running', 'paused'].includes(result.state) || (action !== 'abort' && result.command !== 'acquisition')
           || (action === 'resume' && result.state !== 'paused') || (action === 'pause' && result.state === 'paused');
       }
     }
-  } catch (error) { expertError(error); }
-  finally { workbench.timer = setTimeout(pollExpert, 2500); }
+  } catch (error) { disableExpertControls();workbench.lastJob=null;expertError(error); }
+  finally { workbench.polling=false;if(wb('workbench-dialog').open&&!document.hidden)workbench.timer=setTimeout(pollExpert,id!==workbench.job?100:2500); }
 }
 
 function setExpertPreset() {
@@ -220,14 +226,16 @@ wb('expert-refresh-artifacts').addEventListener('click', () => refreshArtifacts(
 wb('expert-open-job').addEventListener('click', () => {
   const id = wb('expert-job-id').value.trim();
   if (!/^expert-\d{8}-\d{6}-[a-f0-9]{8}$/.test(id)) return expertError(new Error('Enter a valid expert job identifier'));
-  workbench.job = id; pollExpert();
+  workbench.job = id;workbench.lastJob=null;disableExpertControls();pollExpert();
 });
 for (const action of ['pause', 'resume', 'retry', 'abort']) wb('expert-' + action).addEventListener('click', async event => {
-  event.target.disabled = true;
+  if(workbench.controlling||!workbench.lastJob||workbench.lastJob.id!==workbench.job)return;
+  const id=workbench.job;workbench.controlling=true;disableExpertControls();
   try {
-    await request('/api/expert-control', {id: workbench.job, action});
-    wb('expert-job-state').textContent = `${action} requested · awaiting worker acknowledgement`;
+    await request('/api/expert-control', {id, action});
+    if(id===workbench.job)wb('expert-job-state').textContent = `${action} requested · awaiting worker acknowledgement`;
   } catch (error) { expertError(error); }
+  finally {workbench.controlling=false;pollExpert();}
 });
 try {
   workbench.job = localStorage.getItem('soapyExpertJob');
@@ -248,4 +256,9 @@ wb('open-expert-job').addEventListener('click', () => {
   workbench.job = model.selected;
   wb('expert-job-id').value = workbench.job;
   openWorkbench().catch(expertError);
+});
+
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){clearTimeout(workbench.timer);disableExpertControls();}
+  else if(wb('workbench-dialog').open)pollExpert();
 });

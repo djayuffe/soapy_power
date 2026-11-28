@@ -41,7 +41,7 @@ case "$PLANARGS" in *[!A-Za-z0-9\ .=_-]*) echo "--plan-args: letters, digits, sp
 [ -z "$SDITH" ] || [[ "$SDITH" =~ ^[0-9]{1,4}$ ]] || { echo "--superscan-dither: kHz" >&2; exit 2; }
 [ -z "$SRATE" ] || [[ "$SRATE" =~ ^(2|4|8)$ ]] || { echo "--superscan-rate: 2 | 4 | 8" >&2; exit 2; }
 [ -z "$SPLAN" ] || [[ "$SPLAN" =~ ^(sat|sat-full|sat-s)$ ]] || { echo "--superscan-plan: sat | sat-full | sat-s" >&2; exit 2; }
-[ -z "$REAN" ] || [[ "$REAN" =~ ^(hopscan|superscan)-[0-9]{8}-[0-9]{6}$ ]] || { echo "--reanalyze: hopscan-YYYYMMDD-HHMMSS or superscan-YYYYMMDD-HHMMSS" >&2; exit 2; }
+[ -z "$REAN" ] || [[ "$REAN" =~ ^(hopscan|superscan|fullrange)-[0-9]{8}-[0-9]{6}$ ]] || { echo "--reanalyze: hopscan/superscan/fullrange-YYYYMMDD-HHMMSS" >&2; exit 2; }
 for flag in "$OVP" "$HOP" "$SUP" "$SATDB"; do
   [ -z "$flag" ] || [ "$flag" = 1 ] || { echo "boolean flags must be 1" >&2;exit 2; }
 done

@@ -31,6 +31,7 @@ async function request(path, data, refreshToken = true, signal = null, requestId
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener('abort', abort, {once: true});
+  if(signal?.aborted)controller.abort();
   const timer = setTimeout(abort, data ? 15000 : 7000);
   try {
     const response = await fetch(path, {
@@ -156,7 +157,7 @@ function renderActions() {
   for (const id of ['new-scan', 'scan-nav', 'probe-button', 'start-scan']) $(id).disabled = !canQueue;
   const detail = model.detail;
   $('generate-report').disabled = !canQueue || !detailFresh || active(detail?.session)
-    || !/^(superscan|hopscan)-\d{8}-\d{6}$/.test(model.selected || '');
+    || !/^(superscan|hopscan|fullrange)-\d{8}-\d{6}$/.test(model.selected || '');
   const pending = model.pendingLocal?.session === model.selected || detail?.pending_control || (active(detail?.session) && detail?.stop_requested);
   for (const [id, available] of [['pause-scan', detail?.can_pause], ['resume-scan', detail?.can_resume],
     ['retry-scan', detail?.can_retry], ['stop-scan', detail?.can_stop]]) {
